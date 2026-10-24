@@ -162,7 +162,7 @@ LGPL 组件以独立可执行文件随包分发并附带许可证文本与源码
 > 第 6 项由 [`spikes/MagickSpike`](../spikes/MagickSpike/README.md) 验证：Magick.NET 14.9.0 在 ARM64 原生加载并完成 JPG→PNG/WebP/AVIF/JXL（HEIC 只读不写，x64 亦然），
 > PDFium 137 与 SkiaSharp 3.119 包内带 `win-arm64`，FFmpeg 有 BtbN 的 `winarm64-lgpl` 构建，7-Zip extra 包含 `arm64/7za.exe`；
 > 第 5 项由 [`spikes/AcrylicSpike`](../spikes/AcrylicSpike/README.md)（WinUI 3 非打包、自包含）验证：预先创建的透明置顶不激活窗口 + `SystemBackdropElement` 圆盘，热身后 `Show()`→像素上屏中位 54 ms、最大 75 ms，
-> 65 轮前台窗口均未改变，`DesktopAcrylicController` 状态 `Active`（VM 里也真的模糊）；但冷启动第 1 轮 48–219 ms 不稳定，M0 必须启动时预热；不激活窗口须把 `IsInputActive` 钉成 true 否则回退纯色；
+> 65 轮前台窗口均未改变，`DesktopAcrylicController` 状态 `Active`（VM 里也真的模糊）；但冷启动第 1 轮 48–219 ms 不稳定（acrylic 组总是构建后第一个进程，部分可能是进程冷启动，属推断），M0 必须启动时预热，长时间空闲后再显示未测；不激活窗口须把 `IsInputActive` 钉成 true 否则回退纯色；
 > WinUI 3 窗口透明要走 DWM 配方（`DwmExtendFrameIntoClientArea` + `DwmEnableBlurBehindWindow` + `WM_ERASEBKGND` 填黑）而不是 `WS_EX_LAYERED`，与 `DropWheel.Shell/DropTargetHost.cs` 的 TODO 不一致，M0 开工前要定；GPU 开销在 VM 里读不到 dwm 计数，待真机。详见三个 README。
 
 ## 参考资料

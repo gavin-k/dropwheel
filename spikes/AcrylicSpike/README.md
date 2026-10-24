@@ -38,7 +38,7 @@
 | 问题 | 结论 | 依据（最终二进制，Win11 22H2 build 22621.4169，ARM64 VM，Parallels 显卡，200% DPI） |
 | --- | --- | --- |
 | 1. 弹出耗时 | ✅ 远在预算内——**热身后** `Show()`→真正上屏中位 54 ms、最大 75 ms（acrylic，19 轮） | 见下表；`none` 72 ms、`opaque` 52 ms 中位，三者差异在抓屏轮询的噪声范围内，**亚克力本身没有带来可测的额外弹出延迟** |
-| 1a. 冷启动第 1 轮 | ⚠️ **不稳定，可能超预算**：最终二进制的 acrylic 第 1 轮 219 ms；之前三次构建的 acrylic 第 1 轮分别 48、53、89 ms | 第 1 轮包含 XAML 首次布局/首帧、合成器与 DWM 首次为该窗口建立表面；M0 必须在启动时预热一次（见发现 4） |
+| 1a. 冷启动第 1 轮 | ⚠️ **不稳定，可能超预算**：最终二进制的 acrylic 第 1 轮 219 ms；之前三个构建的三次完整运行里分别 48、89 ms，两次 3/5 轮冒烟 60、53 ms（第一个构建还没有棋盘格场景和 DWM 配方，窗口不完全相同） | 推断：第 1 轮包含 XAML 首次布局/首帧、合成器与 DWM 首次为该窗口建立表面。**注意混杂因素**：`run-acrylic.ps1` 总是先跑 `acrylic`，且每次完整运行都紧跟一次重新构建，所以 acrylic 的第 1 轮同时也是「构建后第一个进程」，219 ms 可能是磁盘/DLL 冷启动而非亚克力本身（同样带亚克力圆盘、排第三个跑的 `opaque` 第 1 轮只有 56 ms）。无论哪种原因，M0 都必须在启动时预热一次（见发现 4） |
 | 2. 不抢焦点 | ✅ 65 轮（20+20+20+5）前台窗口全部没变 | `WS_EX_NOACTIVATE` + `AppWindow.Show(activateWindow: false)`；窗口不出现在 Alt+Tab（`IsShownInSwitchers=false`） |
 | 3. 亚克力是否真的渲染 | ✅ 在这台 VM 里 `DesktopAcrylicController.State = Active`，截图可见背后棋盘格被模糊（边缘梯度 1.30 vs 无 backdrop 的 1.97）；**前提是把 `IsInputActive` 钉成 true**，用默认配置会回退成纯色（见发现 2） | `shots/02-acrylic-active.png` vs `shots/03-none-plain-overlay.png` vs `shots/05-default-config-fallback.png`（回退色故意设成品红，264 008 个品红像素） |
 | 3a. GPU / DWM 开销 | ❓ **未能量化**：非提权进程读不到 `dwm.exe` 的 CPU 时间（拒绝访问），VM 里也没有 GPU 计数器；本进程每轮 CPU 0–109 ms（含抓屏）无法区分亚克力贡献 | 需要在真机上用 Task Manager / PerfMon 的 GPU 引擎计数器或 PIX 看，列入人工清单 |
@@ -53,6 +53,7 @@
 | `acrylic --default-config` | 5 | 33 / 2 / 3 / 10 ms | 78 / 25 / 29 / 47 ms | 0 | **Fallback** |
 
 - 窗口从 `new Window()` 到配置完隐藏待命：22–46 ms（四组）。M0 在启动时做一次即可，不在 150 ms 预算里。
+- **「热身后」只代表隐藏 300 ms 再显示。** DropWheel 的真实场景是覆盖层上次拖拽后隐藏了几分钟到几小时再显示，DWM / 合成器是否会在长时间隐藏后回收该窗口的表面、启动时预热是否还有效，本 spike 没测（见人工清单第 4 项）。
 - `CompositionTarget.Rendered` 比像素真正变化早约 25–65 ms（四组热身后中位数之差）：它只说明 XAML 出了一帧，不代表 DWM 已经合成上屏。做「弹出耗时」的验收必须抓屏，不能只看这个事件。
 - 同一二进制、同一场景下圆盘统计值每轮完全一致（灰度均值 58、σ 24.9、梯度 1.30），说明亚克力每次显示都稳定地渲染，没有「先纯色再变模糊」的过渡被抓到（400 ms 后抓的；更早的中间态未抓）。
 - 抓屏用的是 `BitBlt(CAPTUREBLT)`，200×200 一次约 1–3 ms（推断：由轮询间隔与结果粒度估计，未单独计时），所以「上屏」时间的分辨率约 5 ms。
@@ -74,11 +75,11 @@
    另外 Win11 会给这个「看不见的矩形」画 1 px 圆角描边，要 `DwmSetWindowAttribute(DWMWA_WINDOW_CORNER_PREFERENCE=DONOTROUND)` 和 `DWMWA_BORDER_COLOR=DWMWA_COLOR_NONE`。
 2. **不抢焦点的窗口默认拿不到亚克力。** XAML 给的默认 `SystemBackdropConfiguration.IsInputActive` 对从未激活的窗口是 false，`DesktopAcrylicController` 对非活动窗口直接 `Fallback`
    （`--default-config` 5/5 轮 Fallback）。覆盖层永远不会激活，所以必须自己 `SetSystemBackdropConfiguration(new() { IsInputActive = true, Theme = …, IsHighContrast = 默认值 })`，
-   并在 `OnDefaultSystemBackdropConfigurationChanged` 里重新应用。这意味着系统的「非活动窗口不画亚克力」省电策略对我们失效，是有意为之。
+   并（未验证的建议）在 `OnDefaultSystemBackdropConfigurationChanged` 里重新应用以跟随主题/高对比度变化。这意味着系统的「非活动窗口不画亚克力」省电策略对我们失效，是有意为之。
 3. **`ICompositionSupportsSystemBackdrop.SystemBackdrop` 的类型是 `Windows.UI.Composition.CompositionBrush`**（系统命名空间，不是 `Microsoft.UI.Composition`），
    而 `Window.Compositor` 是 Microsoft.UI 的，类型不兼容。要用 `new Windows.UI.Composition.Compositor()`，而它要求线程上有 `Windows.System.DispatcherQueue`——WinUI 3 线程只有 Microsoft.UI 的那个，
    需要先 `CreateDispatcherQueueController`（CoreMessaging.dll）。见 `SystemCompositor`。
-4. **第一次显示要预热。** 冷启动第 1 轮 48–219 ms 波动，最终二进制那次超了 150 ms；热身后稳定在 30–75 ms。M0 启动时把覆盖层在屏幕外（或 `Opacity=0`）显示一帧再隐藏。
+4. **第一次显示要预热。** 冷启动第 1 轮 48–219 ms 波动（部分可能是进程冷启动而非亚克力，见上表 1a），最终二进制那次超了 150 ms；热身后稳定在 30–75 ms。M0 启动时把覆盖层在屏幕外（或 `Opacity=0`）显示一帧再隐藏。
 5. **Shell 的计划与此不一致。** `src/DropWheel.Shell/DropTargetHost.cs` 的 TODO 写的是 `WS_EX_LAYERED` 分层窗口；WinUI 3 窗口的透明走的是上面的 DWM 配方，`WS_EX_LAYERED` + `SetLayeredWindowAttributes` 会和合成器的呈现方式冲突（未测，是推断）。
    M0 要么让放置目标窗口（Shell，纯 Win32）与轮盘窗口（App，WinUI）是两个窗口，各用各的透明机制；要么统一到 WinUI 窗口上 `RegisterDragDrop`。这是 M0 开工前要定的设计决定，本 spike 不替它定。
 6. `WindowsAppSDKSelfContained=true` 的非打包 WinUI 3 应用在 ARM64 VM 上直接从输出目录运行，无需安装运行时；首帧 `CompositionTarget.Rendered` 在 `Show()` 后 20–47 ms。
@@ -89,3 +90,4 @@
 1. 在真机（非 VM）上跑 `run-acrylic.ps1`，确认 `ACRYLIC: Active` 且截图里有模糊；同时打开任务管理器「性能 → GPU」或 PerfMon `GPU Engine` 计数器，比较 `acrylic` 与 `none` 两组运行期间的 GPU 占用（问题 3a）。
 2. 在系统设置里关掉「透明效果」，再跑一次 `--variant acrylic`，确认行为是 `Fallback`（纯色）而不是黑块/白块；这是省电模式与高对比度下的预期降级路径，本 spike 没有覆盖（`run-acrylic.ps1` 只会把它临时打开）。
 3. 多显示器 / 不同 DPI 下 `DisplayArea` 与 `MoveAndResize` 的物理像素坐标是否与抓屏区域对齐（本机单屏 200%）。
+4. 长时间空闲后的再显示：启动 `--variant acrylic --runs 2` 之类的版本前先改 `Runner.cs` 把两轮之间的隐藏等待改成 ≥5 分钟（或在 M0 实现里直接测），比较第 2 轮与冷启动第 1 轮，确认预热在空闲后仍然有效。
