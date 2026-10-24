@@ -60,18 +60,32 @@ dropwheel/
 
 ## 开发环境
 
-- Windows 11 (22H2+)，开发者模式
-- Visual Studio 2026 / 2022 17.14+（「WinUI 应用程序开发」工作负载）或 `winapp` CLI
-- .NET 10 SDK
-- `winget install Microsoft.winappcli`
+日常在 macOS 上写 Core 与测试，WinUI 部分在 Windows（Parallels 虚拟机或物理机）里构建与打包。详细说明见 [`scripts/dev-mac.md`](scripts/dev-mac.md)。
 
-```powershell
+### macOS
+
+- .NET 10 SDK（`~/.dotnet`，`dotnet-install.sh --channel 10.0`），`.zshrc` 里加入 PATH 与 `DOTNET_CLI_TELEMETRY_OPTOUT=1`
+- 只能构建 `DropWheel.Core` 与 `DropWheel.Core.Tests`；Engines / Shell / App 依赖 Windows SDK
+
+```bash
 git clone https://github.com/gavin-k/dropwheel.git
 cd dropwheel
-dotnet build DropWheel.slnx
+./build.sh            # restore + build + test（Core）
 ```
 
-> 当前骨架仅保证 `DropWheel.Core` 与测试项目可在任意平台构建；WinUI 项目需 Windows。
+### Windows
+
+- Windows 11 (22H2+)，开发者模式
+- .NET 10 SDK、`winapp` CLI；可选 Visual Studio 2022 17.14+（「WinUI 应用程序开发」+「.NET 桌面开发」工作负载）
+- 一键安装以上全部（幂等，可重复执行；需管理员 PowerShell）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\setup-windows.ps1       # 加 -SkipVisualStudio 只装 CLI 工具链
+.\scripts\build-windows.ps1                                                # build + test + 未签名 x64 .msix -> .\artifacts
+.\scripts\build-windows.ps1 -Arch arm64
+```
+
+`build.sh` 在 Windows 的 Git Bash / pwsh 下也能跑，会构建整个 `DropWheel.slnx`。CI 见 `.github/workflows/build.yml`（每次 push / PR）与 `release.yml`（`v*` 标签或手动触发，产出未签名 x64 + ARM64 `.msixbundle`）。
 
 ## 路线图
 
