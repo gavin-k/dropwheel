@@ -4,7 +4,7 @@
 # (on a Win10 21H2 LTSC machine it meant UISettings.AdvancedEffectsEnabled=False, so acrylic fell back).
 #   -IdleSeconds N     extra set: acrylic, 6 cycles, hidden for N s between cycle 1 and 2 (does idle undo the warm-up?)
 #   -TransparencyOff   extra set: acrylic with the system "Transparency effects" switched off (expected: Fallback, no black box)
-#   -Counters          sample GPU Engine utilization (per pid) and dwm % Processor Time once a second during every set
+#   -Counters          sample GPU Engine utilization (per pid) and dwm % Processor Time about once a second during every set
 param(
     [string]$Exe = "C:\src\dropwheel\spikes\AcrylicSpike\bin\Release\net10.0-windows10.0.26100.0\win-arm64\AcrylicSpike.exe",
     [int]$Runs = 20,
@@ -28,23 +28,24 @@ function Set-Transparency([object]$value) {
     Start-Sleep -Milliseconds 1500
 }
 function Summarize-Counters($samples, $pids) {
-    if (-not $samples -or $samples.Count -eq 0) { Write-Output "counters: no samples"; return }
-    $rows = foreach ($set in $samples) {
-        $cs = $set.CounterSamples
-        $gpu = $cs | Where-Object { $_.Path -like '*gpu engine*' }
+    if (-not $samples) { Write-Output "counters: no samples"; return }
+    # One row per Get-Counter call. Instance names are not localized (paths can be), so match on them only.
+    $rows = foreach ($g in ($samples | Group-Object T)) {
+        $cs = $g.Group
+        $gpu = $cs | Where-Object { $_.InstanceName -like 'pid_*' }
         $row = [ordered]@{
-            gpu3D_all = ($gpu | Where-Object { $_.InstanceName -like '*engtype_3d*' } | Measure-Object CookedValue -Sum).Sum
-            gpuAny_all = ($gpu | Measure-Object CookedValue -Sum).Sum
-            dwm_cpu = ($cs | Where-Object { $_.Path -like '*process(dwm)*' } | Measure-Object CookedValue -Sum).Sum
+            gpu3D_all = [double]($gpu | Where-Object { $_.InstanceName -like '*engtype_3d*' } | Measure-Object CookedValue -Sum).Sum
+            gpuAny_all = [double]($gpu | Measure-Object CookedValue -Sum).Sum
+            dwm_cpu = [double]($cs | Where-Object { $_.InstanceName -eq 'dwm' } | Measure-Object CookedValue -Sum).Sum
         }
         foreach ($name in $pids.Keys) {
-            $row["gpu3D_$name"] = ($gpu | Where-Object { $_.InstanceName -like "pid_$($pids[$name])_*" -and $_.InstanceName -like '*engtype_3d*' } | Measure-Object CookedValue -Sum).Sum
-            $row["gpuAny_$name"] = ($gpu | Where-Object { $_.InstanceName -like "pid_$($pids[$name])_*" } | Measure-Object CookedValue -Sum).Sum
+            $row["gpu3D_$name"] = [double]($gpu | Where-Object { $_.InstanceName -like "pid_$($pids[$name])_*" -and $_.InstanceName -like '*engtype_3d*' } | Measure-Object CookedValue -Sum).Sum
+            $row["gpuAny_$name"] = [double]($gpu | Where-Object { $_.InstanceName -like "pid_$($pids[$name])_*" } | Measure-Object CookedValue -Sum).Sum
         }
         [pscustomobject]$row
     }
-    Write-Output "counters: $($rows.Count) one-second samples (GPU % = sum of engine utilization; dwm CPU % = one core = 100)"
-    foreach ($col in $rows[0].PSObject.Properties.Name) {
+    Write-Output "counters: $(@($rows).Count) samples (GPU % = sum of engine utilization; dwm CPU % = one core = 100)"
+    foreach ($col in @($rows)[0].PSObject.Properties.Name) {
         $m = $rows | Measure-Object $col -Average -Maximum
         Write-Output ("  {0,-16} mean {1,6:F1}  max {2,6:F1}" -f $col, $m.Average, $m.Maximum)
     }
@@ -78,7 +79,14 @@ try {
         $before = Get-ChildItem $logDir -Filter 'acrylic-*.log' -ErrorAction SilentlyContinue | ForEach-Object FullName
         $job = $null
         if ($Counters) {
-            $job = Start-Job -ScriptBlock { Get-Counter -Counter '\GPU Engine(*)\Utilization Percentage', '\Process(dwm)\% Processor Time' -SampleInterval 1 -MaxSamples 600 -ErrorAction SilentlyContinue }
+            # Flat objects: Receive-Job serializes only one level deep, so raw CounterSamples arrive as strings.
+            # One Get-Counter call per sample so the GPU Engine(*) wildcard is re-expanded and picks up the spike's pid.
+            $job = Start-Job -ScriptBlock {
+                while ($true) {
+                    $s = Get-Counter -Counter '\GPU Engine(*)\Utilization Percentage', '\Process(dwm)\% Processor Time' -MaxSamples 1 -ErrorAction SilentlyContinue
+                    if ($s) { foreach ($c in $s.CounterSamples) { [pscustomobject]@{ T = $s.Timestamp.Ticks; InstanceName = $c.InstanceName; CookedValue = $c.CookedValue } } }
+                }
+            }
             Start-Sleep -Seconds 2
         }
         $p = Start-Process -FilePath $Exe -ArgumentList $a -PassThru
