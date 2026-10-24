@@ -17,3 +17,7 @@ IUIAutomationInvokePattern
 UIA_PROPERTY_ID
 UIA_PATTERN_ID
 TreeScope
+IsWindowVisible
+DwmGetWindowAttribute
+DWMWINDOWATTRIBUTE
+GetForegroundWindow

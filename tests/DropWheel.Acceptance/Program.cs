@@ -9,6 +9,8 @@ internal static class Program
 
           DropWheel.Acceptance host [--explorer]   DropTargetHost alone: drop on a sector, off the wheel,
                                                    on the centre, on a disabled sector
+          DropWheel.Acceptance hooks [--explorer]  DragMonitor: drag phases, Shift / Ctrl+Alt / Win taps, long hold
+          DropWheel.Acceptance fileops             ShellFileOperations: recycle, move with a collision
           DropWheel.Acceptance --dragsource <file> --at X,Y   (internal) WinForms drag source
           DropWheel.Acceptance --locate <file>                (internal) hook-free Explorer item locator
         """;
@@ -38,6 +40,12 @@ internal static class Program
             case "host":
                 Log.Open("host");
                 return HostScenario.Run(explorer);
+            case "hooks":
+                Log.Open("hooks");
+                return HooksScenario.Run(explorer);
+            case "fileops":
+                Log.Open("fileops");
+                return FileOpsScenario.Run();
             default:
                 Console.WriteLine(Usage);
                 return 2;
