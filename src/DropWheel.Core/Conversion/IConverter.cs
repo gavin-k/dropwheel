@@ -1,13 +1,22 @@
+using DropWheel.Core.Jobs;
+
 namespace DropWheel.Core.Conversion;
 
 /// <summary>One directed edge an engine supports.</summary>
 public sealed record ConversionEdge(string FromFormatId, string ToFormatId);
 
+/// <param name="OutputDirectory">Where outputs go; empty means next to each source file.</param>
 public sealed record ConversionRequest(
     IReadOnlyList<string> SourcePaths,
     string TargetFormatId,
     string OutputDirectory,
-    IReadOnlyDictionary<string, string>? Options = null);
+    IReadOnlyDictionary<string, string>? Options = null)
+{
+    /// <summary>Output name template, see <see cref="NamingTemplate"/>.</summary>
+    public string Naming { get; init; } = NamingTemplate.Default;
+
+    public ConflictPolicy Conflict { get; init; } = ConflictPolicy.AutoNumber;
+}
 
 public sealed record ConversionResult(
     bool Succeeded,
