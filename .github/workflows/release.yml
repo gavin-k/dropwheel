@@ -67,7 +67,7 @@ jobs:
           Push-Location artifacts/bundle
           winapp pack ../../src/DropWheel.App/DropWheel.App.csproj -c Release --arch x64 --arch arm64 --no-sign
           Pop-Location
-          Get-ChildItem -Recurse ../../artifacts -Include *.msix,*.msixbundle | Format-Table Name, @{n='MB';e={[math]::Round($_.Length/1MB,1)}}
+          Get-ChildItem -Recurse artifacts -Include *.msix,*.msixbundle | Format-Table Name, @{n='MB';e={[math]::Round($_.Length/1MB,1)}}
 
       - uses: actions/upload-artifact@v4
         with:
