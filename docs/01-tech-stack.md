@@ -46,9 +46,9 @@ Windows **没有**「全局拖拽开始」事件。Microsoft Q&A 上的讨论给
 |---|---|---|
 | `SetWindowsHookEx(WH_MOUSE_LL)` | 侦测「左键按下后移动超过阈值」= 可能在拖 | 只能知道鼠标状态，不知道是否 OLE 拖拽 |
 | `SetWindowsHookEx(WH_KEYBOARD_LL)` | 侦测修饰键的「轻点」（按下→300 ms 内松开） | 低级钩子回调必须极快，否则系统会摘除钩子 |
-| UI Automation 结构变化事件 → 根下出现类名 `SysDragImage` 的窗口 | 确认 Shell 拖拽正在进行 | 依赖未文档化的类名；每次事件要遍历桌面子窗口，需节流 |
+| 左键按下期间每 25 ms `FindWindowEx` 找类名 `SysDragImage` 的顶层窗口 | 确认 Shell 拖拽正在进行 | 依赖未文档化的类名；最初计划用 UI Automation 结构变化事件，DragSpike 改成了轮询 |
 | WinEvents（`EVENT_SYSTEM_DRAGDROPSTART`） | 文档列出但实测常不触发 | 作为辅助信号，不可依赖 |
-| 透明、分层、全屏的放置目标窗口 `RegisterDragDrop` | **接收松手的那一刻与文件列表**（`CF_HDROP` / `IShellItemArray`） | 隐藏窗口收不到拖拽事件，须在轮盘出现时才显示；点击穿透用 `WS_EX_TRANSPARENT`，显示轮盘后关掉 |
+| 透明、分层、全屏的放置目标窗口 `RegisterDragDrop` | **接收松手的那一刻与文件列表**（`CF_HDROP` / `IShellItemArray`） | 隐藏窗口收不到拖拽事件，须在轮盘出现时才显示；alpha=0 不参与命中测试，所以用 alpha=1，平时隐藏（[ADR-0004](adr/0004-drop-target-host.md)） |
 
 设计落点（详见 [ADR-0002](adr/0002-global-drag-detection.md)）：
 
@@ -163,7 +163,7 @@ LGPL 组件以独立可执行文件随包分发并附带许可证文本与源码
 > PDFium 137 与 SkiaSharp 3.119 包内带 `win-arm64`，FFmpeg 有 BtbN 的 `winarm64-lgpl` 构建，7-Zip extra 包含 `arm64/7za.exe`；
 > 第 5 项由 [`spikes/AcrylicSpike`](../spikes/AcrylicSpike/README.md)（WinUI 3 非打包、自包含）验证：预先创建的透明置顶不激活窗口 + `SystemBackdropElement` 圆盘，热身后 `Show()`→像素上屏中位 54 ms、最大 75 ms，
 > 65 轮前台窗口均未改变，`DesktopAcrylicController` 状态 `Active`（VM 里也真的模糊）；但冷启动第 1 轮 48–219 ms 不稳定（acrylic 组总是构建后第一个进程，部分可能是进程冷启动，属推断），M0 必须启动时预热，长时间空闲后再显示未测；不激活窗口须把 `IsInputActive` 钉成 true 否则回退纯色；
-> WinUI 3 窗口透明要走 DWM 配方（`DwmExtendFrameIntoClientArea` + `DwmEnableBlurBehindWindow` + `WM_ERASEBKGND` 填黑）而不是 `WS_EX_LAYERED`，与 `DropWheel.Shell/DropTargetHost.cs` 的 TODO 不一致，M0 开工前要定；GPU 开销在 VM 里读不到 dwm 计数，待真机。详见三个 README。
+> WinUI 3 窗口透明要走 DWM 配方（`DwmExtendFrameIntoClientArea` + `DwmEnableBlurBehindWindow` + `WM_ERASEBKGND` 填黑）而不是 `WS_EX_LAYERED`，与 `DropWheel.Shell/DropTargetHost.cs` 的 TODO 不一致，已定为放置目标与轮盘分成两个窗口（[ADR-0004](adr/0004-drop-target-host.md)）；GPU 开销在 VM 里读不到 dwm 计数，待真机。详见三个 README。
 >
 > 2026-10-24（补充，x64 真机）：两个 spike 以 `win-x64` 自包含发布到一台 Windows 10 企业版 LTSC 21H2（19044）x64、Intel Iris Pro 5200、1920×1200 @125% 的笔记本上，机器未装 .NET，直接运行。DragSpike 真实 Explorer 自测 17 次 16 次通过（含之后补跑的 4 次）：`SysDragImage` +48…+67 ms、Shift 钩子延迟 0.2–0.4 ms、轮盘首帧 13–49 ms、投放 9–32 ms；第 1、3（单屏 125%）、4 项在 Win10 x64 上同样成立；第 2 项四项视觉效果全关 7 次里 1 次 `SysDragImage` 未出现且投放未到（原因不明，未复现；最初怀疑的「脚本先杀了 explorer」在补跑的 4 次里有 3 次同样杀了，全部通过），单项关闭各 1 次均通过，24H2 仍未测；Win10 上放行 Win 键时前台变成搜索窗口但投放仍到达，与 22H2 不同。AcrylicSpike：自包含 x64 能跑、`IsSupported=True`；`EnableTransparency` 值缺失 ⇒ `AdvancedEffectsEnabled=False` ⇒ `Fallback`，写 1 并广播 ⇒ 立即 `Active`（M0 要读 `UISettings` 而不是注册表）；但该机**所有经 D3D 硬件呈现的窗口（WPF 亦然）都显示为白块**，WPF 关硬件加速即正常，排除了抓屏与 DLL 注入，原因在 2016 年的 Intel 驱动与一块第三方虚拟显示适配器之间未判别，因此弹出耗时、GPU 开销、空闲后再显示在该机上无法测量，仍待一台渲染正常的真机；这同时说明 M0 的弹出验收与启动自检都必须看像素，`CompositionTarget.Rendered` 和控制器状态在白块故障下照样是「正常」的。
 >

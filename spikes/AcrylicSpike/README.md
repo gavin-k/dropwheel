@@ -84,7 +84,7 @@
    需要先 `CreateDispatcherQueueController`（CoreMessaging.dll）。见 `SystemCompositor`。
 4. **第一次显示要预热。** 冷启动第 1 轮 48–219 ms 波动（部分可能是进程冷启动而非亚克力，见上表 1a），最终二进制那次超了 150 ms；热身后稳定在 30–75 ms。M0 启动时把覆盖层在屏幕外（或 `Opacity=0`）显示一帧再隐藏。
 5. **Shell 的计划与此不一致。** `src/DropWheel.Shell/DropTargetHost.cs` 的 TODO 写的是 `WS_EX_LAYERED` 分层窗口；WinUI 3 窗口的透明走的是上面的 DWM 配方，`WS_EX_LAYERED` + `SetLayeredWindowAttributes` 会和合成器的呈现方式冲突（未测，是推断）。
-   M0 要么让放置目标窗口（Shell，纯 Win32）与轮盘窗口（App，WinUI）是两个窗口，各用各的透明机制；要么统一到 WinUI 窗口上 `RegisterDragDrop`。这是 M0 开工前要定的设计决定，本 spike 不替它定。
+   M0 要么让放置目标窗口（Shell，纯 Win32）与轮盘窗口（App，WinUI）是两个窗口，各用各的透明机制；要么统一到 WinUI 窗口上 `RegisterDragDrop`。已定为前者，见 [ADR-0004](../../docs/adr/0004-drop-target-host.md)。
 6. `WindowsAppSDKSelfContained=true` 的非打包 WinUI 3 应用在 ARM64 VM 上直接从输出目录运行，无需安装运行时；首帧 `CompositionTarget.Rendered` 在 `Show()` 后 20–47 ms。
 7. 在 VM 里 `DesktopAcrylicController.IsSupported()` 为 true 且状态 Active；之前担心的「VM / 远程桌面下亚克力一律回退」在 Parallels 22H2 ARM64 这台机器上**没有发生**。真机 Win10 21H2 x64 上 `IsSupported` 同样为 true，但状态由系统「透明效果」决定（见下一节）。
 8. **「透明效果」注册表值缺失不等于开启。** 真机上 `HKCU\…\Themes\Personalize\EnableTransparency` 不存在时 `UISettings.AdvancedEffectsEnabled=False`、控制器每轮 `Fallback`；写入 1 并广播 `WM_SETTINGCHANGE("ImmersiveColorSet")` 后不用重启就变成 True、控制器 `Active`。M0 不要用「值不存在」推断用户开着透明效果，直接读 `UISettings.AdvancedEffectsEnabled`，并订阅 `AdvancedEffectsEnabledChanged`。

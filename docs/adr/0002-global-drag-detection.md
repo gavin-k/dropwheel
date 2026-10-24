@@ -1,6 +1,6 @@
 # ADR-0002 · 全局拖拽侦测与「轻点唤出」
 
-- 状态：已接受，待 M0 原型验证（2026-10-24）
+- 状态：已接受（2026-10-24），第 1、3、4 条按 DragSpike 结果修订，见文末
 
 ## 背景
 
@@ -25,3 +25,9 @@ Windows 没有「全局拖拽开始」API。同时资源管理器在**松手瞬�
 - `SysDragImage` 为未文档化类名，Windows 更新可能失效 → 保留 WinEvents 与「仅鼠标判定」降级路径（降级时轮盘仍能弹，只是无法区分 OLE 拖拽与普通拖动）。
 - 低级钩子回调超时会被系统摘除 → 回调只投递消息，不做任何工作。
 - 覆盖层显示时若用户的拖拽源窗口已 Capture 鼠标，窗口 Z 序与 DPI 需验证。
+
+## 修订（2026-10-24，DragSpike 之后）
+
+- 第 1 条：`SysDragImage` 改为左键按下期间每 25 ms 用 `FindWindowEx` 轮询，不用 UI Automation 事件。`EVENT_SYSTEM_DRAGDROPSTART` 在 Win11 22H2 ARM64 和 Win10 21H2 x64 上都从未触发，只记日志。拖拽结束只认 LL 鼠标的左键抬起。见 [DragSpike](../../spikes/DragSpike/README.md)。
+- 第 3 条：放置目标和轮盘分成两个窗口，见 [ADR-0004](0004-drop-target-host.md)。
+- 第 4 条：吞 Win 键要同时吞按下和抬起，而且只吞「自己吞过按下」的那次抬起，否则系统会一直认为 Win 被按住。拖拽中不能替用户发 Esc，Esc 会取消 OLE 拖拽。

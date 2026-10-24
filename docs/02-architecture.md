@@ -5,16 +5,16 @@
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │ DropWheel.App (WinUI 3, 单实例, 常驻托盘)                         │
-│  ├─ OverlayWindow     透明全屏窗 · 轮盘 · 放置目标 (IDropTarget)   │
+│  ├─ OverlayWindow     轮盘窗（DWM 透明 + 亚克力），不接收输入       │
 │  ├─ QueueWindow       任务队列 / 详情                              │
 │  ├─ SettingsWindow    键位 · 输出 · 命名 · 重名 · 动作 · 隐私        │
 │  ├─ OnboardingWindow  20 秒引导                                    │
 │  └─ TrayDock          屏幕边缘停靠托盘                              │
 ├─────────────────────────────────────────────────────────────────┤
 │ DropWheel.Shell (Win32 互操作)                                    │
-│  ├─ DragMonitor       WH_MOUSE_LL + UIA SysDragImage + WinEvents  │
+│  ├─ DragMonitor       WH_MOUSE_LL + SysDragImage 轮询             │
 │  ├─ ModifierTapper    WH_KEYBOARD_LL：轻点 / 按住 判定               │
-│  ├─ DropTargetHost    RegisterDragDrop → IShellItemArray           │
+│  ├─ DropTargetHost    全屏 alpha=1 分层窗 · RegisterDragDrop       │
 │  ├─ GlobalHotkey      RegisterHotKey                               │
 │  └─ ShellOps          IFileOperation（移动/回收站）· 打开位置        │
 ├─────────────────────────────────────────────────────────────────┤
@@ -39,7 +39,7 @@
 ## 核心流程：拖拽 → 轮盘 → 入队
 
 ```
-Idle ──(鼠标按下+移动>5px)──▶ MaybeDragging ──(UIA 见 SysDragImage / WinEvent)──▶ Dragging
+Idle ──(鼠标按下+移动>8px)──▶ MaybeDragging ──(轮询见 SysDragImage)──▶ Dragging
 Dragging ──(修饰键轻点 ≤300ms)──▶ WheelOpen(mode)
 WheelOpen ──(修饰键再轻点)──▶ WheelOpen(其他 mode)
 WheelOpen ──(松手在扇区)──▶ IDropTarget::Drop → Enqueue(job) → Idle
