@@ -1,0 +1,34 @@
+// CsWin32 — Win32 APIs projected at build time. Add names here, not P/Invoke by hand.
+
+// Overlay window: transparent WinUI 3 host (spikes/AcrylicSpike, finding 1), never activated
+GetWindowLong
+SetWindowLong
+WINDOW_EX_STYLE
+SetWindowPos
+WM_NCCALCSIZE
+DwmExtendFrameIntoClientArea
+DwmEnableBlurBehindWindow
+DwmSetWindowAttribute
+DWMWINDOWATTRIBUTE
+DWM_WINDOW_CORNER_PREFERENCE
+CreateRectRgn
+GetClientRect
+FillRect
+CreateSolidBrush
+GetDC
+ReleaseDC
+SetWindowSubclass
+RemoveWindowSubclass
+DefSubclassProc
+WM_ERASEBKGND
+WM_DWMCOMPOSITIONCHANGED
+
+// Wheel placement and the hide watchdog
+MonitorFromPoint
+GetMonitorInfo
+MONITORINFO
+GetDpiForMonitor
+GetAsyncKeyState
+GetSystemMetrics
+VIRTUAL_KEY
+GetDpiForWindow
