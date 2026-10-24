@@ -152,7 +152,7 @@ LGPL 组件以独立可执行文件随包分发并附带许可证文本与源码
 - [ ] `SysDragImage` 侦测在 Win11 24H2+ 是否依旧有效；关闭拖拽相关视觉效果（「拖动时显示窗口内容」、动画、阴影）后的行为
 - [ ] 透明分层窗口 `RegisterDragDrop` 在多显示器 / 不同 DPI 下的坐标映射
 - [x] `Win` 键在拖拽中被吞掉后，开始菜单是否仍会弹出——不会（22H2 ARM64、Win10 21H2 x64）
-- [x] `SystemBackdropElement` 在透明窗口上的亚克力效果与 150 ms 弹出预算（GPU 开销仍待真机量化）
+- [x] `SystemBackdropElement` 在透明窗口上的亚克力效果与 150 ms 弹出预算（含 x64 真机 GPU 开销）
 - [ ] Magick.NET / PDFium / FFmpeg LGPL 的 ARM64 包可用性
 
 > 2026-10-24：用 [`spikes/DragSpike`](../spikes/DragSpike/README.md) 在 Win11 22H2 ARM64 上做了真实 Explorer 拖拽自测（6/6）：
@@ -165,7 +165,9 @@ LGPL 组件以独立可执行文件随包分发并附带许可证文本与源码
 > 65 轮前台窗口均未改变，`DesktopAcrylicController` 状态 `Active`（VM 里也真的模糊）；但冷启动第 1 轮 48–219 ms 不稳定（acrylic 组总是构建后第一个进程，部分可能是进程冷启动，属推断），M0 必须启动时预热，长时间空闲后再显示未测；不激活窗口须把 `IsInputActive` 钉成 true 否则回退纯色；
 > WinUI 3 窗口透明要走 DWM 配方（`DwmExtendFrameIntoClientArea` + `DwmEnableBlurBehindWindow` + `WM_ERASEBKGND` 填黑）而不是 `WS_EX_LAYERED`，与 `DropWheel.Shell/DropTargetHost.cs` 的 TODO 不一致，M0 开工前要定；GPU 开销在 VM 里读不到 dwm 计数，待真机。详见三个 README。
 >
-> 2026-10-24（补充，x64 真机）：两个 spike 以 `win-x64` 自包含发布到一台 Windows 10 企业版 LTSC 21H2（19044）x64、Intel Iris Pro 5200、1920×1200 @125% 的笔记本上，机器未装 .NET，直接运行。DragSpike 真实 Explorer 自测 13 次 12 次通过：`SysDragImage` +48…+67 ms、Shift 钩子延迟 0.2–0.4 ms、轮盘首帧 13–49 ms、投放 9–32 ms；第 1、3（单屏 125%）、4 项在 Win10 x64 上同样成立；第 2 项四项视觉效果全关 3 次里 1 次 `SysDragImage` 未出现且投放未到（紧随脚本杀 explorer 之后，未复现，属推断），单项关闭各 1 次均通过，24H2 仍未测；Win10 上放行 Win 键时前台变成搜索窗口但投放仍到达，与 22H2 不同。AcrylicSpike：自包含 x64 能跑、`IsSupported=True`；`EnableTransparency` 值缺失 ⇒ `AdvancedEffectsEnabled=False` ⇒ `Fallback`，写 1 并广播 ⇒ 立即 `Active`（M0 要读 `UISettings` 而不是注册表）；但该机**所有经 D3D 硬件呈现的窗口（WPF 亦然）都显示为白块**，WPF 关硬件加速即正常，排除了抓屏与 DLL 注入，原因在 2016 年的 Intel 驱动与一块第三方虚拟显示适配器之间未判别，因此弹出耗时、GPU 开销、空闲后再显示在该机上无法测量，仍待一台渲染正常的真机；这同时说明 M0 的弹出验收与启动自检都必须看像素，`CompositionTarget.Rendered` 和控制器状态在白块故障下照样是「正常」的。
+> 2026-10-24（补充，x64 真机）：两个 spike 以 `win-x64` 自包含发布到一台 Windows 10 企业版 LTSC 21H2（19044）x64、Intel Iris Pro 5200、1920×1200 @125% 的笔记本上，机器未装 .NET，直接运行。DragSpike 真实 Explorer 自测 17 次 16 次通过（含之后补跑的 4 次）：`SysDragImage` +48…+67 ms、Shift 钩子延迟 0.2–0.4 ms、轮盘首帧 13–49 ms、投放 9–32 ms；第 1、3（单屏 125%）、4 项在 Win10 x64 上同样成立；第 2 项四项视觉效果全关 7 次里 1 次 `SysDragImage` 未出现且投放未到（原因不明，未复现；最初怀疑的「脚本先杀了 explorer」在补跑的 4 次里有 3 次同样杀了，全部通过），单项关闭各 1 次均通过，24H2 仍未测；Win10 上放行 Win 键时前台变成搜索窗口但投放仍到达，与 22H2 不同。AcrylicSpike：自包含 x64 能跑、`IsSupported=True`；`EnableTransparency` 值缺失 ⇒ `AdvancedEffectsEnabled=False` ⇒ `Fallback`，写 1 并广播 ⇒ 立即 `Active`（M0 要读 `UISettings` 而不是注册表）；但该机**所有经 D3D 硬件呈现的窗口（WPF 亦然）都显示为白块**，WPF 关硬件加速即正常，排除了抓屏与 DLL 注入，原因在 2016 年的 Intel 驱动与一块第三方虚拟显示适配器之间未判别，因此弹出耗时、GPU 开销、空闲后再显示在该机上无法测量，仍待一台渲染正常的真机；这同时说明 M0 的弹出验收与启动自检都必须看像素，`CompositionTarget.Rendered` 和控制器状态在白块故障下照样是「正常」的。
+>
+> 2026-10-24（补充，白屏的原因与真机测量）：白块不是那块虚拟显示适配器造成的（停用它之后 WPF 仍白），Win+Ctrl+Shift+B 重置图形驱动后恢复，重新启用适配器也没有再白，所以是图形栈当时处于坏状态。之后在同一台机器上量到：acrylic 热身后 `Show()`→上屏中位 25 ms、最大 55 ms，冷启动第 1 轮 65–68 ms；隐藏 5 分钟后再显示 49 ms；系统「透明效果」关闭时是纯色回退而不是黑块/白块；GPU 计数器显示 acrylic 比无 backdrop 的同几何窗口全系统 3D 占用只多 0.3 个百分点（3.2% vs 2.9%），dwm CPU 9.6% vs 8.9%，与组内波动相当。第 5 项到此可以关闭。
 
 ## 参考资料
 
