@@ -1,0 +1,19 @@
+// CsWin32 projections for the acceptance driver.
+SendInput
+INPUT
+VIRTUAL_KEY
+FindWindow
+FindWindowEx
+GetWindowText
+GetWindowThreadProcessId
+PostMessage
+WM_CLOSE
+GetDpiForMonitor
+MonitorFromPoint
+IUIAutomation
+CUIAutomation8
+IUIAutomationElement
+IUIAutomationInvokePattern
+UIA_PROPERTY_ID
+UIA_PATTERN_ID
+TreeScope
