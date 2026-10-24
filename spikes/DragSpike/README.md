@@ -42,7 +42,7 @@
 | § | 项目 | 结论 | 依据 |
 | --- | --- | --- | --- |
 | 1 | 低级鼠标/键盘钩子在拖拽期间的延迟与稳定性 | ✅ 可行（ARM64 VM 与 x64 真机） | Explorer 拖拽中 Shift 轻点经 WH_KEYBOARD_LL 到达用时 0.2–1.5 ms（距 SendInput 键抬起）；6 次连续 Explorer 自测全部通过，Explorer 的 OLE 拖拽消息循环没有阻塞钩子回调。真机 Win10 x64：12 次 Explorer 自测钩子延迟 0.2–0.4 ms，全部到达 |
-| 2 | `SysDragImage` 侦测是否有效 | ✅ 22H2 与 Win10 21H2 有效，关闭拖拽相关视觉效果后仍有效；**24H2 未测** | Explorer 拖拽开始后 45–79 ms 出现 `SysDragImage` 窗口（25 ms 轮询）。用 `uieffects-test.ps1` 关掉四项视觉效果后 2 次都仍出现（第 1 次 +64 ms，第 2 次日志只截到出现本身）。清单里写的「关闭拖拽时显示图标」在 22621 的 27 个文件夹选项里**不存在**，见发现 8。`EVENT_SYSTEM_DRAGDROPSTART` WinEvent 在本机**从未触发**，不能依赖。真机 Win10 x64：`SysDragImage` +48…+67 ms，WinEvent 同样不触发；四项视觉效果全关 3 次里 2 次仍出现（+67 ms），1 次没出现且投放也没到（见发现 10），单项关闭各 1 次都出现 |
+| 2 | `SysDragImage` 侦测是否有效 | ✅ 22H2 与 Win10 21H2 有效，关闭拖拽相关视觉效果后仍有效；**24H2 未测** | Explorer 拖拽开始后 45–79 ms 出现 `SysDragImage` 窗口（25 ms 轮询）。用 `uieffects-test.ps1` 关掉四项视觉效果后 2 次都仍出现（第 1 次 +64 ms，第 2 次日志只截到出现本身）。清单里写的「关闭拖拽时显示图标」在 22621 的 27 个文件夹选项里**不存在**，见发现 8。`EVENT_SYSTEM_DRAGDROPSTART` WinEvent 在本机**从未触发**，不能依赖。真机 Win10 x64：`SysDragImage` +48…+67 ms，WinEvent 同样不触发；四项视觉效果全关 7 次里 6 次仍出现（+50…+67 ms），1 次没出现且投放也没到（见发现 10），单项关闭各 1 次都出现 |
 | 3 | 分层窗口 `RegisterDragDrop` 多显示器/DPI 坐标 | ⚠️ 单屏 200%（VM）与 125%（真机）通过；**多显示器未测** | WinForms PerMonitorV2 + `AllowDrop`，物理像素坐标下 6 次投放都落在目标扇区；真机 125% 下 12 次也都落在目标扇区；两台都只有一个显示器 |
 | 4 | 拖拽中按 Win 键 | ✅ 吞掉即可 | `--winkey`（LL 键盘钩子对 Win 按下/抬起都返回 1）3 次：开始菜单未弹出、拖拽继续、投放正常到达。对照 `--winkey-pass` 3 次：开始菜单（搜索窗口）弹出并成为前台窗口，3 s 内收不到投放。见发现 7。真机 Win10 x64：`--winkey` 1 次通过（吞掉 2 个键事件，前台仍是 spike）；`--winkey-pass` 1 次前台变成「搜索」窗口但投放 11 ms 仍到达，与 22H2 不同，见发现 9 |
 | 5 | 亚克力背景 / 150 ms 弹出预算 | ✅ 弹出耗时；⚠️ GPU 开销未量化 | 本 spike 只量了无 backdrop 的 WinForms 窗口（Shift 抬起到首帧 21–93 ms）；真正的 WinUI 3 透明窗口 + `SystemBackdropElement` 由 [`AcrylicSpike`](../AcrylicSpike/README.md) 验证：热身后 `Show()`→上屏中位 54 ms、最大 75 ms，亚克力 `Active`，不抢焦点；冷启动第 1 轮最长 219 ms，M0 需预热；dwm GPU 开销在 VM 里读不到 |
@@ -67,19 +67,19 @@
 
 ### 真机 x64 测量值
 
-Windows 10 LTSC 21H2 x64，Intel Iris Pro 5200，1920×1200 @125%，同一 x64 自包含二进制；日志 `spike-20261025-00????.log`（机器本地时间）。
+Windows 10 LTSC 21H2 x64，Intel Iris Pro 5200，1920×1200 @125%，同一 x64 自包含二进制；日志 `spike-20261025-00????.log`，补跑的 4 次是 `spike-20261025-0117??.log` / `-0118??.log`（机器本地时间）。
 
-| 指标 | 真实 Explorer 拖拽源（`go` 5 次 + 矩阵 7 次 + `uieffects-test` 1 次） |
+| 指标 | 真实 Explorer 拖拽源（`go` 5 次 + 矩阵 7 次 + `uieffects-test` 1 次，之后补跑 `uieffects-test` 4 次） |
 | --- | --- |
 | 拖拽侦测：LL 鼠标越过阈值（真机 `DragSize` 4×4） | 首个 move 后 +0…+1 ms |
-| 拖拽侦测：`SysDragImage` 出现 | +48…+67 ms（12 次）；`uieffects-test` 那 1 次没出现 |
+| 拖拽侦测：`SysDragImage` 出现 | +48…+67 ms（16 次）；第一次 `uieffects-test` 没出现 |
 | 拖拽侦测：WinEvent DRAGDROPSTART | **不触发** |
 | Shift 轻点到达 LL 键盘钩子 | 0.2–0.4 ms |
 | 轮盘首帧（距 Shift 抬起） | 12.8–48.9 ms |
-| `DragDrop` 收到（距左键抬起） | 9–32 ms（12 次）；`uieffects-test` 那 1 次 3 s 内未收到 |
+| `DragDrop` 收到（距左键抬起） | 9–32 ms（前 12 次；补跑的 4 次只摘了 PASS/FAIL 行，没有这个数）；第一次 `uieffects-test` 3 s 内未收到 |
 | 拖拽中轻点 Win 键 | 吞掉（1 次）：开始菜单未弹出、投放 10 ms 到达 / 放行（1 次）：前台变成「搜索」窗口，投放 11 ms **仍到达** |
-| 四项视觉效果全关 | 3 次：2 次 PASS（`SysDragImage` +67 ms，投放 30 ms），1 次 FAIL（见发现 10）；只关「拖动时显示窗口内容」/「视觉效果」/「窗口阴影」各 1 次：全 PASS |
-| 结果 | 13 次里 12 次 PASS |
+| 四项视觉效果全关 | 7 次：6 次 PASS（`SysDragImage` +50…+67 ms），1 次 FAIL（见发现 10）；只关「拖动时显示窗口内容」/「视觉效果」/「窗口阴影」各 1 次：全 PASS |
+| 结果 | 17 次里 16 次 PASS |
 
 ## 过程中的发现（写给做 M0 的人）
 
@@ -108,20 +108,22 @@ Windows 10 LTSC 21H2 x64，Intel Iris Pro 5200，1920×1200 @125%，同一 x64 �
    - 判断开始菜单是否打开不能只看 `IsWindowVisible`——标题为「开始」的 `Windows.UI.Core.CoreWindow` 一直是 WS_VISIBLE，
      关闭时只是被 DWM cloak（`DWMWA_CLOAKED`），要两者一起查。
    - 拖拽中**不要发 Esc**：没有菜单吃掉它时，Esc 会直接取消 OLE 拖拽。
-9. **Win10 21H2 上放行 Win 键的后果和 Win11 22H2 不同。** 真机 `--winkey-pass`：前台变成标题为「搜索」的窗口，但投放 11 ms 后仍到达轮盘；22H2 上则是开始菜单挡住投放。另外 spike 的 `StartMenuVisible()` 只找标题为 Start/开始 的 `CoreWindow`，在 Win10 上对这个「搜索」窗口返回 False——所以 `--winkey` 在 Win10 上的 PASS 依据是 `foreground="DropWheelSpike"` 和 `swallowed=2`，不是那个检测函数。结论不变（M0 直接吞键），但 Win10 下如果要检测开始菜单/搜索是否弹出，要把搜索窗口也算上。
-10. **关视觉效果的 3 次全关运行里有 1 次失败，没有复现。** 失败的那次（`uieffects-test.ps1`）：LL 鼠标侦测到拖拽、Shift 轻点到达、轮盘 46 ms 画出，但 `SysDragImage` 没出现、左键抬起后 3 s 内没有 `DragDrop`——像是 Explorer 根本没开始 OLE 拖拽。它是唯一一次在运行前刚执行过「杀掉无窗口 explorer.exe」步骤的运行；随后 `uieffects-matrix.ps1`（不杀 explorer）全关 2 次与单项各 1 次都 PASS。**推断**那一步杀掉了正要为新窗口服务的 explorer 进程；没有证据排除是 Win10 偶发。在拿到更多样本前，产品侧的提醒只有一条：拖拽侦测不能只等 `SysDragImage`，LL 鼠标越过阈值要作为独立来源（本 spike 已如此）。
 8. **「关闭拖拽时显示图标」不是一个真实存在的设置。** 枚举 22621 的 `Explorer\Advanced\Folder` 得到 27 个文件夹选项，
    `Explorer\VisualEffects` 得到 19 个视觉效果，没有一项控制拖拽图像。最接近的四项（`SPI_SETDRAGFULLWINDOWS`、
    `SPI_SETUIEFFECTS`、`SPI_SETDROPSHADOW`、`SPI_SETCURSORSHADOW`）全部关掉后 `SysDragImage` 照样出现。
    视觉效果里需要注销才生效的项（`ListviewShadow`、`ThumbnailsOrIcon` 等）没有测。
+9. **Win10 21H2 上放行 Win 键的后果和 Win11 22H2 不同。** 真机 `--winkey-pass`：前台变成标题为「搜索」的窗口，但投放 11 ms 后仍到达轮盘；22H2 上则是开始菜单挡住投放。另外 spike 的 `StartMenuVisible()` 只找标题为 Start/开始 的 `CoreWindow`，在 Win10 上对这个「搜索」窗口返回 False——所以 `--winkey` 在 Win10 上的 PASS 依据是 `foreground="DropWheelSpike"` 和 `swallowed=2`，不是那个检测函数。结论不变（M0 直接吞键），但 Win10 下如果要检测开始菜单/搜索是否弹出，要把搜索窗口也算上。
+10. **关视觉效果的 7 次全关运行里有 1 次失败，没有复现，原因不明。** 失败的那次（`uieffects-test.ps1`）：LL 鼠标侦测到拖拽、Shift 轻点到达、轮盘 46 ms 画出，但 `SysDragImage` 没出现、左键抬起后 3 s 内没有 `DragDrop`——像是 Explorer 根本没开始 OLE 拖拽。它是唯一一次在运行前刚执行过「杀掉无窗口 explorer.exe」步骤的运行；随后 `uieffects-matrix.ps1`（不杀 explorer）全关 2 次与单项各 1 次都 PASS。当时推断是那一步杀掉了正要为新窗口服务的 explorer 进程，但之后又用 `uieffects-test.ps1` 连跑 4 次，其中 3 次运行前确实杀掉了一个无窗口 explorer，4 次全 PASS（`SysDragImage` +50…+53 ms），所以这个推断不成立，只能记为偶发。产品侧的提醒只有一条：拖拽侦测不能只等 `SysDragImage`，LL 鼠标越过阈值要作为独立来源（本 spike 已如此）。
 
 ## 还需要人工做的事
 
-在 VM 或真机桌面上运行 `DragSpike.exe`（手动模式），然后：
+自动化能做的都已在 VM 和 x64 真机上做完。剩下的需要真人或现在没有的硬件，暂缓，见 TODO。
 
-1. 从资源管理器拖一个文件，拖拽中轻点 Shift，确认轮盘出现在光标处且拖拽图标未消失；投放到某个扇区，日志出现 `DROPPED`。
-2. 同上，但用真人键盘在拖拽中按一下 **Win 键**（自测用的是 SendInput；手动模式下钩子不吞键，只记录 `LL key: Win down`，用于确认真实键盘的行为与 `--winkey-pass` 一致）。
-3. 若能接上第二块显示器（Parallels 可加虚拟显示器；真机那块虚拟显示适配器没接显示器）：把两块屏设成不同缩放，分别在两块屏上做 1，确认轮盘位置与扇区命中（§7 #3）。
-4. 有 24H2 机器时重跑 `--selftest --explorer`、`uieffects-test.ps1` 和 `uieffects-matrix.ps1`（§7 #2）。Win10 21H2 x64 已跑（见「真机 x64 测量值」），不必重复。
-   - 另外在 Win10 上再跑几次 `uieffects-test.ps1`（带杀 explorer 步骤）与 `uieffects-matrix.ps1`，看发现 10 的失败是否只跟杀 explorer 有关。
-5. §7 #5 的亚克力 GPU 开销与真机效果见 [`AcrylicSpike/README.md`](../AcrylicSpike/README.md) 末尾的人工清单。
+## TODO（暂缓）
+
+1. **真人操作。** 在桌面上运行 `DragSpike.exe`（手动模式），从资源管理器拖一个文件，拖拽中轻点 Shift，确认轮盘出现在光标处且拖拽图标未消失，投放到某个扇区后日志出现 `DROPPED`。
+   再用真人键盘在拖拽中按一下 **Win 键**：自测用的是 SendInput；手动模式下钩子不吞键，只记录 `LL key: Win down`，用来确认真实键盘的行为与 `--winkey-pass` 一致。
+2. **多显示器 / 不同缩放。** 接上第二块显示器（Parallels 可加虚拟显示器），两块屏设成不同缩放，分别在两块屏上做第 1 项，确认轮盘位置与扇区命中（§7 #3）。目前只测过单屏 200%（VM）和单屏 125%（真机）。
+3. **Windows 11 24H2。** 重跑 `--selftest --explorer`、`uieffects-test.ps1` 和 `uieffects-matrix.ps1`（§7 #2）。Win11 22H2 ARM64 和 Win10 21H2 x64 已跑，不必重复。
+
+§7 #5 的亚克力结论见 [`AcrylicSpike/README.md`](../AcrylicSpike/README.md)。
