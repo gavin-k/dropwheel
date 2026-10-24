@@ -12,16 +12,17 @@
 │  └─ TrayDock          屏幕边缘停靠托盘                              │
 ├─────────────────────────────────────────────────────────────────┤
 │ DropWheel.Shell (Win32 互操作)                                    │
-│  ├─ DragMonitor       WH_MOUSE_LL + SysDragImage 轮询             │
-│  ├─ ModifierTapper    WH_KEYBOARD_LL：轻点 / 按住 判定               │
+│  ├─ DragMonitor       唯一的钩子线程：WH_MOUSE_LL + WH_KEYBOARD_LL │
+│  │                    + SysDragImage 轮询，按键交给 Core.Input     │
 │  ├─ DropTargetHost    全屏 alpha=1 分层窗 · RegisterDragDrop       │
 │  ├─ GlobalHotkey      RegisterHotKey                               │
-│  └─ ShellOps          IFileOperation（移动/回收站）· 打开位置        │
+│  └─ ShellFileOperations IFileOperation（移动/回收站）              │
 ├─────────────────────────────────────────────────────────────────┤
 │ DropWheel.Core (纯 .NET, 可在任意平台测试)                          │
 │  ├─ Conversion/   ConversionGraph · FormatRegistry · Availability  │
 │  ├─ Wheel/        WheelModel (6 槽: 3 最近 + 3 推荐) · Ranking     │
 │  ├─ Jobs/         JobQueue · Job · UndoLedger · NamingTemplate     │
+│  ├─ Input/        ModifierTapper（轻点 / 按住判定）· WinKeyGate     │
 │  ├─ Quality/      QualityEstimator (高/中/低 + 原因)                │
 │  └─ Settings/     KeyBinding · ConflictChecker · Policies          │
 ├─────────────────────────────────────────────────────────────────┤
@@ -40,7 +41,7 @@
 
 ```
 Idle ──(鼠标按下+移动>8px)──▶ MaybeDragging ──(轮询见 SysDragImage)──▶ Dragging
-Dragging ──(修饰键轻点 ≤300ms)──▶ WheelOpen(mode)
+MaybeDragging | Dragging ──(修饰键轻点 ≤300ms)──▶ WheelOpen(mode)   // WinForms 等不产生 SysDragImage 的拖拽停在 MaybeDragging
 WheelOpen ──(修饰键再轻点)──▶ WheelOpen(其他 mode)
 WheelOpen ──(松手在扇区)──▶ IDropTarget::Drop → Enqueue(job) → Idle
 WheelOpen ──(松手在中心/外部 | Esc)──▶ DROPEFFECT_NONE → Idle

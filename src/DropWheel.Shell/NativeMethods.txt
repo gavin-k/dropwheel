@@ -26,7 +26,10 @@ PostThreadMessage
 PostMessage
 PostQuitMessage
 GetCurrentThreadId
-GetCursorPos
+SetTimer
+KillTimer
+WM_TIMER
+VIRTUAL_KEY
 
 // Drop target host
 OleInitialize
