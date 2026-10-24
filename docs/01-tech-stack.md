@@ -148,10 +148,10 @@ LGPL 组件以独立可执行文件随包分发并附带许可证文本与源码
 
 ## 7. 待验证清单（M0 前）
 
-- [ ] 低级鼠标 + 键盘钩子在拖拽期间的延迟与稳定性（Explorer 拖拽时消息泵是否会阻塞钩子回调）
+- [x] 低级鼠标 + 键盘钩子在拖拽期间的延迟与稳定性（Explorer 拖拽时消息泵是否会阻塞钩子回调）——ARM64 VM 与 x64 真机均通过
 - [ ] `SysDragImage` 侦测在 Win11 24H2+ 是否依旧有效；关闭拖拽相关视觉效果（「拖动时显示窗口内容」、动画、阴影）后的行为
 - [ ] 透明分层窗口 `RegisterDragDrop` 在多显示器 / 不同 DPI 下的坐标映射
-- [ ] `Win` 键在拖拽中被吞掉后，开始菜单是否仍会弹出
+- [x] `Win` 键在拖拽中被吞掉后，开始菜单是否仍会弹出——不会（22H2 ARM64、Win10 21H2 x64）
 - [x] `SystemBackdropElement` 在透明窗口上的亚克力效果与 150 ms 弹出预算（GPU 开销仍待真机量化）
 - [ ] Magick.NET / PDFium / FFmpeg LGPL 的 ARM64 包可用性
 
@@ -164,6 +164,8 @@ LGPL 组件以独立可执行文件随包分发并附带许可证文本与源码
 > 第 5 项由 [`spikes/AcrylicSpike`](../spikes/AcrylicSpike/README.md)（WinUI 3 非打包、自包含）验证：预先创建的透明置顶不激活窗口 + `SystemBackdropElement` 圆盘，热身后 `Show()`→像素上屏中位 54 ms、最大 75 ms，
 > 65 轮前台窗口均未改变，`DesktopAcrylicController` 状态 `Active`（VM 里也真的模糊）；但冷启动第 1 轮 48–219 ms 不稳定（acrylic 组总是构建后第一个进程，部分可能是进程冷启动，属推断），M0 必须启动时预热，长时间空闲后再显示未测；不激活窗口须把 `IsInputActive` 钉成 true 否则回退纯色；
 > WinUI 3 窗口透明要走 DWM 配方（`DwmExtendFrameIntoClientArea` + `DwmEnableBlurBehindWindow` + `WM_ERASEBKGND` 填黑）而不是 `WS_EX_LAYERED`，与 `DropWheel.Shell/DropTargetHost.cs` 的 TODO 不一致，M0 开工前要定；GPU 开销在 VM 里读不到 dwm 计数，待真机。详见三个 README。
+>
+> 2026-10-24（补充，x64 真机）：两个 spike 以 `win-x64` 自包含发布到一台 Windows 10 企业版 LTSC 21H2（19044）x64、Intel Iris Pro 5200、1920×1200 @125% 的笔记本上，机器未装 .NET，直接运行。DragSpike 真实 Explorer 自测 13 次 12 次通过：`SysDragImage` +48…+67 ms、Shift 钩子延迟 0.2–0.4 ms、轮盘首帧 13–49 ms、投放 9–32 ms；第 1、3（单屏 125%）、4 项在 Win10 x64 上同样成立；第 2 项四项视觉效果全关 3 次里 1 次 `SysDragImage` 未出现且投放未到（紧随脚本杀 explorer 之后，未复现，属推断），单项关闭各 1 次均通过，24H2 仍未测；Win10 上放行 Win 键时前台变成搜索窗口但投放仍到达，与 22H2 不同。AcrylicSpike：自包含 x64 能跑、`IsSupported=True`；`EnableTransparency` 值缺失 ⇒ `AdvancedEffectsEnabled=False` ⇒ `Fallback`，写 1 并广播 ⇒ 立即 `Active`（M0 要读 `UISettings` 而不是注册表）；但该机**所有经 D3D 硬件呈现的窗口（WPF 亦然）都显示为白块**，WPF 关硬件加速即正常，排除了抓屏与 DLL 注入，原因在 2016 年的 Intel 驱动与一块第三方虚拟显示适配器之间未判别，因此弹出耗时、GPU 开销、空闲后再显示在该机上无法测量，仍待一台渲染正常的真机；这同时说明 M0 的弹出验收与启动自检都必须看像素，`CompositionTarget.Rendered` 和控制器状态在白块故障下照样是「正常」的。
 
 ## 参考资料
 

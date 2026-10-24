@@ -14,9 +14,10 @@
 
 - 只能在 Windows 上构建：Mac 上即使加 `-p:EnableWindowsTargeting=true` 也会在 XamlCompiler 处崩溃（`output.json was not created`），所以本 spike 在 Mac 上连编译检查都做不了。把仓库镜像到 `C:\src\dropwheel` 后
   `dotnet build C:\src\dropwheel\spikes\AcrylicSpike\AcrylicSpike.csproj -c Release -r win-arm64`，
-  可执行文件在 `bin\Release\net10.0-windows10.0.26100.0\win-arm64\AcrylicSpike.exe`（`-r win-x64` 则生成 x64 版，未在本项目中运行过——没有 Intel 机器）。
+  可执行文件在 `bin\Release\net10.0-windows10.0.26100.0\win-arm64\AcrylicSpike.exe`（`-r win-x64` 生成 x64 版；给没有 .NET 的真机用 `dotnet publish -c Release -r win-x64 -p:SelfContained=true -o <目录>` 发布后整个目录拷过去即可运行，见「真机结果」）。
 - 必须在**有桌面的交互会话**里跑（`prlctl exec --current-user`，或直接在 VM 里双击）：它会真的显示窗口并 `BitBlt` 抓屏。
-- `run-acrylic.ps1`：在 VM 里按顺序跑下表四组，打印每个日志；若「透明效果」系统设置是关的会临时打开并在结束时恢复。幂等。
+- `run-acrylic.ps1`：在交互会话里按顺序跑下表四组，打印每个日志；若「透明效果」系统设置是关的会临时打开并在结束时恢复。幂等。可选：`-Exe` 指定可执行文件；`-Runs N`；`-IdleSeconds N` 多跑一组 acrylic 6 轮、第 1 和第 2 轮之间多隐藏 N 秒（人工清单第 4 项「空闲后再显示」）；`-TransparencyOff` 多跑一组系统「透明效果」关闭下的 acrylic（预期 `Fallback`）；`-Counters` 每秒采样 `\GPU Engine(*)\Utilization Percentage` 与 `\Process(dwm)\% Processor Time`，按 dwm / spike 进程汇总 3D 与全部引擎的均值和最大值（人工清单第 1 项）。
+- 通过 SSH 跑真机时 SSH 会话没有桌面，用 [`spikes/run-in-console-session.ps1`](../run-in-console-session.ps1) 把命令放进已登录用户的控制台会话（交互式计划任务）并等待输出。
 - 日志与截图在 `%LOCALAPPDATA%\DropWheelSpike\acrylic-<variant>-<时间>.log` / `*.bmp`。
 
 | 参数 | 作用 |
@@ -26,6 +27,7 @@
 | `--variant opaque` | 不透明深色宿主窗口 + 同一个亚克力圆盘：对照组，用来区分「透明窗口的问题」和「亚克力的问题」 |
 | `--default-config` | 不覆盖 `SystemBackdropConfiguration`，用 XAML 给的默认值（见发现 2） |
 | `--runs N`（默认 20）、`--size px`（默认 600 物理像素） | 显示/隐藏循环次数、圆盘直径 |
+| `--idle-ms N` | 第 1 轮隐藏后额外等待 N ms 再做第 2 轮，汇总里单独打印第 2 轮的上屏耗时，对比冷启动第 1 轮和热身后中位数 |
 
 每轮：抓屏（窗口中央 200×200 物理像素）→ 记前台窗口 → `Show(false)` → 工作线程每 ~3 ms 抓屏直到 >2% 像素变化（即「真正上屏」）；同时记录第一次 `CompositionTarget.Rendered`
 → 等 400 ms → 再记前台窗口、`DesktopAcrylicController.State`、圆盘区域统计 → `Hide()` → 等 300 ms。前两轮保存整窗 BMP。
@@ -41,7 +43,8 @@
 | 1a. 冷启动第 1 轮 | ⚠️ **不稳定，可能超预算**：最终二进制的 acrylic 第 1 轮 219 ms；之前三个构建的三次完整运行里分别 48、89 ms，两次 3/5 轮冒烟 60、53 ms（第一个构建还没有棋盘格场景和 DWM 配方，窗口不完全相同） | 推断：第 1 轮包含 XAML 首次布局/首帧、合成器与 DWM 首次为该窗口建立表面。**注意混杂因素**：`run-acrylic.ps1` 总是先跑 `acrylic`，且每次完整运行都紧跟一次重新构建，所以 acrylic 的第 1 轮同时也是「构建后第一个进程」，219 ms 可能是磁盘/DLL 冷启动而非亚克力本身（同样带亚克力圆盘、排第三个跑的 `opaque` 第 1 轮只有 56 ms）。无论哪种原因，M0 都必须在启动时预热一次（见发现 4） |
 | 2. 不抢焦点 | ✅ 65 轮（20+20+20+5）前台窗口全部没变 | `WS_EX_NOACTIVATE` + `AppWindow.Show(activateWindow: false)`；窗口不出现在 Alt+Tab（`IsShownInSwitchers=false`） |
 | 3. 亚克力是否真的渲染 | ✅ 在这台 VM 里 `DesktopAcrylicController.State = Active`，截图可见背后棋盘格被模糊（边缘梯度 1.30 vs 无 backdrop 的 1.97）；**前提是把 `IsInputActive` 钉成 true**，用默认配置会回退成纯色（见发现 2） | `shots/02-acrylic-active.png` vs `shots/03-none-plain-overlay.png` vs `shots/05-default-config-fallback.png`（回退色故意设成品红，264 008 个品红像素） |
-| 3a. GPU / DWM 开销 | ❓ **未能量化**：非提权进程读不到 `dwm.exe` 的 CPU 时间（拒绝访问），VM 里也没有 GPU 计数器；本进程每轮 CPU 0–109 ms（含抓屏）无法区分亚克力贡献 | 需要在真机上用 Task Manager / PerfMon 的 GPU 引擎计数器或 PIX 看，列入人工清单 |
+| 3a. GPU / DWM 开销 | ❓ **未能量化**：非提权进程读不到 `dwm.exe` 的 CPU 时间（拒绝访问），VM 里也没有 GPU 计数器；本进程每轮 CPU 0–109 ms（含抓屏）无法区分亚克力贡献 | `run-acrylic.ps1 -Counters` 已能在真机采样 GPU 引擎计数器，但目前唯一的真机渲染异常（见「真机结果」），仍列入人工清单 |
+| 3b. 真机 x64（Win10 21H2，Intel） | ⚠️ 自包含 x64 包能跑、`IsSupported=True`、透明效果开关与控制器状态的关系得到确认；**弹出耗时与 GPU 开销无法测量**：该机所有 D3D 硬件呈现的窗口（WPF 也一样）都显示成纯白矩形 | 见「真机结果」一节 |
 
 ### 测量值（`run-acrylic.ps1` 一次完整运行，最终二进制）
 
@@ -83,11 +86,34 @@
 5. **Shell 的计划与此不一致。** `src/DropWheel.Shell/DropTargetHost.cs` 的 TODO 写的是 `WS_EX_LAYERED` 分层窗口；WinUI 3 窗口的透明走的是上面的 DWM 配方，`WS_EX_LAYERED` + `SetLayeredWindowAttributes` 会和合成器的呈现方式冲突（未测，是推断）。
    M0 要么让放置目标窗口（Shell，纯 Win32）与轮盘窗口（App，WinUI）是两个窗口，各用各的透明机制；要么统一到 WinUI 窗口上 `RegisterDragDrop`。这是 M0 开工前要定的设计决定，本 spike 不替它定。
 6. `WindowsAppSDKSelfContained=true` 的非打包 WinUI 3 应用在 ARM64 VM 上直接从输出目录运行，无需安装运行时；首帧 `CompositionTarget.Rendered` 在 `Show()` 后 20–47 ms。
-7. 在 VM 里 `DesktopAcrylicController.IsSupported()` 为 true 且状态 Active；之前担心的「VM / 远程桌面下亚克力一律回退」在 Parallels 22H2 ARM64 这台机器上**没有发生**。真机结果仍需确认（人工清单）。
+7. 在 VM 里 `DesktopAcrylicController.IsSupported()` 为 true 且状态 Active；之前担心的「VM / 远程桌面下亚克力一律回退」在 Parallels 22H2 ARM64 这台机器上**没有发生**。真机 Win10 21H2 x64 上 `IsSupported` 同样为 true，但状态由系统「透明效果」决定（见下一节）。
+8. **「透明效果」注册表值缺失不等于开启。** 真机上 `HKCU\…\Themes\Personalize\EnableTransparency` 不存在时 `UISettings.AdvancedEffectsEnabled=False`、控制器每轮 `Fallback`；写入 1 并广播 `WM_SETTINGCHANGE("ImmersiveColorSet")` 后不用重启就变成 True、控制器 `Active`。M0 不要用「值不存在」推断用户开着透明效果，直接读 `UISettings.AdvancedEffectsEnabled`，并订阅 `AdvancedEffectsEnabledChanged`。
+9. **事件都对、像素全白是真实存在的故障模式。** 真机上 `CompositionTarget.Rendered` 照常在 `Show()` 后 +25 ms 触发、控制器报 `Active`，屏幕上却是白块。本 spike 的「上屏」判据抓的是像素，所以抓到了。M0 的启动预热应顺便自检一次：显示一帧后 `BitBlt` 自己的窗口区域，若整块是单一颜色就记日志并降级（纯色 GDI 轮盘，或提示更新显卡驱动），不要默默显示一个白方块。
+
+## 真机结果（x64，Windows 10 LTSC 21H2，Intel Iris Pro 5200）
+
+环境：2015 款 MacBook Pro（Boot Camp），Windows 10 企业版 LTSC 21H2 build 19044.7807 x64，Intel Iris Pro 5200、驱动 20.19.15.4531（2016-09，WDDM 2.0，FL 11_1），
+内屏 1920×1200 @125%（dpi 120），另装有一块没接显示器的第三方虚拟显示适配器（远程串流软件的 IddCx 驱动，WDDM 1.3）。机器上没有 .NET，运行的是 VM 上 `dotnet publish -r win-x64 -p:SelfContained=true` 的输出目录；
+通过 SSH + `run-in-console-session.ps1` 在控制台会话里跑，日志为 `acrylic-*-20261025-00????.log`（机器本地时间）。
+
+| 问题 | 结论 | 依据 |
+| --- | --- | --- |
+| 启动 | ✅ 自包含 x64 包在无 .NET 的 Win10 上直接运行，`DesktopAcrylicController.IsSupported=True`，窗口创建 47–102 ms（5 次） | 日志首行 `Windows 21H2 build 19044.7807, X64, process X64, .NET 10.0.13` |
+| 「透明效果」开关 ↔ 控制器状态 | ✅ `EnableTransparency` 值**不存在** → `AdvancedEffectsEnabled=False` → 每轮 `Fallback`（acrylic ×3 次运行）；写 1 + 广播 → `True`、`Active`（acrylic、opaque 各 2 轮）；删掉值 → 又回到 False | 人工清单原第 2 项的「状态是 Fallback 而非别的」部分得到确认；像素外观无法确认（见下） |
+| 弹出耗时、GPU 开销、空闲后再显示、透明关闭时的像素 | ❌ **无法测量**：acrylic / none / opaque 每轮都 `on-screen none within 2 s`，圆盘区域灰度均值 255、σ 0；桌面截图里 spike 的两个窗口都是**纯白矩形** | `cycle 1: … Rendered +25 ms, on-screen none within 2 s, acrylic=Active, … mean=255 sd=0.0` |
+
+白块的诊断，已证实的：
+
+1. 不是抓屏问题：对同一窗口 `PrintWindow(PW_RENDERFULLCONTENT)` 与屏幕 `BitBlt` 结果一致（都是白）；桌面上的 GDI 窗口（资源管理器、cmd）抓得正常。
+2. 不是 WinUI 3 独有：WPF（PowerShell ISE）硬件渲染时同样整窗白（40×40 采样灰度均值 248、6 种颜色）；写 `HKCU\SOFTWARE\Microsoft\Avalon.Graphics\DisableHWAcceleration=1` 后 ISE 立刻正常（均值 77、116 种颜色，截图可见菜单与控制台）。也就是说这台机器上**凡经 D3D 硬件呈现的窗口内容都是白的**，GDI 内容正常。
+3. 不是注入：spike 进程 129 个模块全部来自 `C:\Windows` 或应用目录，用的是 Intel UMD `igd10iumd64.dll 20.19.15.4531`；`AppInit_DLLs` 为空；资源管理器里也没有第三方模块。
+4. 与每应用 GPU 偏好（`DirectX\UserGpuPreferences` 设 1 或 2）无关；Application / System 事件日志里没有相关错误；dxdiag 两块适配器 `D3D Status: Enabled`。
+
+未判别的候选原因（两个都没有排除）：(a) 2016 年的 Intel 驱动；(b) 那块虚拟显示适配器。判别办法是停用虚拟适配器再截一次 ISE，或更新 Intel 驱动——两者都改机器状态，本次没有做，列入人工清单。
+**对 M0 的意义**见发现 8、9。
 
 ## 还需要人工做的事
 
-1. 在真机（非 VM）上跑 `run-acrylic.ps1`，确认 `ACRYLIC: Active` 且截图里有模糊；同时打开任务管理器「性能 → GPU」或 PerfMon `GPU Engine` 计数器，比较 `acrylic` 与 `none` 两组运行期间的 GPU 占用（问题 3a）。
-2. 在系统设置里关掉「透明效果」，再跑一次 `--variant acrylic`，确认行为是 `Fallback`（纯色）而不是黑块/白块；这是省电模式与高对比度下的预期降级路径，本 spike 没有覆盖（`run-acrylic.ps1` 只会把它临时打开）。
-3. 多显示器 / 不同 DPI 下 `DisplayArea` 与 `MoveAndResize` 的物理像素坐标是否与抓屏区域对齐（本机单屏 200%）。
-4. 长时间空闲后的再显示：启动 `--variant acrylic --runs 2` 之类的版本前先改 `Runner.cs` 把两轮之间的隐藏等待改成 ≥5 分钟（或在 M0 实现里直接测），比较第 2 轮与冷启动第 1 轮，确认预热在空闲后仍然有效。
+1. 找一台 D3D 硬件渲染正常的真机（判据：PowerShell ISE 不是白窗口）。上面那台要么更新 Intel 驱动，要么先停用那块虚拟显示适配器再试；两者都是机器主人的决定。
+2. 在那台机器上跑一次 `run-acrylic.ps1 -Exe <x64 发布目录>\AcrylicSpike.exe -Runs 20 -IdleSeconds 300 -TransparencyOff -Counters`（约 10 分钟），一次回答：`acrylic` 与 `none` 的 dwm / spike GPU 引擎占用差（问题 3a）、系统「透明效果」关闭时是 `Fallback` 纯色而非黑块/白块（状态部分已在 Win10 真机确认，像素部分未确认）、隐藏 5 分钟后第 2 轮上屏耗时是否仍接近热身后水平（原第 4 项，现已自动化）。
+3. 多显示器 / 不同 DPI 下 `DisplayArea` 与 `MoveAndResize` 的物理像素坐标是否与抓屏区域对齐（VM 单屏 200%，真机单屏 125%，都没有第二块屏）。
