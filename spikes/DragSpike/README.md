@@ -38,7 +38,7 @@
 | 2 | `SysDragImage` 侦测是否有效 | ✅ 22H2 有效，关闭拖拽相关视觉效果后仍有效；**24H2 未测** | Explorer 拖拽开始后 45–79 ms 出现 `SysDragImage` 窗口（25 ms 轮询）。用 `uieffects-test.ps1` 关掉四项视觉效果后 2 次都仍出现（第 1 次 +64 ms，第 2 次日志只截到出现本身）。清单里写的「关闭拖拽时显示图标」在 22621 的 27 个文件夹选项里**不存在**，见发现 8。`EVENT_SYSTEM_DRAGDROPSTART` WinEvent 在本机**从未触发**，不能依赖 |
 | 3 | 分层窗口 `RegisterDragDrop` 多显示器/DPI 坐标 | ⚠️ 单屏 200% DPI 通过；**多显示器未测** | WinForms PerMonitorV2 + `AllowDrop`，物理像素坐标下 6 次投放都落在目标扇区；VM 只有一个显示器 |
 | 4 | 拖拽中按 Win 键 | ✅ 吞掉即可 | `--winkey`（LL 键盘钩子对 Win 按下/抬起都返回 1）3 次：开始菜单未弹出、拖拽继续、投放正常到达。对照 `--winkey-pass` 3 次：开始菜单（搜索窗口）弹出并成为前台窗口，3 s 内收不到投放。见发现 7 |
-| 5 | 亚克力背景 / 150 ms 弹出预算 | ⚠️ 预算有余量；**亚克力未测** | 普通 WinForms 窗口（无 backdrop）从 Shift 抬起到首帧绘制 21–93 ms；真正的 WinUI `SystemBackdrop` 开销要在 M0 实现里再量 |
+| 5 | 亚克力背景 / 150 ms 弹出预算 | ✅ 弹出耗时；⚠️ GPU 开销未量化 | 本 spike 只量了无 backdrop 的 WinForms 窗口（Shift 抬起到首帧 21–93 ms）；真正的 WinUI 3 透明窗口 + `SystemBackdropElement` 由 [`AcrylicSpike`](../AcrylicSpike/README.md) 验证：热身后 `Show()`→上屏中位 54 ms、最大 75 ms，亚克力 `Active`，不抢焦点；冷启动第 1 轮最长 219 ms，M0 需预热；dwm GPU 开销在 VM 里读不到 |
 | 6 | Magick.NET / PDFium / FFmpeg ARM64 包 | ✅ 见 [`spikes/MagickSpike`](../MagickSpike/README.md) | Magick.NET 14.9.0 在 ARM64 进程内加载并完成 JPG→PNG/WebP/AVIF/JXL；PDFium、SkiaSharp 包内带 `win-arm64`；BtbN 提供 `winarm64-lgpl` FFmpeg；7-Zip extra 包内有 `arm64/7za.exe` |
 
 ### 测量值
@@ -98,3 +98,4 @@
 2. 同上，但用真人键盘在拖拽中按一下 **Win 键**（自测用的是 SendInput；手动模式下钩子不吞键，只记录 `LL key: Win down`，用于确认真实键盘的行为与 `--winkey-pass` 一致）。
 3. 若能接上第二块显示器（Parallels 可加虚拟显示器）：把两块屏设成不同缩放，分别在两块屏上做 1，确认轮盘位置与扇区命中（§7 #3）。
 4. 有 24H2 机器时重跑 `--selftest --explorer` 和 `uieffects-test.ps1`（§7 #2）。
+5. §7 #5 的亚克力 GPU 开销与真机效果见 [`AcrylicSpike/README.md`](../AcrylicSpike/README.md) 末尾的人工清单。

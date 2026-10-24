@@ -152,15 +152,18 @@ LGPL 组件以独立可执行文件随包分发并附带许可证文本与源码
 - [ ] `SysDragImage` 侦测在 Win11 24H2+ 是否依旧有效；关闭拖拽相关视觉效果（「拖动时显示窗口内容」、动画、阴影）后的行为
 - [ ] 透明分层窗口 `RegisterDragDrop` 在多显示器 / 不同 DPI 下的坐标映射
 - [ ] `Win` 键在拖拽中被吞掉后，开始菜单是否仍会弹出
-- [ ] `SystemBackdropElement` 在透明窗口上的亚克力效果与 GPU 开销（150 ms 弹出预算）
+- [x] `SystemBackdropElement` 在透明窗口上的亚克力效果与 150 ms 弹出预算（GPU 开销仍待真机量化）
 - [ ] Magick.NET / PDFium / FFmpeg LGPL 的 ARM64 包可用性
 
 > 2026-10-24：用 [`spikes/DragSpike`](../spikes/DragSpike/README.md) 在 Win11 22H2 ARM64 上做了真实 Explorer 拖拽自测（6/6）：
 > 第 1 项通过；第 2 项验证了 22H2 上 `SysDragImage` 会出现、关掉四项拖拽相关视觉效果后仍出现，24H2 未测，另外 `EVENT_SYSTEM_DRAGDROPSTART` 在该机上从不触发
 > （原文写的「拖拽时显示图标」选项在 22621 的文件夹选项里不存在，已改写）；
-> 第 3、5 项只验证了单屏 200% DPI 与无 backdrop 的弹出耗时；第 4 项通过——LL 键盘钩子吞掉 Win 键后开始菜单不弹出、拖拽与投放正常（放行时开始菜单会弹出并挡住投放）；
+> 第 3 项只验证了单屏 200% DPI；第 4 项通过——LL 键盘钩子吞掉 Win 键后开始菜单不弹出、拖拽与投放正常（放行时开始菜单会弹出并挡住投放）；
 > 第 6 项由 [`spikes/MagickSpike`](../spikes/MagickSpike/README.md) 验证：Magick.NET 14.9.0 在 ARM64 原生加载并完成 JPG→PNG/WebP/AVIF/JXL（HEIC 只读不写，x64 亦然），
-> PDFium 137 与 SkiaSharp 3.119 包内带 `win-arm64`，FFmpeg 有 BtbN 的 `winarm64-lgpl` 构建，7-Zip extra 包含 `arm64/7za.exe`。详见两个 README。
+> PDFium 137 与 SkiaSharp 3.119 包内带 `win-arm64`，FFmpeg 有 BtbN 的 `winarm64-lgpl` 构建，7-Zip extra 包含 `arm64/7za.exe`；
+> 第 5 项由 [`spikes/AcrylicSpike`](../spikes/AcrylicSpike/README.md)（WinUI 3 非打包、自包含）验证：预先创建的透明置顶不激活窗口 + `SystemBackdropElement` 圆盘，热身后 `Show()`→像素上屏中位 54 ms、最大 75 ms，
+> 65 轮前台窗口均未改变，`DesktopAcrylicController` 状态 `Active`（VM 里也真的模糊）；但冷启动第 1 轮 48–219 ms 不稳定，M0 必须启动时预热；不激活窗口须把 `IsInputActive` 钉成 true 否则回退纯色；
+> WinUI 3 窗口透明要走 DWM 配方（`DwmExtendFrameIntoClientArea` + `DwmEnableBlurBehindWindow` + `WM_ERASEBKGND` 填黑）而不是 `WS_EX_LAYERED`，与 `DropWheel.Shell/DropTargetHost.cs` 的 TODO 不一致，M0 开工前要定；GPU 开销在 VM 里读不到 dwm 计数，待真机。详见三个 README。
 
 ## 参考资料
 
