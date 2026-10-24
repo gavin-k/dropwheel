@@ -85,7 +85,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\setup-windows.ps1       # 加
 .\scripts\build-windows.ps1 -Arch arm64
 ```
 
-`build.sh` 在 Windows 的 Git Bash / pwsh 下也能跑，会构建整个 `DropWheel.slnx`。CI 见 `.github/workflows/build.yml`（每次 push / PR）与 `release.yml`（`v*` 标签或手动触发，产出未签名 x64 + ARM64 `.msixbundle`）。
+`build.sh` 在 Windows 的 Git Bash 下会改为构建整个 `DropWheel.slnx`（该分支尚未在 Windows 上实测，Windows 日常请用上面的 PowerShell 脚本）。CI 见 `.github/workflows/build.yml`（每次 push / PR）与 `release.yml`（`v*` 标签或手动触发，产出未签名 x64 + ARM64 `.msixbundle`）。
 
 ## 路线图
 

@@ -36,7 +36,7 @@ DropWheel 是 Windows 11 应用，但仓库被切成两半：一半是纯 .NET�
 ./build.sh --no-test    # 只构建
 ```
 
-`build.sh` 在 macOS / Linux 上只处理 Core 与测试项目；在 Windows 的 Git Bash 里运行时会改为构建整个 `DropWheel.slnx`。
+`build.sh` 在 macOS / Linux 上只处理 Core 与测试项目；在 Windows 的 Git Bash 里运行时会改为构建整个 `DropWheel.slnx`（VM 里没有装 Git for Windows，这个分支还没实测；Windows 上以 `scripts/build-windows.ps1` 为准）。
 
 ## 用 Parallels 里的 Windows 构建另一半
 
@@ -98,7 +98,21 @@ powershell -NoProfile -ExecutionPolicy Bypass -File \\Mac\Home\Projects\dropwhee
 
 ## 本次搭建实际做了什么（2026-10-24）
 
-- Parallels 里已有「Windows 11」VM（之前处于挂起状态），直接 `prlctl start` 恢复使用，没有新建 VM。
+- Parallels 里已有「Windows 11」VM（ARM64，之前处于挂起状态），直接 `prlctl start` 恢复使用，没有新建 VM。
 - VM 内原本只有 VS Build Tools 17.14（`C:\BuildTools`），没有 .NET 10 SDK、没有 `winapp`。
-- 通过 `prlctl exec`（SYSTEM 身份）把 `scripts/setup-windows.ps1` 复制到 `C:\temp` 执行：SYSTEM 账户下 `winget` 不可用，脚本自动走直连下载路径（`dotnet-install.ps1`、GitHub Release 的 `winappcli-arm64.zip`、`vs_community.exe` 引导程序）。
-- 代码用 `robocopy` 同步到 `C:\src\dropwheel`，再运行 `scripts/build-windows.ps1`。结果见仓库 README 与 PR / 提交说明。
+- 所有操作通过 `prlctl exec`（SYSTEM 身份）执行。SYSTEM 账户下 `winget` 会挂起，`setup-windows.ps1` 检测到后自动走直连下载：`dotnet-install.ps1` 装 SDK 10.0.402 到 `C:\Program Files\dotnet`，GitHub Release 的 `winappcli-arm64.zip` 解压到 `C:\Program Files\winapp`，开发者模式写注册表，`winapp cert generate` 生成 `C:\src\dropwheel\devcert.pfx`（git 忽略，未提交）。
+- 代码用 `robocopy` 同步到 `C:\src\dropwheel`（排除 `.git`、`bin`、`obj`、`artifacts`、`devcert.pfx`）。
+- 为了让 `dotnet build DropWheel.slnx -p:Platform=x64` 成功，给 `.slnx` 加了 x64/ARM64 平台映射，补了 App 的占位图标与 `win-x64/win-arm64` 发布配置（见提交 `6260710`）。没有改 `src/` 下的业务代码。
+- `build-windows.ps1` 运行结果（VM 内，Release）：
+
+  | 步骤 | x64 | ARM64 |
+  |---|---|---|
+  | `dotnet build DropWheel.slnx` | 0 错误 | 0 错误（9 个既有 PInvoke004 警告） |
+  | `dotnet test`（Core） | 21/21 通过 | 跳过（AnyCPU，同一套） |
+  | `winapp pack --no-sign` | `DropWheel.App_0.1.0.0_x64.msix` 38.3 MB | `DropWheel.App_0.1.0.0_arm64.msix` 36.7 MB |
+
+  另验证 `winapp pack <csproj> --arch x64 --arch arm64 --no-sign` 一步生成 75 MB 的 `.msixbundle`，`release.yml` 即用这条命令。
+- Visual Studio 2022 Community：`vs_community.exe --quiet --wait --norestart` 由脚本在 SYSTEM 下静默安装（Universal + ManagedDesktop 工作负载）。安装结果见下一条。
+- VS 安装结果：19:38 开始、20:22 结束（约 44 分钟），退出码 0，无需重启；`vswhere` 确认 Community 17.14.42 含 Universal + ManagedDesktop 两个工作负载。随后再次完整运行 `setup-windows.ps1`，所有步骤走「已安装」分支，1 秒结束，幂等性成立。
+- 未验证的路径：`setup-windows.ps1` 的 winget 分支（整个过程都在 SYSTEM 下，winget 不可用，只跑过直连下载回退）；`build.sh` 的 Windows/Git Bash 分支（VM 里没有 Git for Windows）。
+- 占位图标（`src/DropWheel.App/Assets/*.png`、`DropWheel.ico`）是脚本生成的橙色圆环，仅为让 MSIX 打包通过，正式发布前要替换。
