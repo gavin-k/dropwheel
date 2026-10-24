@@ -76,6 +76,8 @@
    `DwmExtendFrameIntoClientArea(hwnd, {0})` + `DwmEnableBlurBehindWindow(hwnd, 空区域 CreateRectRgn(-2,-2,-1,-1), DWM_BB_ENABLE|DWM_BB_BLURREGION)`
    + 子类化窗口在 `WM_ERASEBKGND` 用 `0x00000000` 黑刷填充（连接时也填一次）+ `WM_DWMCOMPOSITIONCHANGED` 时重做 DWM 调用。
    另外 Win11 会给这个「看不见的矩形」画 1 px 圆角描边，要 `DwmSetWindowAttribute(DWMWA_WINDOW_CORNER_PREFERENCE=DONOTROUND)` 和 `DWMWA_BORDER_COLOR=DWMWA_COLOR_NONE`。
+   **M0 更正（2026-10-24）：上面两项去不掉白框。** 去掉标题栏的 `OverlappedPresenter` 仍保留 `WS_DLGFRAME`，窗口四周有 3 px 非客户区（200% 下 648 px 的窗口只有 642 px 客户区），DWM 把它画成不透明白框；`DWMWA_BORDER_COLOR` 改成红色，白框也不变。本 spike 的 `shots/02-acrylic-active.png` 左缘同样有 3 px 白边。
+   用 `SetWindowLong` 去掉 `WS_DLGFRAME` 会被 AppWindow 改回来；有效的做法是在子类里让 `WM_NCCALCSIZE`（wParam≠0）返回 0，再 `SetWindowPos(SWP_FRAMECHANGED)`，见 `src/DropWheel.App/Overlay/TransparentBackdrop.cs`。另外 `SystemBackdropElement` 放在 `Canvas` 里什么都不画，要放在 Grid 里居中（`WheelWindow.cs`）。
 2. **不抢焦点的窗口默认拿不到亚克力。** XAML 给的默认 `SystemBackdropConfiguration.IsInputActive` 对从未激活的窗口是 false，`DesktopAcrylicController` 对非活动窗口直接 `Fallback`
    （`--default-config` 5/5 轮 Fallback）。覆盖层永远不会激活，所以必须自己 `SetSystemBackdropConfiguration(new() { IsInputActive = true, Theme = …, IsHighContrast = 默认值 })`，
    并（未验证的建议）在 `OnDefaultSystemBackdropConfigurationChanged` 里重新应用以跟随主题/高对比度变化。这意味着系统的「非活动窗口不画亚克力」省电策略对我们失效，是有意为之。
