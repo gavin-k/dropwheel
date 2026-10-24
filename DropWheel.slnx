@@ -1,6 +1,6 @@
 <Solution>
   <!--
-    Solution platforms. The WinUI / Shell / Engines projects are x64 | ARM64 only; Core and the
+    Solution platforms. The WinUI / Shell / Engines projects are x64 | ARM64 only; Core and its
     tests are AnyCPU and are mapped to "Any CPU" for every solution platform (the slnx default would
     otherwise map every C# project to "Any CPU", which the MSIX tooling rejects for the app) so that
     `dotnet build DropWheel.slnx -p:Platform=x64` works from the CLI (CI uses exactly that).
@@ -31,6 +31,10 @@
     <Project Path="tests/DropWheel.Core.Tests/DropWheel.Core.Tests.csproj">
       <Platform Solution="*|x64" Project="Any CPU" />
       <Platform Solution="*|ARM64" Project="Any CPU" />
+    </Project>
+    <Project Path="tests/DropWheel.Engines.Tests/DropWheel.Engines.Tests.csproj">
+      <Platform Solution="*|x64" Project="x64" />
+      <Platform Solution="*|ARM64" Project="ARM64" />
     </Project>
   </Folder>
   <Folder Name="/docs/">

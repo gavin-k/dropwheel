@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     1. dotnet build DropWheel.slnx -c Release -p:Platform=<x64|ARM64>
-    2. dotnet test  tests/DropWheel.Core.Tests
+    2. dotnet test  tests/DropWheel.Core.Tests and tests/DropWheel.Engines.Tests
     3. winapp pack  src/DropWheel.App  -> ./artifacts/DropWheel_<version>_<arch>.msix   (unsigned)
 
     The package is deliberately unsigned (Store submission / external signing). To sideload a dev
@@ -70,6 +70,11 @@ if ($SkipTests) {
     Invoke-Checked 'dotnet test tests/DropWheel.Core.Tests' {
         dotnet test tests/DropWheel.Core.Tests/DropWheel.Core.Tests.csproj -c $Configuration `
             --logger "trx;LogFileName=core.trx" --results-directory (Join-Path $Artifacts 'test-results')
+    }
+    # Engines tests are x64 | ARM64 like the engines, so they reuse the solution build above.
+    Invoke-Checked 'dotnet test tests/DropWheel.Engines.Tests' {
+        dotnet test tests/DropWheel.Engines.Tests/DropWheel.Engines.Tests.csproj -c $Configuration -p:Platform=$Platform --no-build `
+            --logger "trx;LogFileName=engines.trx" --results-directory (Join-Path $Artifacts 'test-results')
     }
 }
 

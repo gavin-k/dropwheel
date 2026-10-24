@@ -43,3 +43,9 @@ jobs:
           global-json-file: global.json
       - run: dotnet restore DropWheel.slnx -p:Platform=x64
       - run: dotnet build DropWheel.slnx -c Release -p:Platform=x64 -p:AppxPackageSigningEnabled=false --no-restore
+      - run: dotnet test tests/DropWheel.Engines.Tests/DropWheel.Engines.Tests.csproj -c Release -p:Platform=x64 --no-build --logger "trx;LogFileName=engines.trx"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-engines
+          path: '**/engines.trx'
