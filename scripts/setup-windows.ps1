@@ -46,7 +46,7 @@ try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 $env:WINAPP_CLI_TELEMETRY_OPTOUT = '1'
 
 function Get-WinappVersion([string]$exe) {
-    if (((& $exe --version 2>&1) | Out-String) -match 'Version\s+([\d.]+)') { return $Matches[1] } else { return '?' }
+    if (((& $exe --version 2>&1) | Out-String) -match '(\d+\.\d+[\d.]*)') { return $Matches[1] } else { return '?' }
 }
 
 $Arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'x64' }

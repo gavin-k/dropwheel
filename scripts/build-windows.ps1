@@ -56,7 +56,7 @@ function Invoke-Checked([string]$title, [scriptblock]$cmd) {
 }
 
 $winappVersion = '?'
-if (((winapp --version 2>&1) | Out-String) -match 'Version\s+([\d.]+)') { $winappVersion = $Matches[1] }
+if (((winapp --version 2>&1) | Out-String) -match '(\d+\.\d+[\d.]*)') { $winappVersion = $Matches[1] }
 Write-Host "DropWheel build  ·  $Configuration | $Platform  ·  dotnet $(dotnet --version)  ·  winapp $winappVersion"
 
 Invoke-Checked "dotnet build DropWheel.slnx -c $Configuration -p:Platform=$Platform" {
