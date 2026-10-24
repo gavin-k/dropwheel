@@ -31,8 +31,9 @@ $ProgressPreference = 'SilentlyContinue'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
 $env:DOTNET_NOLOGO = '1'
+$env:WINAPP_CLI_TELEMETRY_OPTOUT = '1'
 
-$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$RepoRoot = (Resolve-Path (Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) '..')).Path
 Set-Location $RepoRoot
 $Platform = if ($Arch -eq 'arm64') { 'ARM64' } else { 'x64' }
 $Artifacts = Join-Path $RepoRoot 'artifacts'
@@ -54,7 +55,9 @@ function Invoke-Checked([string]$title, [scriptblock]$cmd) {
     Write-Host "    done in $([int]$sw.Elapsed.TotalSeconds)s" -ForegroundColor Green
 }
 
-Write-Host "DropWheel build  ·  $Configuration | $Platform  ·  dotnet $(dotnet --version)  ·  winapp $((winapp --version 2>$null | Select-Object -First 1))"
+$winappVersion = '?'
+if (((winapp --version 2>&1) | Out-String) -match 'Version\s+([\d.]+)') { $winappVersion = $Matches[1] }
+Write-Host "DropWheel build  ·  $Configuration | $Platform  ·  dotnet $(dotnet --version)  ·  winapp $winappVersion"
 
 Invoke-Checked "dotnet build DropWheel.slnx -c $Configuration -p:Platform=$Platform" {
     dotnet build DropWheel.slnx -c $Configuration -p:Platform=$Platform

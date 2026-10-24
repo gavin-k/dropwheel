@@ -33,13 +33,21 @@
 param(
     [switch]$SkipVisualStudio,
     [switch]$SkipCert,
-    [string]$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+    [string]$RepoRoot
 )
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
+# $PSScriptRoot is not populated while parameter defaults are evaluated in Windows PowerShell 5.1.
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+if (-not $RepoRoot) { $RepoRoot = (Resolve-Path (Join-Path $ScriptDir '..')).Path }
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
+$env:WINAPP_CLI_TELEMETRY_OPTOUT = '1'
+
+function Get-WinappVersion([string]$exe) {
+    if (((& $exe --version 2>&1) | Out-String) -match 'Version\s+([\d.]+)') { return $Matches[1] } else { return '?' }
+}
 
 $Arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'x64' }
 $Temp = Join-Path $env:TEMP 'dropwheel-setup'
@@ -147,7 +155,7 @@ Refresh-Path
 $winapp = Get-Command winapp.exe -ErrorAction SilentlyContinue | ForEach-Object Source
 if (-not $winapp -and (Test-Path 'C:\Program Files\winapp\winapp.exe')) { $winapp = 'C:\Program Files\winapp\winapp.exe'; Add-MachinePath 'C:\Program Files\winapp' }
 if ($winapp) {
-    Write-Ok "winapp $((& $winapp --version 2>$null | Select-Object -First 1)) already installed ($winapp)"
+    Write-Ok "winapp $(Get-WinappVersion $winapp) already installed ($winapp)"
 } else {
     $done = $wingetOk -and (Invoke-Winget 'Microsoft.winappcli')
     Refresh-Path
@@ -164,7 +172,7 @@ if ($winapp) {
         Add-MachinePath $dest
         $winapp = Join-Path $dest 'winapp.exe'
     }
-    Write-Ok "winapp installed: $((& $winapp --version 2>$null | Select-Object -First 1)) ($winapp)"
+    Write-Ok "winapp $(Get-WinappVersion $winapp) installed ($winapp)"
 }
 
 # ---------------------------------------------------------------------------------------------
@@ -195,7 +203,8 @@ if ($SkipCert) {
     if (-not (Test-Path $manifest)) { throw "manifest not found: $manifest (pass -RepoRoot)" }
     Push-Location $RepoRoot
     try {
-        & $winapp cert generate --manifest $manifest --output $pfx --if-exists skip
+        & $winapp cert generate --manifest $manifest --output $pfx --if-exists skip 2>&1 |
+            Where-Object { $_ -match 'certificate|Certificate|⚠|✅|ℹ|error|Error' }
         if ($LASTEXITCODE -ne 0) { throw "winapp cert generate failed ($LASTEXITCODE)" }
     } finally { Pop-Location }
     Write-Ok "dev certificate: $pfx (git-ignored; install with: winapp cert install $pfx)"
