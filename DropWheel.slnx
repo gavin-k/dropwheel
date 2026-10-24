@@ -1,0 +1,17 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DropWheel.Core/DropWheel.Core.csproj" />
+    <Project Path="src/DropWheel.Engines/DropWheel.Engines.csproj" />
+    <Project Path="src/DropWheel.Shell/DropWheel.Shell.csproj" />
+    <Project Path="src/DropWheel.App/DropWheel.App.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DropWheel.Core.Tests/DropWheel.Core.Tests.csproj" />
+  </Folder>
+  <Folder Name="/docs/">
+    <File Path="README.md" />
+    <File Path="docs/01-tech-stack.md" />
+    <File Path="docs/02-architecture.md" />
+    <File Path="docs/04-roadmap.md" />
+  </Folder>
+</Solution>

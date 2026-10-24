@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <Platforms>x64;ARM64</Platforms>
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <RootNamespace>DropWheel.Engines</RootNamespace>
+    <Description>Engine adapters implementing IConverter. Heavy engines (ffmpeg, 7za, soffice) run as sidecar processes.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../DropWheel.Core/DropWheel.Core.csproj" />
+  </ItemGroup>
+
+  <!--
+    M0 只需要 Image 引擎。其余包在对应里程碑再打开，避免首次 restore 拉下数百 MB 原生二进制。
+  -->
+  <ItemGroup>
+    <PackageReference Include="Magick.NET-Q16-AnyCPU" />
+    <!-- <PackageReference Include="PDFtoImage" /> -->
+    <!-- <PackageReference Include="PdfPig" /> -->
+    <!-- <PackageReference Include="PDFsharp" /> -->
+    <!-- <PackageReference Include="DocumentFormat.OpenXml" /> -->
+    <!-- <PackageReference Include="SharpCompress" /> -->
+  </ItemGroup>
+
+</Project>

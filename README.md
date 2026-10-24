@@ -1,0 +1,82 @@
+# DropWheel
+
+> 拖一下，松手，转好了。
+> A local, offline, drag-to-convert file converter for Windows 11.
+
+[![Build](https://github.com/gavin-k/dropwheel/actions/workflows/build.yml/badge.svg)](https://github.com/gavin-k/dropwheel/actions/workflows/build.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-orange.svg)](LICENSE)
+![Status: pre-alpha](https://img.shields.io/badge/status-pre--alpha-lightgrey)
+
+> **状态：规划 / 骨架阶段。** 目前仓库包含设计稿、技术选型调研、架构文档和项目骨架，尚无可运行的构建。产品名「DropWheel」为工作代号，随时可能更改。
+
+## 它是什么
+
+拖动任意文件，在拖动过程中**轻点一下修饰键**（默认 `Shift`），屏幕上弹出一个 6 扇区的**转换轮盘**；移到目标格式上松手，文件就在本机转换完成，输出到同一文件夹。
+
+- **本地离线**：读取、转换、写入全部在本机完成，文件不上传；可开启「严格离线模式」阻断一切网络请求。
+- **多种唤出方式**：修饰键轻点 / 资源管理器右键 / 触屏长按 / 拖到屏幕边缘停靠托盘 / 全局快捷键。
+- **三种轮盘**：`Shift` 转换 · `Ctrl+Alt` 工具（压缩、缩放、OCR、拆分…）· `Win` 动作（复制路径、移动…）。
+- **一等公民**：任务队列、撤销（输出移入回收站）、命名规则模板、重名策略。
+- **松手前看到预期质量**：PDF → DOCX 等复杂转换先告诉你结果大概会怎样、为什么。
+- **不抢资源管理器的键**：默认「轻点唤出」，按住 Ctrl / Shift / Alt 松手仍是系统原生的复制 / 移动 / 快捷方式。全部键位可自定义。
+- **Fluent**：WinUI 3，Mica / 亚克力，浅色 + 深色，WCAG AA，支持 `prefers-reduced-motion`，所有轮盘操作均有键盘等价操作。
+
+## 设计稿
+
+落地页（桌面 + 手机）、转换轮盘覆盖层、任务队列、设置页的高保真设计稿见 [`docs/design/`](docs/design/README.md)。
+
+## 技术栈（摘要）
+
+| 层 | 选型 | 说明 |
+|---|---|---|
+| UI | **C# / WinUI 3** (Windows App SDK 2.x, .NET 10) | 原生 Fluent：Mica / Acrylic / `SystemBackdropElement`；x64 + ARM64 |
+| 全局拖拽侦测 | Win32：`SetWindowsHookEx(WH_MOUSE_LL / WH_KEYBOARD_LL)` + UIA 侦测 `SysDragImage` + 透明 `RegisterDragDrop` 覆盖窗 | Windows 没有「全局拖拽事件」API，需要组合方案，见 [ADR-0002](docs/adr/0002-global-drag-detection.md) |
+| 资源管理器右键 | `IExplorerCommand`（C++ COM DLL）+ MSIX 清单 / 稀疏包 | Win11 新式右键菜单只接受 `IExplorerCommand` 且要求包标识 |
+| 图片 | Magick.NET (ImageMagick) 或 SkiaSharp + libheif/libavif | 许可证友好；HEIC 编码依赖系统 HEVC 扩展时需灰显说明 |
+| 音视频 | **FFmpeg LGPL 构建，独立进程（sidecar）** | MIT 主程序 + LGPL 进程边界；H.264/HEVC 编码走 `h264_mf` / `hevc_mf`（Media Foundation） |
+| PDF | PDFium（渲染 / 转图 / 拆分合并）+ PdfPig（文本提取） | PDF → DOCX 走「提取 + 重建」或 LibreOffice sidecar（可选模块） |
+| Office 文档 | Open XML SDK（原生读写）+ LibreOffice headless（可选下载模块） | 旧版 DOC / PPT / XLS 仅输入 |
+| OCR | `Windows.Media.Ocr`（系统内置，25 语种）→ Windows AI `TextRecognizer`（Copilot+ PC）→ RapidOCR / Tesseract 回退 | 全部离线 |
+| 压缩包 | SharpCompress（读 RAR / 7z，写 ZIP / TAR / GZ）+ 7-Zip sidecar（写 7z） | RAR 仅输入 |
+| 打包分发 | MSIX（Store + winget）· 稀疏包 + WiX MSI（企业直装） | `winapp` CLI 产出 x64 / ARM64 msixbundle |
+
+完整调研与替代方案对比见 [`docs/01-tech-stack.md`](docs/01-tech-stack.md)。
+
+## 仓库结构
+
+```
+dropwheel/
+├─ docs/                  调研、架构、ADR、设计稿索引
+├─ src/
+│  ├─ DropWheel.App/         WinUI 3 主程序（轮盘覆盖层、队列、设置、引导）
+│  ├─ DropWheel.Core/        领域模型：转换图、任务队列、命名规则、键位、质量预估
+│  ├─ DropWheel.Shell/       Win32 集成：钩子、拖拽侦测、OLE 放置目标、托盘、全局快捷键
+│  ├─ DropWheel.Engines/     各类转换引擎适配器（图片 / 媒体 / PDF / 文档 / 压缩 / 字幕 / OCR）
+│  └─ DropWheel.ContextMenu/ IExplorerCommand COM DLL（C++）
+├─ tests/
+├─ installer/             MSIX 清单、winget 清单模板、WiX MSI
+└─ .github/workflows/     CI
+```
+
+## 开发环境
+
+- Windows 11 (22H2+)，开发者模式
+- Visual Studio 2026 / 2022 17.14+（「WinUI 应用程序开发」工作负载）或 `winapp` CLI
+- .NET 10 SDK
+- `winget install Microsoft.winappcli`
+
+```powershell
+git clone https://github.com/gavin-k/dropwheel.git
+cd dropwheel
+dotnet build DropWheel.slnx
+```
+
+> 当前骨架仅保证 `DropWheel.Core` 与测试项目可在任意平台构建；WinUI 项目需 Windows。
+
+## 路线图
+
+见 [`docs/04-roadmap.md`](docs/04-roadmap.md)。M0 目标：**一张图片拖进来、轻点 Shift、选 PNG、松手，队列里能撤销。**
+
+## 许可证
+
+[MIT](LICENSE) © 2026 Gavin Lee。第三方组件许可证见 [`docs/05-third-party-licenses.md`](docs/05-third-party-licenses.md)。

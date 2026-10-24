@@ -1,0 +1,45 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    name: Core & tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet restore src/DropWheel.Core/DropWheel.Core.csproj
+      - run: dotnet restore tests/DropWheel.Core.Tests/DropWheel.Core.Tests.csproj
+      - run: dotnet build tests/DropWheel.Core.Tests/DropWheel.Core.Tests.csproj -c Release --no-restore
+      - run: dotnet test tests/DropWheel.Core.Tests/DropWheel.Core.Tests.csproj -c Release --no-build --logger "trx;LogFileName=core.trx"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ matrix.os }}
+          path: '**/*.trx'
+
+  # WinUI 应用在 M0 原型落地后启用（需要 Windows + MSIX 工具链）。
+  app:
+    name: WinUI app (x64)
+    if: false
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: microsoft/setup-msbuild@v2
+      - run: msbuild DropWheel.slnx /restore /p:Configuration=Release /p:Platform=x64 /p:AppxPackageSigningEnabled=false

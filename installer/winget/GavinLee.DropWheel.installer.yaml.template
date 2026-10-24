@@ -1,0 +1,15 @@
+# winget 清单模板（installer 部分）。发布时用 wingetcreate 生成并替换占位。
+PackageIdentifier: GavinLee.DropWheel
+PackageVersion: 0.1.0
+InstallerType: msix
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/gavin-k/dropwheel/releases/download/v0.1.0/DropWheel_0.1.0.0_x64.msix
+    InstallerSha256: <SHA256>
+    SignatureSha256: <SIGNATURE_SHA256>
+  - Architecture: arm64
+    InstallerUrl: https://github.com/gavin-k/dropwheel/releases/download/v0.1.0/DropWheel_0.1.0.0_arm64.msix
+    InstallerSha256: <SHA256>
+    SignatureSha256: <SIGNATURE_SHA256>
+ManifestType: installer
+ManifestVersion: 1.6.0

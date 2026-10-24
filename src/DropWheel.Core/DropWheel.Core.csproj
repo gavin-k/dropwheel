@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>DropWheel.Core</RootNamespace>
+    <Description>DropWheel domain model: conversion graph, wheel ranking, job queue, undo, naming, settings. No Windows dependency.</Description>
+  </PropertyGroup>
+
+</Project>
