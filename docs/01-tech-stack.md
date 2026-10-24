@@ -155,6 +155,9 @@ LGPL 组件以独立可执行文件随包分发并附带许可证文本与源码
 - [ ] `SystemBackdropElement` 在透明窗口上的亚克力效果与 GPU 开销（150 ms 弹出预算）
 - [ ] Magick.NET / PDFium / FFmpeg LGPL 的 ARM64 包可用性
 
+> 2026-10-24：第 1、2 项已在 Win11 22H2 ARM64 上用 [`spikes/DragSpike`](../spikes/DragSpike/README.md) 验证通过（真实 Explorer 拖拽，6/6）；
+> 第 3、5 项只验证了单屏 200% DPI 与无 backdrop 的弹出耗时；第 4 项、多显示器、24H2 仍待人工。详见该 README。
+
 ## 参考资料
 
 - [Windows App SDK 发布频道](https://learn.microsoft.com/en-us/windows/apps/windows-app-sdk/release-channels)
