@@ -1,5 +1,7 @@
 using System.Diagnostics;
+using Windows.Win32;
 using Windows.Win32.Foundation;
+using Windows.Win32.Graphics.Dwm;
 using Windows.Win32.UI.Input.KeyboardAndMouse;
 
 namespace DragSpike;
@@ -9,8 +11,10 @@ namespace DragSpike;
 /// Explorer window with <c>--explorer</c>), tap Shift mid-drag, expect the wheel, move onto sector 2,
 /// release, expect the drop.  Prints a PASS/FAIL table and returns a process exit code.
 /// </summary>
-internal sealed class SelfTest(HookThread hooks, WheelForm wheel, bool explorer)
+internal sealed class SelfTest(HookThread hooks, WheelForm wheel, bool explorer, SelfTest.WinKeyMode winKey)
 {
+    public enum WinKeyMode { None, Swallow, PassThrough }
+
     private const int TargetSector = 2;
     private const int DragDistancePx = 520;
 
@@ -91,6 +95,25 @@ internal sealed class SelfTest(HookThread hooks, WheelForm wheel, bool explorer)
             var showMs = shown ? wheel.TShown!.Value - _tTapHook : double.NaN;
             Check("wheel visible within 150 ms budget", shown && showMs <= 150, shown ? $"first paint {showMs:F1} ms after tap" : "wheel never painted");
 
+            // ---- 3b. §7 #4: tap the Win key mid-drag ------------------------------------------------
+            // Deliberately no Esc afterwards: Esc cancels the OLE drag when no menu swallows it, which
+            // would hide the very thing we are measuring.  The drop checks below are the "drag alive" test.
+            if (winKey != WinKeyMode.None)
+            {
+                hooks.SwallowWinKeyWhileDragging = winKey == WinKeyMode.Swallow;
+                var startBefore = StartMenuVisible();
+                Input.Key(VIRTUAL_KEY.VK_LWIN, up: false);
+                Thread.Sleep(60);
+                Input.Key(VIRTUAL_KEY.VK_LWIN, up: true);
+                Thread.Sleep(700);
+                var startAfter = StartMenuVisible();
+                var fg = PInvoke.GetForegroundWindow();
+                Log.Info($"winkey: mode={winKey} swallowed={hooks.WinKeysSwallowed} start-menu before={startBefore} after={startAfter} foreground=0x{FgHex(fg)} \"{WindowTitle(fg)}\" wheel-visible={wheel.Visible}");
+                // PassThrough is the baseline: whatever Windows does is recorded, not judged.
+                var baseline = winKey == WinKeyMode.PassThrough;
+                Check($"Win tap ({winKey}) did not open Start", baseline || !startAfter, $"start menu visible={startAfter}, swallowed {hooks.WinKeysSwallowed} key events{(baseline ? " (baseline, informational)" : "")}");
+            }
+
             // ---- 4. move onto sector 2 and release --------------------------------------------
             var target = wheel.PointForSector(TargetSector);
             Input.MoveSmooth(mid, target, 8, 30);
@@ -123,10 +146,20 @@ internal sealed class SelfTest(HookThread hooks, WheelForm wheel, bool explorer)
             try { if (source is { HasExited: false }) { source.Kill(); } } catch { }
             ExplorerSource.CloseAndWait(explorerWindow.IsNull ? ExplorerSource.LastWindow : explorerWindow);
             wheel.BeginInvoke(wheel.Hide);
+            if (winKey != WinKeyMode.None && StartMenuVisible())
+            {
+                // The drag is over, so this Win tap is passed through (SwallowWinKeyWhileDragging only
+                // applies while Dragging) and toggles Start closed again.
+                Input.Key(VIRTUAL_KEY.VK_LWIN, up: false);
+                Thread.Sleep(60);
+                Input.Key(VIRTUAL_KEY.VK_LWIN, up: true);
+                Thread.Sleep(500);
+                Log.Info($"winkey: toggled Start closed after the test; visible now={StartMenuVisible()}");
+            }
         }
 
         Log.Info("");
-        Log.Info($"==== self-test ({(explorer ? "Explorer" : "WinForms")} source) ====");
+        Log.Info($"==== self-test ({(explorer ? "Explorer" : "WinForms")} source{(winKey == WinKeyMode.None ? "" : $", Win key {winKey}")}) ====");
         foreach (var (name, ok, detail) in results)
         {
             Log.Info($"  {(ok ? "✅" : "❌")} {name}  —  {detail}");
@@ -135,6 +168,42 @@ internal sealed class SelfTest(HookThread hooks, WheelForm wheel, bool explorer)
         var passed = results.All(r => r.Ok);
         Log.Info(passed ? "RESULT: PASS" : "RESULT: FAIL");
         return passed ? 0 : 1;
+    }
+
+    /// <summary>
+    /// Win11 Start is a CoreWindow titled "Start" (localized) in StartMenuExperienceHost.  It stays
+    /// WS_VISIBLE all the time and is merely DWM-cloaked while closed, so "open" = visible AND not cloaked.
+    /// </summary>
+    private static unsafe bool StartMenuVisible()
+    {
+        var h = new HWND(0);
+        while (true)
+        {
+            h = PInvoke.FindWindowEx(new HWND(0), h, "Windows.UI.Core.CoreWindow", null);
+            if (h.IsNull)
+            {
+                return false;
+            }
+
+            if (WindowTitle(h) is "Start" or "开始" or "開始" && PInvoke.IsWindowVisible(h))
+            {
+                int cloaked = 0;
+                PInvoke.DwmGetWindowAttribute(h, DWMWINDOWATTRIBUTE.DWMWA_CLOAKED, &cloaked, sizeof(int));
+                if (cloaked == 0)
+                {
+                    return true;
+                }
+            }
+        }
+    }
+
+    private static unsafe string FgHex(HWND h) => ((nint)h.Value).ToString("X");
+
+    private static string WindowTitle(HWND h)
+    {
+        Span<char> buf = stackalloc char[128];
+        var n = PInvoke.GetWindowText(h, buf);
+        return n > 0 ? new string(buf[..n]) : "";
     }
 
     private static string Fmt(double? t, double since) => t is { } v ? $"+{v - since:F0} ms" : "none";

@@ -13,6 +13,8 @@ internal static class Program
                                          drop on a sector. Runs for --duration seconds (default 300).
           DragSpike --selftest           automated: WinForms drag source + SendInput driver, exit 0 on pass
           DragSpike --selftest --explorer  same, but the drag starts from a real File Explorer window
+          DragSpike --selftest [--explorer] --winkey       also tap the Win key mid-drag with the LL hook swallowing it (§7 #4)
+          DragSpike --selftest [--explorer] --winkey-pass  same, but the Win key is passed through (baseline)
           DragSpike --uia-dump             diagnostic: what the .NET managed UIA client sees in open Explorer windows
           DragSpike --dragsource <file> --at X,Y   (internal) the drag source window used by --selftest
           DragSpike --locate <file>                (internal) hook-free helper that opens Explorer and finds the item via UIA
@@ -26,6 +28,7 @@ internal static class Program
 
         var selfTest = args.Contains("--selftest");
         var explorer = args.Contains("--explorer");
+        var winKey = args.Contains("--winkey") ? SelfTest.WinKeyMode.Swallow : args.Contains("--winkey-pass") ? SelfTest.WinKeyMode.PassThrough : SelfTest.WinKeyMode.None;
         var duration = ArgValue(args, "--duration") is { } d ? int.Parse(d) : 300;
 
         if (args.Contains("--help") || args.Contains("-h"))
@@ -73,7 +76,7 @@ internal static class Program
         var exitCode = 0;
         if (selfTest)
         {
-            var test = new SelfTest(hooks, wheel, explorer);
+            var test = new SelfTest(hooks, wheel, explorer, winKey);
             var driver = new Thread(() =>
             {
                 exitCode = test.Run();

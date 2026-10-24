@@ -32,6 +32,10 @@ internal sealed unsafe class HookThread : IDisposable
     private double _shiftDownAt = -1;
     private bool _otherKeyWhileShift;
 
+    /// <summary>§7 #4: when set, Win key down/up are swallowed (not passed to the next hook) while dragging.</summary>
+    public volatile bool SwallowWinKeyWhileDragging;
+    public int WinKeysSwallowed;
+
     // --- observed state (written on hook thread, read anywhere) ---------------------------------
     public volatile bool MouseDown;
     public volatile bool MovedBeyondThreshold;
@@ -172,9 +176,15 @@ internal sealed unsafe class HookThread : IDisposable
             {
                 _otherKeyWhileShift = true;
             }
-            else if (down && vk is 0x5B or 0x5C)
+            else if (vk is 0x5B or 0x5C)
             {
-                Log.Info($"LL key: Win down (dragging={Dragging})");
+                var swallow = SwallowWinKeyWhileDragging && Dragging;
+                Log.Info($"LL key: Win {(down ? "down" : "up")} (dragging={Dragging}, swallow={swallow})");
+                if (swallow)
+                {
+                    WinKeysSwallowed++;
+                    return new LRESULT(1);
+                }
             }
         }
 

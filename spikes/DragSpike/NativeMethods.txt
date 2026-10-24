@@ -45,3 +45,6 @@ UIA_PROPERTY_ID
 GetWindowThreadProcessId
 FindWindow
 IUIAutomationElementArray
+IsWindowVisible
+DwmGetWindowAttribute
+GetForegroundWindow
