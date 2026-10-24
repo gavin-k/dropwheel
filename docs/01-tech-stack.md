@@ -157,7 +157,7 @@ LGPL 组件以独立可执行文件随包分发并附带许可证文本与源码
 
 > 2026-10-24：用 [`spikes/DragSpike`](../spikes/DragSpike/README.md) 在 Win11 22H2 ARM64 上做了真实 Explorer 拖拽自测（6/6）：
 > 第 1 项通过；第 2 项只验证了 22H2 上 `SysDragImage` 会出现，24H2 和关闭拖拽图标都未测，另外 `EVENT_SYSTEM_DRAGDROPSTART` 在该机上从不触发；
-> 第 3、5 项只验证了单屏 200% DPI 与无 backdrop 的弹出耗时；第 4 项未测。详见该 README。
+> 第 3、5 项只验证了单屏 200% DPI 与无 backdrop 的弹出耗时；第 4 项通过——LL 键盘钩子吞掉 Win 键后开始菜单不弹出、拖拽与投放正常（放行时开始菜单会弹出并挡住投放）。详见该 README。
 
 ## 参考资料
 
