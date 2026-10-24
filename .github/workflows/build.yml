@@ -31,15 +31,15 @@ jobs:
           name: test-results-${{ matrix.os }}
           path: '**/*.trx'
 
-  # WinUI 应用在 M0 原型落地后启用（需要 Windows + MSIX 工具链）。
+  # 完整解决方案（Core + Engines + Shell + WinUI App），Windows 专用，不签名。
+  # 用 dotnet build 而不是 msbuild：.slnx 已为每个项目声明了 x64/ARM64 平台映射。
   app:
     name: WinUI app (x64)
-    if: false
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
-      - uses: microsoft/setup-msbuild@v2
-      - run: msbuild DropWheel.slnx /restore /p:Configuration=Release /p:Platform=x64 /p:AppxPackageSigningEnabled=false
+      - run: dotnet restore DropWheel.slnx -p:Platform=x64
+      - run: dotnet build DropWheel.slnx -c Release -p:Platform=x64 -p:AppxPackageSigningEnabled=false --no-restore
