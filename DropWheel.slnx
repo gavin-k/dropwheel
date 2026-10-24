@@ -1,12 +1,37 @@
 <Solution>
+  <!--
+    Solution platforms. The WinUI / Shell / Engines projects are x64 | ARM64 only; Core and the
+    tests are AnyCPU and are mapped to "Any CPU" for every solution platform (the slnx default would
+    otherwise map every C# project to "Any CPU", which the MSIX tooling rejects for the app) so that
+    `dotnet build DropWheel.slnx -p:Platform=x64` works from the CLI (CI uses exactly that).
+  -->
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="ARM64" />
+  </Configurations>
   <Folder Name="/src/">
-    <Project Path="src/DropWheel.Core/DropWheel.Core.csproj" />
-    <Project Path="src/DropWheel.Engines/DropWheel.Engines.csproj" />
-    <Project Path="src/DropWheel.Shell/DropWheel.Shell.csproj" />
-    <Project Path="src/DropWheel.App/DropWheel.App.csproj" />
+    <Project Path="src/DropWheel.Core/DropWheel.Core.csproj">
+      <Platform Solution="*|x64" Project="Any CPU" />
+      <Platform Solution="*|ARM64" Project="Any CPU" />
+    </Project>
+    <Project Path="src/DropWheel.Engines/DropWheel.Engines.csproj">
+      <Platform Solution="*|x64" Project="x64" />
+      <Platform Solution="*|ARM64" Project="ARM64" />
+    </Project>
+    <Project Path="src/DropWheel.Shell/DropWheel.Shell.csproj">
+      <Platform Solution="*|x64" Project="x64" />
+      <Platform Solution="*|ARM64" Project="ARM64" />
+    </Project>
+    <Project Path="src/DropWheel.App/DropWheel.App.csproj">
+      <Platform Solution="*|x64" Project="x64" />
+      <Platform Solution="*|ARM64" Project="ARM64" />
+    </Project>
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/DropWheel.Core.Tests/DropWheel.Core.Tests.csproj" />
+    <Project Path="tests/DropWheel.Core.Tests/DropWheel.Core.Tests.csproj">
+      <Platform Solution="*|x64" Project="Any CPU" />
+      <Platform Solution="*|ARM64" Project="Any CPU" />
+    </Project>
   </Folder>
   <Folder Name="/docs/">
     <File Path="README.md" />
