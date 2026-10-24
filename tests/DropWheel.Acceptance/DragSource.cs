@@ -50,7 +50,10 @@ internal sealed class DragSource : IDisposable
     /// <summary>The effect the WinForms source's DoDragDrop returned, or null for Explorer / no answer.</summary>
     public string? Result(TimeSpan timeout) => _child is null ? null : ReadLine(_child, "RESULT", timeout);
 
-    /// <summary>Press on the source and drag far enough right that the system drag is under way.</summary>
+    /// <summary>
+    /// Press on the source and drag far enough that the system drag is under way, towards the middle of the
+    /// screen: near an edge the app shifts the wheel to keep it on screen, and it must not end up over the source.
+    /// </summary>
     public Point PressAndDrag(int distancePx = 520)
     {
         Thread.Sleep(400);
@@ -58,7 +61,9 @@ internal sealed class DragSource : IDisposable
         Thread.Sleep(150);
         Input.LeftDown();
         Thread.Sleep(120);
-        var mid = new Point(Grab.X + distancePx, Grab.Y);
+        var area = Screen.FromPoint(Grab).WorkingArea;
+        var direction = Grab.X > area.X + area.Width / 2 ? -1 : 1;
+        var mid = new Point(Grab.X + direction * distancePx, Grab.Y);
         Input.MoveSmooth(Grab, mid, 14, 25);
         Thread.Sleep(250);
         return mid;

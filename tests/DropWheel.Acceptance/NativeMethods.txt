@@ -21,3 +21,6 @@ IsWindowVisible
 DwmGetWindowAttribute
 DWMWINDOWATTRIBUTE
 GetForegroundWindow
+GetDC
+ReleaseDC
+BitBlt

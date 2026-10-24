@@ -50,7 +50,7 @@ internal static class FileOpsScenario
     /// Names, without extension, of Recycle Bin items deleted from <paramref name="folder"/>, through
     /// Shell.Application. Display names drop the extension when Explorer hides known ones.
     /// </summary>
-    private static HashSet<string> InRecycleBin(string folder)
+    public static HashSet<string> InRecycleBin(string folder)
     {
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         dynamic shell = Activator.CreateInstance(Type.GetTypeFromProgID("Shell.Application")!)!;
