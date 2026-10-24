@@ -4,11 +4,26 @@
 
 **一句话验收**：在资源管理器里拖一张 JPG，轻点 Shift，轮盘弹出，选 PNG，松手，同目录出现 PNG；在队列里点撤销，PNG 进回收站。
 
-- [ ] `DropWheel.Shell`：鼠标 / 键盘低级钩子 + `SysDragImage` 侦测 + 透明放置目标窗口（Spike，可先用 WinForms 验证再迁 WinUI）
-- [ ] `DropWheel.App`：透明覆盖窗口 + `SystemBackdropElement` 亚克力轮盘（6 扇区、中心文件信息、按键提示）
-- [ ] `DropWheel.Engines.Image`：Magick.NET JPG/PNG/WEBP 互转
-- [ ] `DropWheel.Core`：JobQueue、UndoLedger（回收站）、NamingTemplate 最小实现
-- [ ] 验证 `docs/01-tech-stack.md §7` 待验证清单
+- [x] `DropWheel.Shell`：鼠标 / 键盘低级钩子 + `SysDragImage` 侦测 + 透明放置目标窗口（放置目标是纯 Win32 窗口，见 [ADR-0004](adr/0004-drop-target-host.md)）
+- [x] `DropWheel.App`：透明覆盖窗口 + `SystemBackdropElement` 亚克力轮盘（6 扇区、中心文件信息、按键提示）
+- [x] `DropWheel.Engines.Image`：Magick.NET JPG/PNG/WEBP 互转
+- [x] `DropWheel.Core`：JobQueue、UndoLedger（回收站）、NamingTemplate 最小实现
+- [ ] 验证 `docs/01-tech-stack.md §7` 待验证清单（第 2 项的 24H2 与第 3 项的多显示器 / 不同 DPI 还没测，手头没有这样的机器）
+
+> 2026-10-24：一句话验收由 `tests/DropWheel.Acceptance` 的 `app --explorer` 模式自动跑通，对象是真实的 `DropWheel.exe` 和真实的资源管理器窗口：
+> Win11 22H2 ARM64 VM（200%）上轮盘在钩子看到 Shift 后 22.0 ms 显示、再过 13 ms 出首帧，JPG→PNG 141 ms；
+> Win10 21H2 x64 真机（125%）上是 7.7 ms + 6 ms，JPG→PNG 349 ms。两台机器上撤销后 PNG 都进了回收站，轮盘外松手不转换，日志无错误。
+> 真机系统「透明效果」没开时圆盘是纯色回退 `#262626`；临时打开后控制器为 `Active`，跑完恢复原状。
+> 诊断开关：`DropWheel.exe --wheel-preview [host]` 在主屏中央显示轮盘后退出，用于截图。
+
+### M0 之后的 TODO
+
+- [ ] 托盘图标。现在关掉任务窗口就退出。
+- [ ] Tools / Actions 轮盘。M0 只注册了 Convert 的 Shift 绑定，所以拖拽中不吞 Win 键；加上 Actions（Win）后要重新验证吞键。
+- [ ] 启动预热时自检白块（[AcrylicSpike 发现 9](../spikes/AcrylicSpike/README.md)）：显示一帧后抓自己的窗口，整块单色就记日志并降级。
+- [ ] 混合 DPI 跨屏：轮盘按指针所在显示器的缩放放置，没在两块不同缩放的屏上测过。
+- [ ] `Styles/Tokens.xaml` 的轮盘尺寸（直径 320、外径 156、内径 58）与 `WheelGeometry`（外径 146、内径 54）不一致，以 `WheelGeometry` 为准，统一一处。
+- [ ] 系统「透明效果」关闭或注册表值缺失时是纯色回退，考虑在设置页提示用户。
 
 ## M1 · 可用的 Alpha
 
