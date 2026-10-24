@@ -3,6 +3,7 @@
 # "Show shadows under windows" and "Show shadows under mouse pointer" for the duration of one
 # `DragSpike --selftest --explorer` run, then restores them. Not persisted (no SPIF_UPDATEINIFILE).
 # Run inside the interactive Windows session after building the spike to C:\src\dropwheel (see README).
+param([string]$Exe = 'C:\src\dropwheel\spikes\DragSpike\bin\Release\net10.0-windows10.0.26100.0\DragSpike.exe')
 [Console]::OutputEncoding=[Text.Encoding]::UTF8
 $ProgressPreference='SilentlyContinue'
 Add-Type -Namespace Spi -Name Native -MemberDefinition @'
@@ -29,11 +30,10 @@ try {
   Start-Sleep -Seconds 2
   $shell = (Get-Process explorer | Sort-Object StartTime | Select-Object -First 1).Id
   Get-Process explorer | Where-Object { $_.Id -ne $shell -and $_.MainWindowHandle -eq 0 } | ForEach-Object { "killed zombie explorer $($_.Id)"; Stop-Process -Id $_.Id -Force }
-  $exe = 'C:\src\dropwheel\spikes\DragSpike\bin\Release\net10.0-windows10.0.26100.0\DragSpike.exe'
-  $p = Start-Process -FilePath $exe -ArgumentList '--selftest','--explorer' -PassThru -NoNewWindow -RedirectStandardOutput C:\temp\spike-out.txt -RedirectStandardError C:\temp\spike-err.txt
+  $p = Start-Process -FilePath $Exe -ArgumentList '--selftest','--explorer' -PassThru -NoNewWindow -RedirectStandardOutput $env:TEMP\spike-out.txt -RedirectStandardError $env:TEMP\spike-err.txt
   if (-not $p.WaitForExit(60000)) { "TIMEOUT; killing"; Stop-Process -Id $p.Id -Force; Get-Process DragSpike -ErrorAction SilentlyContinue | Stop-Process -Force }
   "exit: $($p.ExitCode)"
-  Get-Content -Encoding UTF8 C:\temp\spike-out.txt | Select-String 'drag detected|SysDragImage|RESULT|FAIL' | ForEach-Object { "$_" }
+  Get-Content -Encoding UTF8 $env:TEMP\spike-out.txt | Select-String 'drag detected|SysDragImage|RESULT|FAIL' | ForEach-Object { "$_" }
 } finally {
   foreach ($i in $items) { Set-Spi $i $before[$i.n] }
   foreach ($i in $items) { "after: $($i.n)=$(Get-Spi $i)" }
