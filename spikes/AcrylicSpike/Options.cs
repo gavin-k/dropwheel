@@ -10,7 +10,8 @@ internal enum Variant
     Opaque,
 }
 
-internal sealed record Options(Variant Variant, int Runs, int SizePx, bool DefaultConfig)
+/// <param name="IdleMs">Extra hide time between cycle 1 and cycle 2 (0 = none): does a long idle undo the warm-up?</param>
+internal sealed record Options(Variant Variant, int Runs, int SizePx, bool DefaultConfig, int IdleMs)
 {
     public static Options Parse(string[] args)
     {
@@ -18,6 +19,7 @@ internal sealed record Options(Variant Variant, int Runs, int SizePx, bool Defau
         var runs = 20;
         var size = 600;
         var defaultConfig = false;
+        var idleMs = 0;
         for (var i = 0; i < args.Length; i++)
         {
             switch (args[i])
@@ -26,9 +28,10 @@ internal sealed record Options(Variant Variant, int Runs, int SizePx, bool Defau
                 case "--runs" when i + 1 < args.Length: runs = int.Parse(args[++i]); break;
                 case "--size" when i + 1 < args.Length: size = int.Parse(args[++i]); break;
                 case "--default-config": defaultConfig = true; break;
+                case "--idle-ms" when i + 1 < args.Length: idleMs = int.Parse(args[++i]); break;
             }
         }
 
-        return new Options(variant, runs, size, defaultConfig);
+        return new Options(variant, runs, size, defaultConfig, idleMs);
     }
 }

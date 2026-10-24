@@ -54,7 +54,7 @@ internal sealed class Runner(Options options)
     private async Task<int> RunCoreAsync()
     {
         LogEnvironment();
-        Log.Info($"options: variant={options.Variant} runs={options.Runs} size={options.SizePx}px defaultConfig={options.DefaultConfig}");
+        Log.Info($"options: variant={options.Variant} runs={options.Runs} size={options.SizePx}px defaultConfig={options.DefaultConfig} idleMs={options.IdleMs}");
 
         // ---- a busy scene behind the overlay, so blur (or its absence) is visible in the screenshots -----
         var scene = new Window();
@@ -237,6 +237,11 @@ internal sealed class Runner(Options options)
 
             _appWindow.Hide();
             await Task.Delay(300);
+            if (i == 1 && options.IdleMs > 0)
+            {
+                Log.Info($"idle: staying hidden for {options.IdleMs} ms before cycle 2");
+                await Task.Delay(options.IdleMs);
+            }
         }
 
         // ---- summary --------------------------------------------------------------------------------
@@ -244,6 +249,10 @@ internal sealed class Runner(Options options)
         Log.Info($"==== {options.Variant}{(options.DefaultConfig ? " (default config)" : "")}: {options.Runs} show/hide cycles, {options.SizePx} px disc ====");
         Summarize("Show→Rendered ", rendered);
         Summarize("Show→on-screen", onScreen);
+        if (options.IdleMs > 0 && missed == 0 && onScreen.Count >= 2)
+        {
+            Log.Info($"  Show→on-screen after {options.IdleMs} ms idle (cycle 2): {onScreen[1]:F0} ms; cold cycle 1 {onScreen[0]:F0} ms; warm cycles 3..{options.Runs} median {(onScreen.Count > 2 ? Median(onScreen.Skip(2).ToList()).ToString("F0") : "n/a")} ms");
+        }
         Log.Info($"  foreground changed in {fgChanged} cycle(s); on-screen detection missed in {missed} cycle(s)");
         Log.Info($"  acrylic controller state per cycle: {string.Join(",", states.Distinct())}{(options.Variant == Variant.None ? "" : $" (IsSupported={DesktopAcrylicController.IsSupported()})")}");
         var warm = onScreen.Skip(1).ToList();
