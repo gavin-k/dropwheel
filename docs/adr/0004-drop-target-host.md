@@ -1,6 +1,6 @@
 # ADR-0004 · 放置目标与轮盘分成两个窗口
 
-- 状态：已接受，第 1 条风险待 M0 验收驱动验证（2026-10-24）
+- 状态：已接受（2026-10-24）。第 1 条风险已由验收驱动验证，见下文。
 
 ## 背景
 
@@ -28,6 +28,15 @@
 
 ## 风险
 
-1. alpha=1 的分层窗口能不能被 OLE 选为放置目标，只有文档依据，M0 验收驱动要先验证。
+1. ~~alpha=1 的分层窗口能不能被 OLE 选为放置目标。~~ 已验证（2026-10-24）。`tests/DropWheel.Acceptance` 的 `host` 场景用 SendInput 做真实拖动，拖到一半再 `Show` 宿主，然后移到扇区 2 松手。两台机器、两种拖动源全部通过：
+
+   | 机器 | 缩放 | 拖动源 | 松手到 `Dropped` |
+   |---|---|---|---|
+   | Windows 11 ARM64 虚拟机 | 200% | WinForms 测试窗口 | 20 ms |
+   | Windows 11 ARM64 虚拟机 | 200% | 资源管理器 | 29 ms |
+   | Windows 10 LTSC 21H2 x64 真机 | 125% | WinForms 测试窗口 | 14 ms |
+   | Windows 10 LTSC 21H2 x64 真机 | 125% | 资源管理器 | 28 ms |
+
+   每次都检查了：`DragEnter` 拿到正确的文件；悬停扇区是 2；`Dropped` 落在扇区 2；源文件还在原处；WinForms 源的 `DoDragDrop` 返回 Copy。松手在轮盘外、中心、禁用扇区时，三种情况都只触发一次 `Canceled`，WinForms 源拿到 None。复现：`DropWheel.Acceptance host [--explorer]`。
 2. `DragEnter` 要等宿主出现后的下一次鼠标移动或按键变化，在此之前扇区是空的。用户本来就要移动鼠标去选扇区，所以先接受。
 3. 多显示器、混合 DPI 没测过（`docs/01-tech-stack.md` §7 第 3 项）。宿主覆盖虚拟屏，OLE 给的是物理像素坐标，缩放取轮盘所在显示器的。
