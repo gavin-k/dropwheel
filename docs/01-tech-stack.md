@@ -149,15 +149,18 @@ LGPL 组件以独立可执行文件随包分发并附带许可证文本与源码
 ## 7. 待验证清单（M0 前）
 
 - [ ] 低级鼠标 + 键盘钩子在拖拽期间的延迟与稳定性（Explorer 拖拽时消息泵是否会阻塞钩子回调）
-- [ ] `SysDragImage` 侦测在 Win11 24H2+ 是否依旧有效；关闭「拖拽时显示图标」后的行为
+- [ ] `SysDragImage` 侦测在 Win11 24H2+ 是否依旧有效；关闭拖拽相关视觉效果（「拖动时显示窗口内容」、动画、阴影）后的行为
 - [ ] 透明分层窗口 `RegisterDragDrop` 在多显示器 / 不同 DPI 下的坐标映射
 - [ ] `Win` 键在拖拽中被吞掉后，开始菜单是否仍会弹出
 - [ ] `SystemBackdropElement` 在透明窗口上的亚克力效果与 GPU 开销（150 ms 弹出预算）
 - [ ] Magick.NET / PDFium / FFmpeg LGPL 的 ARM64 包可用性
 
 > 2026-10-24：用 [`spikes/DragSpike`](../spikes/DragSpike/README.md) 在 Win11 22H2 ARM64 上做了真实 Explorer 拖拽自测（6/6）：
-> 第 1 项通过；第 2 项只验证了 22H2 上 `SysDragImage` 会出现，24H2 和关闭拖拽图标都未测，另外 `EVENT_SYSTEM_DRAGDROPSTART` 在该机上从不触发；
-> 第 3、5 项只验证了单屏 200% DPI 与无 backdrop 的弹出耗时；第 4 项通过——LL 键盘钩子吞掉 Win 键后开始菜单不弹出、拖拽与投放正常（放行时开始菜单会弹出并挡住投放）。详见该 README。
+> 第 1 项通过；第 2 项验证了 22H2 上 `SysDragImage` 会出现、关掉四项拖拽相关视觉效果后仍出现，24H2 未测，另外 `EVENT_SYSTEM_DRAGDROPSTART` 在该机上从不触发
+> （原文写的「拖拽时显示图标」选项在 22621 的文件夹选项里不存在，已改写）；
+> 第 3、5 项只验证了单屏 200% DPI 与无 backdrop 的弹出耗时；第 4 项通过——LL 键盘钩子吞掉 Win 键后开始菜单不弹出、拖拽与投放正常（放行时开始菜单会弹出并挡住投放）；
+> 第 6 项由 [`spikes/MagickSpike`](../spikes/MagickSpike/README.md) 验证：Magick.NET 14.9.0 在 ARM64 原生加载并完成 JPG→PNG/WebP/AVIF/JXL（HEIC 只读不写，x64 亦然），
+> PDFium 137 与 SkiaSharp 3.119 包内带 `win-arm64`，FFmpeg 有 BtbN 的 `winarm64-lgpl` 构建，7-Zip extra 包含 `arm64/7za.exe`。详见两个 README。
 
 ## 参考资料
 

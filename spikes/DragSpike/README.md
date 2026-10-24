@@ -19,6 +19,7 @@
 | `DragSpike --selftest` | 自动：自带 WinForms 拖拽源 + SendInput 驱动，通过返回 0 |
 | `DragSpike --selftest --explorer` | 自动：从**真实资源管理器窗口**里拖 `%TEMP%\DropWheelSpike\sample-drop.jpg` |
 | `… --winkey` / `… --winkey-pass` | 自测附加步骤（§7 #4）：轮盘出现后、投放前轻点 **Win 键**。`--winkey` 让 LL 钩子在拖拽中吞掉 Win 键并断言开始菜单没弹出；`--winkey-pass` 是对照组，Win 键原样放行，只记录不判定 |
+| `uieffects-test.ps1` | 在 VM 的交互会话里跑：关掉「拖动时显示窗口内容」「视觉效果/动画」「窗口阴影」「鼠标指针阴影」四项，再跑一次 `--selftest --explorer`，结束后恢复（§7 #2 后半） |
 | `DragSpike --uia-dump` | 诊断：旧版托管 UIA 客户端看到的资源管理器窗口树 |
 | `--dragsource` / `--locate` | 内部用：拖拽源窗口 / 无钩子的 UIA 定位子进程 |
 
@@ -34,11 +35,11 @@
 | § | 项目 | 结论 | 依据 |
 | --- | --- | --- | --- |
 | 1 | 低级鼠标/键盘钩子在拖拽期间的延迟与稳定性 | ✅ 可行 | Explorer 拖拽中 Shift 轻点经 WH_KEYBOARD_LL 到达用时 0.2–1.5 ms（距 SendInput 键抬起）；6 次连续 Explorer 自测全部通过，Explorer 的 OLE 拖拽消息循环没有阻塞钩子回调 |
-| 2 | `SysDragImage` 侦测是否有效 | ✅ 22H2 有效；**24H2 未测**；关闭「拖拽时显示图标」**未测** | Explorer 拖拽开始后 45–79 ms 出现 `SysDragImage` 窗口（25 ms 轮询）。注意 `EVENT_SYSTEM_DRAGDROPSTART` WinEvent 在本机**从未触发**，不能依赖 |
+| 2 | `SysDragImage` 侦测是否有效 | ✅ 22H2 有效，关闭拖拽相关视觉效果后仍有效；**24H2 未测** | Explorer 拖拽开始后 45–79 ms 出现 `SysDragImage` 窗口（25 ms 轮询）。用 `uieffects-test.ps1` 关掉四项视觉效果后 2 次都仍出现（第 1 次 +64 ms，第 2 次日志只截到出现本身）。清单里写的「关闭拖拽时显示图标」在 22621 的 27 个文件夹选项里**不存在**，见发现 8。`EVENT_SYSTEM_DRAGDROPSTART` WinEvent 在本机**从未触发**，不能依赖 |
 | 3 | 分层窗口 `RegisterDragDrop` 多显示器/DPI 坐标 | ⚠️ 单屏 200% DPI 通过；**多显示器未测** | WinForms PerMonitorV2 + `AllowDrop`，物理像素坐标下 6 次投放都落在目标扇区；VM 只有一个显示器 |
 | 4 | 拖拽中按 Win 键 | ✅ 吞掉即可 | `--winkey`（LL 键盘钩子对 Win 按下/抬起都返回 1）3 次：开始菜单未弹出、拖拽继续、投放正常到达。对照 `--winkey-pass` 3 次：开始菜单（搜索窗口）弹出并成为前台窗口，3 s 内收不到投放。见发现 7 |
 | 5 | 亚克力背景 / 150 ms 弹出预算 | ⚠️ 预算有余量；**亚克力未测** | 普通 WinForms 窗口（无 backdrop）从 Shift 抬起到首帧绘制 21–93 ms；真正的 WinUI `SystemBackdrop` 开销要在 M0 实现里再量 |
-| 6 | Magick.NET / PDFium / FFmpeg ARM64 包 | — 不在本 spike 范围 | |
+| 6 | Magick.NET / PDFium / FFmpeg ARM64 包 | ✅ 见 [`spikes/MagickSpike`](../MagickSpike/README.md) | Magick.NET 14.9.0 在 ARM64 进程内加载并完成 JPG→PNG/WebP/AVIF/JXL；PDFium、SkiaSharp 包内带 `win-arm64`；BtbN 提供 `winarm64-lgpl` FFmpeg；7-Zip extra 包内有 `arm64/7za.exe` |
 
 ### 测量值
 
@@ -55,6 +56,7 @@
 | 投放数据格式 | FileDrop, FileNameW, FileName | Shell IDList Array, DragImageBits, FileDrop, FileNameW, FileContents, FileGroupDescriptorW… |
 | 拖拽是否被轮盘打断 | 否 | 否（Explorer 的 DoDragDrop 一直持续到投放） |
 | 拖拽中轻点 Win 键（`--winkey` 吞掉 / `--winkey-pass` 放行，各 3 次） | 未测 | 吞掉：开始菜单未弹出，投放 31–36 ms 到达 / 放行：开始菜单弹出，投放未到达 |
+| 关掉四项拖拽相关视觉效果后 `SysDragImage` 是否出现（`uieffects-test.ps1`，2 次） | 未测 | 仍出现（第 1 次 +64 ms），自测 PASS，四项设置运行后恢复原值 |
 
 ## 过程中的发现（写给做 M0 的人）
 
@@ -83,6 +85,10 @@
    - 判断开始菜单是否打开不能只看 `IsWindowVisible`——标题为「开始」的 `Windows.UI.Core.CoreWindow` 一直是 WS_VISIBLE，
      关闭时只是被 DWM cloak（`DWMWA_CLOAKED`），要两者一起查。
    - 拖拽中**不要发 Esc**：没有菜单吃掉它时，Esc 会直接取消 OLE 拖拽。
+8. **「关闭拖拽时显示图标」不是一个真实存在的设置。** 枚举 22621 的 `Explorer\Advanced\Folder` 得到 27 个文件夹选项，
+   `Explorer\VisualEffects` 得到 19 个视觉效果，没有一项控制拖拽图像。最接近的四项（`SPI_SETDRAGFULLWINDOWS`、
+   `SPI_SETUIEFFECTS`、`SPI_SETDROPSHADOW`、`SPI_SETCURSORSHADOW`）全部关掉后 `SysDragImage` 照样出现。
+   视觉效果里需要注销才生效的项（`ListviewShadow`、`ThumbnailsOrIcon` 等）没有测。
 
 ## 还需要人工做的事
 
@@ -91,5 +97,4 @@
 1. 从资源管理器拖一个文件，拖拽中轻点 Shift，确认轮盘出现在光标处且拖拽图标未消失；投放到某个扇区，日志出现 `DROPPED`。
 2. 同上，但用真人键盘在拖拽中按一下 **Win 键**（自测用的是 SendInput；手动模式下钩子不吞键，只记录 `LL key: Win down`，用于确认真实键盘的行为与 `--winkey-pass` 一致）。
 3. 若能接上第二块显示器（Parallels 可加虚拟显示器）：把两块屏设成不同缩放，分别在两块屏上做 1，确认轮盘位置与扇区命中（§7 #3）。
-4. 在「文件资源管理器选项 → 查看」里关闭拖拽时显示图标，重做 1，看 `SysDragImage` 是否还出现（§7 #2 后半）。
-5. 有 24H2 机器时重跑 `--selftest --explorer`（§7 #2 前半）。
+4. 有 24H2 机器时重跑 `--selftest --explorer` 和 `uieffects-test.ps1`（§7 #2）。
