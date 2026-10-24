@@ -1,5 +1,7 @@
 ﻿# Runs the acrylic spike variants in the interactive session and prints the summaries.
 # Idempotent: restores the "Transparency effects" setting it changes.
+# EnableTransparency is forced to 1 unless it already is 1: an absent value is NOT "on" everywhere
+# (on a Win10 21H2 LTSC machine it meant UISettings.AdvancedEffectsEnabled=False, so acrylic fell back).
 #   -IdleSeconds N     extra set: acrylic, 6 cycles, hidden for N s between cycle 1 and 2 (does idle undo the warm-up?)
 #   -TransparencyOff   extra set: acrylic with the system "Transparency effects" switched off (expected: Fallback, no black box)
 #   -Counters          sample GPU Engine utilization (per pid) and dwm % Processor Time once a second during every set
@@ -49,12 +51,12 @@ function Summarize-Counters($samples, $pids) {
 }
 
 $orig = Get-Transparency
-Write-Output "EnableTransparency before: $(if ($null -eq $orig) { '<absent = on>' } else { $orig })"
+Write-Output "EnableTransparency before: $(if ($null -eq $orig) { '<absent>' } else { $orig })"
 Write-Output "OS: $((Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').DisplayVersion) build $((Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').CurrentBuild).$((Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').UBR) $env:PROCESSOR_ARCHITECTURE"
 Write-Output "GPU: $((Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name) -join ' | ')"
 Write-Output "session: $([System.Diagnostics.Process]::GetCurrentProcess().SessionId), interactive: $([Environment]::UserInteractive)"
 try {
-    if ($orig -eq 0) {
+    if ($orig -ne 1) {
         Set-Transparency 1
         Write-Output "EnableTransparency set to 1 for this run"
     }
