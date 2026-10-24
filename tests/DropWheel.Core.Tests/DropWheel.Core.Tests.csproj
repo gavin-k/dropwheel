@@ -15,6 +15,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../../src/DropWheel.Core/DropWheel.Core.csproj" />
   </ItemGroup>
 

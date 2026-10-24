@@ -9,7 +9,8 @@ public class QuotaCounterTests
     [Fact]
     public void Resets_at_local_midnight()
     {
-        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 24, 23, 50, 0, TimeSpan.FromHours(8)));
+        // 23:50 Asia/Shanghai == 15:50Z; FakeTimeProvider takes the start instant in UTC.
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 24, 15, 50, 0, TimeSpan.Zero));
         clock.SetLocalTimeZone(TimeZoneInfo.CreateCustomTimeZone("sh", TimeSpan.FromHours(8), "sh", "sh"));
         var q = new QuotaCounter(3, clock);
 
