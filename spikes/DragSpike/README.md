@@ -32,11 +32,11 @@
 
 | § | 项目 | 结论 | 依据 |
 | --- | --- | --- | --- |
-| 1 | 低级鼠标/键盘钩子在拖拽期间的延迟与稳定性 | ✅ 可行 | Explorer 拖拽中 Shift 轻点经 WH_KEYBOARD_LL 到达用时 0.2–0.6 ms（距 SendInput 键抬起）；6 次连续 Explorer 自测全部通过，Explorer 的 OLE 拖拽消息循环没有阻塞钩子回调 |
-| 2 | `SysDragImage` 侦测是否有效 | ✅ 22H2 有效；**24H2 未测**；关闭「拖拽时显示图标」**未测** | Explorer 拖拽开始后 45–91 ms 出现 `SysDragImage` 窗口（25 ms 轮询）。注意 `EVENT_SYSTEM_DRAGDROPSTART` WinEvent 在本机**从未触发**，不能依赖 |
+| 1 | 低级鼠标/键盘钩子在拖拽期间的延迟与稳定性 | ✅ 可行 | Explorer 拖拽中 Shift 轻点经 WH_KEYBOARD_LL 到达用时 0.2–1.5 ms（距 SendInput 键抬起）；6 次连续 Explorer 自测全部通过，Explorer 的 OLE 拖拽消息循环没有阻塞钩子回调 |
+| 2 | `SysDragImage` 侦测是否有效 | ✅ 22H2 有效；**24H2 未测**；关闭「拖拽时显示图标」**未测** | Explorer 拖拽开始后 45–79 ms 出现 `SysDragImage` 窗口（25 ms 轮询）。注意 `EVENT_SYSTEM_DRAGDROPSTART` WinEvent 在本机**从未触发**，不能依赖 |
 | 3 | 分层窗口 `RegisterDragDrop` 多显示器/DPI 坐标 | ⚠️ 单屏 200% DPI 通过；**多显示器未测** | WinForms PerMonitorV2 + `AllowDrop`，物理像素坐标下 6 次投放都落在目标扇区；VM 只有一个显示器 |
 | 4 | 拖拽中按 Win 键 | ❌ **未测** | 钩子里已记录 Win 键按下，但自测没有发送 Win 键；需人工 |
-| 5 | 亚克力背景 / 150 ms 弹出预算 | ⚠️ 预算有余量；**亚克力未测** | 普通 WinForms 窗口（无 backdrop）从 Shift 抬起到首帧绘制 20.9–77 ms；真正的 WinUI `SystemBackdrop` 开销要在 M0 实现里再量 |
+| 5 | 亚克力背景 / 150 ms 弹出预算 | ⚠️ 预算有余量；**亚克力未测** | 普通 WinForms 窗口（无 backdrop）从 Shift 抬起到首帧绘制 21–93 ms；真正的 WinUI `SystemBackdrop` 开销要在 M0 实现里再量 |
 | 6 | Magick.NET / PDFium / FFmpeg ARM64 包 | — 不在本 spike 范围 | |
 
 ### 测量值
@@ -48,9 +48,9 @@
 | 拖拽侦测：LL 鼠标越过 8 px 阈值 | 首个 move 后 +1 ms | +1…+3 ms |
 | 拖拽侦测：`SysDragImage` 出现 | 不出现（预期，见下） | +45…+79 ms |
 | 拖拽侦测：WinEvent DRAGDROPSTART | 不触发 | **不触发** |
-| Shift 轻点到达 LL 键盘钩子 | 0.3 ms | 0.2–0.6 ms |
-| 轮盘首帧（距 Shift 抬起） | 20.9 ms | 22.7–77 ms |
-| `DragDrop` 收到（距左键抬起） | 10 ms | 13–27 ms |
+| Shift 轻点到达 LL 键盘钩子 | 0.3 ms | 0.2–1.5 ms |
+| 轮盘首帧（距 Shift 抬起） | 20.9 ms | 27.7–93.1 ms |
+| `DragDrop` 收到（距左键抬起） | 10 ms | 13–41 ms |
 | 投放数据格式 | FileDrop, FileNameW, FileName | Shell IDList Array, DragImageBits, FileDrop, FileNameW, FileContents, FileGroupDescriptorW… |
 | 拖拽是否被轮盘打断 | 否 | 否（Explorer 的 DoDragDrop 一直持续到投放） |
 
