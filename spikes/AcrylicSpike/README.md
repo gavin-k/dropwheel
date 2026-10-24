@@ -43,7 +43,7 @@
 | 1a. 冷启动第 1 轮 | ⚠️ **不稳定，可能超预算**：最终二进制的 acrylic 第 1 轮 219 ms；之前三个构建的三次完整运行里分别 48、89 ms，两次 3/5 轮冒烟 60、53 ms（第一个构建还没有棋盘格场景和 DWM 配方，窗口不完全相同） | 推断：第 1 轮包含 XAML 首次布局/首帧、合成器与 DWM 首次为该窗口建立表面。**注意混杂因素**：`run-acrylic.ps1` 总是先跑 `acrylic`，且每次完整运行都紧跟一次重新构建，所以 acrylic 的第 1 轮同时也是「构建后第一个进程」，219 ms 可能是磁盘/DLL 冷启动而非亚克力本身（同样带亚克力圆盘、排第三个跑的 `opaque` 第 1 轮只有 56 ms）。无论哪种原因，M0 都必须在启动时预热一次（见发现 4） |
 | 2. 不抢焦点 | ✅ 65 轮（20+20+20+5）前台窗口全部没变 | `WS_EX_NOACTIVATE` + `AppWindow.Show(activateWindow: false)`；窗口不出现在 Alt+Tab（`IsShownInSwitchers=false`） |
 | 3. 亚克力是否真的渲染 | ✅ 在这台 VM 里 `DesktopAcrylicController.State = Active`，截图可见背后棋盘格被模糊（边缘梯度 1.30 vs 无 backdrop 的 1.97）；**前提是把 `IsInputActive` 钉成 true**，用默认配置会回退成纯色（见发现 2） | `shots/02-acrylic-active.png` vs `shots/03-none-plain-overlay.png` vs `shots/05-default-config-fallback.png`（回退色故意设成品红，264 008 个品红像素） |
-| 3a. GPU / DWM 开销 | ❓ **未能量化**：非提权进程读不到 `dwm.exe` 的 CPU 时间（拒绝访问），VM 里也没有 GPU 计数器；本进程每轮 CPU 0–109 ms（含抓屏）无法区分亚克力贡献 | `run-acrylic.ps1 -Counters` 已能在真机采样 GPU 引擎计数器，但目前唯一的真机渲染异常（见「真机结果」），仍列入人工清单 |
+| 3a. GPU / DWM 开销 | ❓ **未能量化**：非提权进程读不到 `dwm.exe` 的 CPU 时间（拒绝访问），VM 里也没有 GPU 计数器；本进程每轮 CPU 0–109 ms（含抓屏）无法区分亚克力贡献 | `run-acrylic.ps1 -Counters` 可以采样 GPU 引擎计数器（本次没有在真机跑出有效数据：唯一的真机渲染异常，见「真机结果」），仍列入人工清单 |
 | 3b. 真机 x64（Win10 21H2，Intel） | ⚠️ 自包含 x64 包能跑、`IsSupported=True`、透明效果开关与控制器状态的关系得到确认；**弹出耗时与 GPU 开销无法测量**：该机所有 D3D 硬件呈现的窗口（WPF 也一样）都显示成纯白矩形 | 见「真机结果」一节 |
 
 ### 测量值（`run-acrylic.ps1` 一次完整运行，最终二进制）
@@ -115,5 +115,5 @@
 ## 还需要人工做的事
 
 1. 找一台 D3D 硬件渲染正常的真机（判据：PowerShell ISE 不是白窗口）。上面那台要么更新 Intel 驱动，要么先停用那块虚拟显示适配器再试；两者都是机器主人的决定。
-2. 在那台机器上跑一次 `run-acrylic.ps1 -Exe <x64 发布目录>\AcrylicSpike.exe -Runs 20 -IdleSeconds 300 -TransparencyOff -Counters`（约 10 分钟），一次回答：`acrylic` 与 `none` 的 dwm / spike GPU 引擎占用差（问题 3a）、系统「透明效果」关闭时是 `Fallback` 纯色而非黑块/白块（状态部分已在 Win10 真机确认，像素部分未确认）、隐藏 5 分钟后第 2 轮上屏耗时是否仍接近热身后水平（原第 4 项，现已自动化）。
+2. 在那台机器上跑一次 `run-acrylic.ps1 -Exe <x64 发布目录>\AcrylicSpike.exe -Runs 20 -IdleSeconds 300 -TransparencyOff -Counters`（约 10 分钟），一次回答：`acrylic` 与 `none` 的 dwm / spike GPU 引擎占用差（问题 3a）、系统「透明效果」关闭时是 `Fallback` 纯色而非黑块/白块（状态部分已在 Win10 真机确认，像素部分未确认）、隐藏 5 分钟后第 2 轮上屏耗时是否仍接近热身后水平（原第 4 项；`--idle-ms` 代码已在真机以 idleMs=0 跑过，非零空闲还没有跑过）。
 3. 多显示器 / 不同 DPI 下 `DisplayArea` 与 `MoveAndResize` 的物理像素坐标是否与抓屏区域对齐（VM 单屏 200%，真机单屏 125%，都没有第二块屏）。

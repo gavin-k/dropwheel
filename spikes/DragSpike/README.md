@@ -123,5 +123,5 @@ Windows 10 LTSC 21H2 x64，Intel Iris Pro 5200，1920×1200 @125%，同一 x64 �
 2. 同上，但用真人键盘在拖拽中按一下 **Win 键**（自测用的是 SendInput；手动模式下钩子不吞键，只记录 `LL key: Win down`，用于确认真实键盘的行为与 `--winkey-pass` 一致）。
 3. 若能接上第二块显示器（Parallels 可加虚拟显示器；真机那块虚拟显示适配器没接显示器）：把两块屏设成不同缩放，分别在两块屏上做 1，确认轮盘位置与扇区命中（§7 #3）。
 4. 有 24H2 机器时重跑 `--selftest --explorer`、`uieffects-test.ps1` 和 `uieffects-matrix.ps1`（§7 #2）。Win10 21H2 x64 已跑（见「真机 x64 测量值」），不必重复。
-4a. 在 Win10 上再跑几次 `uieffects-test.ps1`（带杀 explorer 步骤）与 `uieffects-matrix.ps1`，看发现 10 的失败是否只跟杀 explorer 有关。
+   - 另外在 Win10 上再跑几次 `uieffects-test.ps1`（带杀 explorer 步骤）与 `uieffects-matrix.ps1`，看发现 10 的失败是否只跟杀 explorer 有关。
 5. §7 #5 的亚克力 GPU 开销与真机效果见 [`AcrylicSpike/README.md`](../AcrylicSpike/README.md) 末尾的人工清单。
