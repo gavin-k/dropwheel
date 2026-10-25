@@ -23,13 +23,24 @@ namespace DropWheel.App.Overlay;
 /// The wheel the user sees: a transparent, top-most, never-activated WinUI window with an acrylic disc
 /// and six sectors drawn from <see cref="WheelGeometry"/>, the same numbers the drop target hit-tests
 /// with. It never receives the drag itself; the Shell's DropTargetHost sits above it. Created once,
-/// shown and hidden per drag. UI thread only.
+/// shown and hidden per drag. After the first frame of a show it checks, now and then, that the screen
+/// shows the wheel and not a flat white block (<see cref="FrameCheck"/>). UI thread only.
 /// </summary>
 internal sealed class WheelWindow
 {
     /// <summary>Room around the rim, in DIPs.</summary>
     private const double Margin = 10;
     private const double DiscPadding = 6;
+
+    /// <summary>From the first frame to the screen copy: Rendered fires before DWM presents the frame.</summary>
+    private const int FrameCheckDelayMs = 100;
+
+    /// <summary>
+    /// From a copy that looks flat to the second look. A wheel that has just moved can reach the screen later
+    /// than that: on the VM the first show after start once copied the Explorer window under it (#F9FBFC on
+    /// 98%) while the next show copied the disc.
+    /// </summary>
+    private const int FrameRecheckMs = 500;
 
     private static readonly Color Text = Color.FromArgb(255, 0xF2, 0xF2, 0xF2);
     private static readonly Color Text3 = Color.FromArgb(255, 0xA3, 0xA3, 0xA3);
@@ -46,12 +57,16 @@ internal sealed class WheelWindow
     private readonly TextBlock _title;
     private readonly TextBlock _subtitle;
     private readonly TextBlock _hint;
+    private readonly FrameWatch _frames = new(TimeProvider.System);
     private WheelModel? _model;
     private bool _hubFirst;
     private int _hovered = -1;
     private long _shownAt;
+    private RectInt32 _bounds;
+    private int _generation; // moves on at every show, hide and close, so a frame check knows the wheel stayed put
 
-    public WheelWindow()
+    /// <param name="white">Diagnostic (<c>--white-wheel</c>): an opaque white layer over the whole window, as a stuck graphics driver shows it.</param>
+    public WheelWindow(bool white = false)
     {
         _window = new Window { Title = "DropWheel 轮盘" };
         _appWindow = _window.AppWindow;
@@ -134,6 +149,11 @@ internal sealed class WheelWindow
         canvas.Children.Add(hole);
 
         _window.Content = new Grid { Children = { disc, canvas } };
+        if (white)
+        {
+            ((Grid)_window.Content).Children.Add(new Border { Background = new SolidColorBrush(Colors.White) });
+        }
+
         SetModel(null);
         SetHubHint(false);
     }
@@ -143,6 +163,9 @@ internal sealed class WheelWindow
 
     private static double Center => Size / 2;
 
+    /// <summary>Raised when a frame check finds a flat white block, once until a later check finds the wheel drawn.</summary>
+    public event Action? LooksFlat;
+
     /// <summary>
     /// Shows the wheel centred on a screen point (physical pixels) without activating it. Returns once
     /// the window is in the z-order, so the drop target host can be raised above it afterwards.
@@ -150,7 +173,9 @@ internal sealed class WheelWindow
     public void ShowAt(int centerX, int centerY, double scale)
     {
         var px = (int)Math.Ceiling(Size * scale);
-        _appWindow.MoveAndResize(new RectInt32(centerX - px / 2, centerY - px / 2, px, px));
+        _bounds = new RectInt32(centerX - px / 2, centerY - px / 2, px, px);
+        _appWindow.MoveAndResize(_bounds);
+        _generation++;
         _shownAt = Stopwatch.GetTimestamp();
         CompositionTarget.Rendered += OnFirstFrame;
         _appWindow.Show(false);
@@ -159,11 +184,16 @@ internal sealed class WheelWindow
     public void Hide()
     {
         CompositionTarget.Rendered -= OnFirstFrame;
+        _generation++;
         _appWindow.Hide();
         SetModel(null);
     }
 
-    public void Close() => _window.Close();
+    public void Close()
+    {
+        _generation++;
+        _window.Close();
+    }
 
     /// <summary>
     /// Shows the window once off-screen and waits for its first frame, so the first real drag does not
@@ -263,6 +293,52 @@ internal sealed class WheelWindow
     {
         CompositionTarget.Rendered -= OnFirstFrame;
         FileLog.Info($"overlay: first frame {Stopwatch.GetElapsedTime(_shownAt).TotalMilliseconds:F0} ms after show");
+        if (_frames.Due)
+        {
+            _ = CheckFrameAsync(_generation, _bounds);
+        }
+    }
+
+    /// <summary>
+    /// Copies the wheel's part of the screen a moment after its first frame and judges it; a copy that looks
+    /// flat is taken again a little later, and only a second flat one counts. Dropped when the wheel hid or
+    /// moved meanwhile: the copy would be of whatever is under it, and a white window there would pass for a
+    /// stuck driver.
+    /// </summary>
+    private async Task CheckFrameAsync(int generation, RectInt32 bounds)
+    {
+        await Task.Delay(FrameCheckDelayMs).ConfigureAwait(true);
+        for (var look = 1; generation == _generation; look++)
+        {
+            var started = Stopwatch.GetTimestamp();
+            var verdict = await Task.Run(() => ScreenCopy.Judge(bounds)).ConfigureAwait(true);
+            var ms = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            if (generation != _generation)
+            {
+                return;
+            }
+
+            if (verdict is null)
+            {
+                FileLog.Info("overlay: frame check could not copy the screen");
+                return;
+            }
+
+            if (verdict.Flat && look == 1)
+            {
+                FileLog.Info($"overlay: frame check looks {verdict}, {ms:F0} ms; looking again in {FrameRecheckMs} ms");
+                await Task.Delay(FrameRecheckMs).ConfigureAwait(true);
+                continue;
+            }
+
+            FileLog.Info($"overlay: frame check {verdict}, {ms:F0} ms");
+            if (_frames.Record(verdict))
+            {
+                LooksFlat?.Invoke();
+            }
+
+            return;
+        }
     }
 
     private static PathGeometry Wedge(int index)

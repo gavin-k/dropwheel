@@ -33,6 +33,17 @@ GetSystemMetrics
 VIRTUAL_KEY
 GetDpiForWindow
 
+// The wheel's frame check (Overlay/ScreenCopy.cs): copy its part of the screen with GDI
+CreateCompatibleDC
+DeleteDC
+CreateDIBSection
+SelectObject
+DeleteObject
+BitBlt
+GdiFlush
+BITMAPINFO
+BI_COMPRESSION
+
 // Tray icon (Tray/TrayIcon.cs) and single instance hand-over
 Shell_NotifyIcon
 NOTIFYICONDATAW

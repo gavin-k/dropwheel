@@ -115,6 +115,7 @@ internal static partial class AppScenario
                 Attempt(checks, "tools", () => Tools(checks, log, exe, explorer));
                 Attempt(checks, "edge dock", () => EdgeDock(checks, log, dir, explorer));
                 Attempt(checks, "settings", () => ChangeSettings(checks, log, profile, folder, explorer));
+                Attempt(checks, "frame check", () => FrameChecked(checks, log));
             }
         }
         finally
@@ -122,6 +123,7 @@ internal static partial class AppScenario
             Quit(checks, log, app, exe);
         }
 
+        Attempt(checks, "white wheel", () => WhiteWheel(checks, exe));
         Attempt(checks, "first run", () => FirstRun(checks, exe, explorer));
         return checks.Report($"DropWheel.App M0 ({(explorer ? "Explorer" : "WinForms")} source)");
     }

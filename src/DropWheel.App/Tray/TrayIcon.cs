@@ -60,6 +60,26 @@ internal sealed unsafe class TrayIcon : IDisposable
         _current = null;
     }
 
+    /// <summary>
+    /// Shows a notification from the icon. Windows shows it as a toast, or not at all while notifications
+    /// are off or Focus Assist is on; the call succeeds either way, so the log says sent, not shown.
+    /// </summary>
+    public void Notify(string title, string text)
+    {
+        var data = Data(NOTIFY_ICON_DATA_FLAGS.NIF_INFO);
+        title.AsSpan().CopyTo(data.szInfoTitle.AsSpan());
+        text.AsSpan().CopyTo(data.szInfo.AsSpan());
+        data.dwInfoFlags = NOTIFY_ICON_INFOTIP_FLAGS.NIIF_WARNING;
+        if (PInvoke.Shell_NotifyIcon(NOTIFY_ICON_MESSAGE.NIM_MODIFY, &data))
+        {
+            FileLog.Info($"tray: notification sent: {title}");
+        }
+        else
+        {
+            FileLog.Error($"tray: Shell_NotifyIcon(NIM_MODIFY) failed to send '{title}'");
+        }
+    }
+
     private void Add()
     {
         var data = Data(NOTIFY_ICON_DATA_FLAGS.NIF_MESSAGE | NOTIFY_ICON_DATA_FLAGS.NIF_ICON | NOTIFY_ICON_DATA_FLAGS.NIF_TIP | NOTIFY_ICON_DATA_FLAGS.NIF_SHOWTIP);

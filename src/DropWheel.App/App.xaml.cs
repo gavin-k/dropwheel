@@ -141,7 +141,7 @@ public partial class App : Application
                 queueWindow.ShowKeys(changed.Keys.KeysFor(WheelMode.Convert));
             };
             var onboarding = _onboarding = new OnboardingWindow(settings, _queue, ui, settingsWindow.Show);
-            _wheel = new WheelWindow();
+            _wheel = new WheelWindow(white: commandLine.Contains("--white-wheel"));
             var controller = _controller = new WheelController(ui, _monitor, _host, _wheel, builder, _queue, recent, settings, tapper, longPress, typeAhead);
             _dock = new DockWindow(ui, _monitor, () => controller.IsOpen);
 
@@ -155,6 +155,8 @@ public partial class App : Application
                 ("退出 DropWheel", Shutdown),
             ]);
             _tray.Selected += () => queueWindow.Show();
+            _wheel.LooksFlat += () => _tray?.Notify("轮盘显示成了一整块白色",
+                "多半是显卡驱动卡住了。按 Win+Ctrl+Shift+B 重置显卡驱动；还不行就更新显卡驱动或重启电脑。");
             void ShowHome()
             {
                 if (settings.Current.OnboardingDone)
@@ -199,7 +201,8 @@ public partial class App : Application
 
     /// <summary>
     /// Diagnostic (<c>--wheel-preview [host]</c>): shows the wheel for a JPG at the centre of the primary
-    /// screen with the first sector hovered, optionally under the drop target host, then quits.
+    /// screen with the first sector hovered, optionally under the drop target host, then quits. With
+    /// <c>--white-wheel</c> the wheel draws as the flat white block a stuck graphics driver leaves.
     /// </summary>
     private async Task PreviewAsync(WheelBuilder builder, AppSettings settings, bool withHost)
     {
