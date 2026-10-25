@@ -1,6 +1,6 @@
 name: Release
 
-# 手动触发，或推送 v* 标签。产物：未签名的 x64 + ARM64 .msixbundle（以及单架构 .msix）。
+# 手动触发，或推送 v* 标签。产物：未签名的 x64 + ARM64 .msixbundle（以及单架构 .msix），和每个架构一个未签名的 .msi。
 # 签名留给 Store 提交 / 外部签名流程；仓库里不放任何证书。
 on:
   workflow_dispatch:
@@ -109,4 +109,52 @@ jobs:
             artifacts/x64/*.msix
             artifacts/arm64/*.msix
             artifacts/bundle/*.msixbundle
+          if-no-files-found: error
+
+  # MSI（WiX v5）：未打包、自包含的 publish 文件夹，按架构各一个 .msi，未签名。
+  msi:
+    name: MSI (x64 + arm64, unsigned)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - uses: actions/cache@v4
+        with:
+          path: tools/sidecars/.download
+          key: sidecars-${{ hashFiles('scripts/sidecars.lock') }}
+
+      - name: Fetch sidecars (x64 + arm64)
+        shell: pwsh
+        run: ./scripts/fetch-sidecars.ps1
+
+      # The publish folder is what the MSI installs, so its native code must be the architecture's own.
+      - name: Publish and build the MSIs
+        shell: pwsh
+        run: |
+          $machines = @{ x64 = 0x8664; ARM64 = 0xAA64 }
+          $natives = 'DropWheel.exe', 'sidecars/ffmpeg/ffmpeg.exe', 'pdfium.dll', 'libSkiaSharp.dll'
+          foreach ($plat in 'x64', 'ARM64') {
+            $publish = Join-Path $env:RUNNER_TEMP "publish-$plat"
+            dotnet publish src/DropWheel.App/DropWheel.App.csproj -c Release -r "win-$($plat.ToLowerInvariant())" "-p:Platform=$plat" -p:WindowsPackageType=None -p:WindowsAppSDKSelfContained=true -p:SelfContained=true -p:PublishProfile= -o $publish
+            if ($LASTEXITCODE -ne 0) { throw "publish $plat failed" }
+            foreach ($native in $natives) {
+              $file = Join-Path $publish $native
+              if (-not (Test-Path $file)) { throw "publish-$plat has no $native" }
+              $buf = [IO.File]::ReadAllBytes($file)
+              $machine = [BitConverter]::ToUInt16($buf, [BitConverter]::ToInt32($buf, 0x3C) + 4)
+              if ($machine -ne $machines[$plat]) { throw "publish-$plat/$native is machine 0x$('{0:X}' -f $machine), expected $plat" }
+            }
+            dotnet build installer/msi/DropWheel.Msi.wixproj -c Release "-p:Platform=$plat" "-p:PublishDir=$publish\" -o artifacts/msi
+            if ($LASTEXITCODE -ne 0) { throw "MSI $plat failed" }
+          }
+          Get-ChildItem artifacts/msi -Filter *.msi | Format-Table Name, @{n='MB';e={[math]::Round($_.Length/1MB,1)}}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DropWheel-msi-${{ github.ref_name }}
+          path: artifacts/msi/*.msi
           if-no-files-found: error

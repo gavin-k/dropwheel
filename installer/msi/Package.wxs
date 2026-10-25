@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Per-machine install into Program Files\DropWheel with a Start menu shortcut. Every file of the publish
+  folder is harvested, so the package follows whatever the app ships. Settings and logs under
+  %LOCALAPPDATA%\DropWheel are the user's and stay after an uninstall.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <Package Name="DropWheel" Manufacturer="Gavin Lee" Version="$(var.ProductVersion)" UpgradeCode="844E4C2C-7018-4368-A79A-002B046C41B8" Scope="perMachine" Language="2052" Codepage="936">
+    <SummaryInformation Description="DropWheel" />
+    <MajorUpgrade AllowSameVersionUpgrades="yes" DowngradeErrorMessage="已经装了更新版本的 DropWheel。" />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <Icon Id="DropWheel.ico" SourceFile="$(var.AppDir)\Assets\DropWheel.ico" />
+    <Property Id="ARPPRODUCTICON" Value="DropWheel.ico" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/gavin-k/dropwheel" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="DropWheel" />
+    </StandardDirectory>
+
+    <ComponentGroup Id="AppFiles" Directory="INSTALLFOLDER">
+      <Files Include="$(var.PublishDir)**" />
+    </ComponentGroup>
+
+    <!-- Windows Installer counts the Start menu as the user's profile, so the shortcut's key path is under HKCU (ICE38, ICE43). -->
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Component Id="StartMenuShortcut">
+        <Shortcut Id="StartMenuShortcut" Name="DropWheel" Target="[INSTALLFOLDER]DropWheel.exe" WorkingDirectory="INSTALLFOLDER" />
+        <RegistryValue Root="HKCU" Key="Software\DropWheel" Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+
+    <!--
+      An upgrade or uninstall first asks the running DropWheel to quit the way the tray's 退出 does; one
+      that has not gone five seconds later is ended, so no file stays in use and no restart is needed.
+    -->
+    <CustomAction Id="QuitDropWheel" Directory="INSTALLFOLDER" ExeCommand="&quot;[INSTALLFOLDER]DropWheel.exe&quot; --quit" Execute="immediate" Return="ignore" />
+    <util:CloseApplication Id="CloseDropWheel" Target="DropWheel.exe" RebootPrompt="no" Timeout="5" TerminateProcess="1" Condition="Installed OR WIX_UPGRADE_DETECTED" />
+
+    <!--
+      登录 Windows 时启动 without a package is a Run value the app writes for the user who switched it on;
+      removing DropWheel for good removes the installing user's, so Windows does not try to start a file that
+      is gone. An upgrade keeps it: the path stays the same.
+    -->
+    <SetProperty Id="RemoveSignInRun" Value="&quot;[System64Folder]reg.exe&quot; delete HKCU\Software\Microsoft\Windows\CurrentVersion\Run /v DropWheel /f" Before="RemoveSignInRun" Sequence="execute" />
+    <CustomAction Id="RemoveSignInRun" BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)" DllEntry="WixQuietExec" Execute="deferred" Impersonate="yes" Return="ignore" />
+
+    <InstallExecuteSequence>
+      <Custom Action="QuitDropWheel" Before="InstallValidate" Condition="Installed OR WIX_UPGRADE_DETECTED" />
+      <Custom Action="RemoveSignInRun" Before="InstallFinalize" Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+    </InstallExecuteSequence>
+
+    <Feature Id="Main">
+      <ComponentGroupRef Id="AppFiles" />
+      <ComponentRef Id="StartMenuShortcut" />
+    </Feature>
+  </Package>
+</Wix>

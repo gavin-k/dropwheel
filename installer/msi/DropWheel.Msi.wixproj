@@ -1,0 +1,33 @@
+<!--
+  WiX v5 MSI around an unpackaged, self-contained publish of DropWheel.App (WindowsPackageType=None).
+  v5 on purpose: from v6 the WiX binaries come under the Open Source Maintenance Fee EULA.
+  Not in DropWheel.slnx: it only builds on Windows, from a publish folder.
+
+  dotnet build installer/msi/DropWheel.Msi.wixproj -c Release -p:Platform=x64 -p:PublishDir=<publish folder>\ -p:ProductVersion=0.1.0
+-->
+<Project Sdk="WixToolset.Sdk/5.0.2">
+  <PropertyGroup>
+    <ProductVersion Condition="'$(ProductVersion)' == ''">$(VersionPrefix)</ProductVersion>
+    <InstallerPlatform Condition="'$(Platform)' == 'ARM64'">arm64</InstallerPlatform>
+    <OutputName>DropWheel-$(ProductVersion)-$(Platform)</OutputName>
+    <!--
+      ICE03: WinUI's satellite files carry language ids newer than the validator's list (1152 ug-CN, 1153 mi-NZ,
+      1169 gd-GB). ICE61: AllowSameVersionUpgrades lets a rebuild of the same version replace the last one.
+    -->
+    <SuppressIces>ICE03;ICE61</SuppressIces>
+    <DefineConstants>PublishDir=$(PublishDir);ProductVersion=$(ProductVersion);AppDir=$(MSBuildThisFileDirectory)..\..\src\DropWheel.App</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="WixToolset.Util.wixext" />
+  </ItemGroup>
+  <!-- WiX rebuilds only when a source changes; a new version or publish folder alone would leave the last MSI in place. -->
+  <Target Name="WriteDefinesCache" BeforeTargets="CoreCompile">
+    <WriteLinesToFile File="$(IntermediateOutputPath)defines.cache" Lines="$(DefineConstants)" Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <PropertyGroup>
+      <MSBuildAllProjects>$(MSBuildAllProjects);$(IntermediateOutputPath)defines.cache</MSBuildAllProjects>
+    </PropertyGroup>
+    <ItemGroup>
+      <FileWrites Include="$(IntermediateOutputPath)defines.cache" />
+    </ItemGroup>
+  </Target>
+</Project>

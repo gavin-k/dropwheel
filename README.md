@@ -38,7 +38,7 @@
 | Office 文档 | Open XML SDK（原生读写）+ LibreOffice headless（可选下载模块） | 旧版 DOC / PPT / XLS 仅输入 |
 | OCR | `Windows.Media.Ocr`（系统内置，25 语种）→ Windows AI `TextRecognizer`（Copilot+ PC）→ RapidOCR / Tesseract 回退 | 全部离线 |
 | 压缩包 | SharpCompress（读 ZIP / 7z / TAR / TAR.GZ / RAR，写 ZIP / 7z / TAR / TAR.GZ） | RAR 仅输入 |
-| 打包分发 | MSIX（Store + winget）· 稀疏包 + WiX MSI（企业直装） | `winapp` CLI 产出 x64 / ARM64 msixbundle |
+| 打包分发 | MSIX（Store + winget）· WiX v5 MSI（企业直装，稀疏包未做） | `winapp` CLI 产出 x64 / ARM64 msixbundle，WiX 产出各架构的 .msi |
 
 完整调研与替代方案对比见 [`docs/01-tech-stack.md`](docs/01-tech-stack.md)。
 
@@ -99,7 +99,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\setup-windows.ps1       # 加
 
 不经过脚本直接 `dotnet build` App 时，先运行一次 `.\scripts\fetch-sidecars.ps1`，否则输出里没有 ffmpeg，音视频目标会灰显。
 
-`build.sh` 在 Windows 的 Git Bash 下会改为构建整个 `DropWheel.slnx`（该分支尚未在 Windows 上实测，Windows 日常请用上面的 PowerShell 脚本）。CI 见 `.github/workflows/build.yml`（每次 push / PR）与 `release.yml`（`v*` 标签或手动触发，产出未签名 x64 + ARM64 `.msixbundle`）。
+`build.sh` 在 Windows 的 Git Bash 下会改为构建整个 `DropWheel.slnx`（该分支尚未在 Windows 上实测，Windows 日常请用上面的 PowerShell 脚本）。CI 见 `.github/workflows/build.yml`（每次 push / PR）与 `release.yml`（`v*` 标签或手动触发，产出未签名 x64 + ARM64 `.msixbundle` 和各架构一个 `.msi`，MSI 的做法见 `installer/README.md`）。
 
 ## 路线图
 
