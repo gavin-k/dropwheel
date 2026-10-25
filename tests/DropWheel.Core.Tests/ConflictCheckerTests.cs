@@ -30,6 +30,14 @@ public class ConflictCheckerTests
     }
 
     [Fact]
+    public void Only_the_convert_wheel_needs_keys()
+    {
+        ConflictChecker.Check(KeyBindings.Default.Rebound(WheelMode.Actions, Modifiers.None)).Should().BeEmpty();
+        ConflictChecker.Check(KeyBindings.Default.Rebound(WheelMode.Convert, Modifiers.None))
+            .Should().ContainSingle(c => c.Binding.Mode == WheelMode.Convert && c.Severity == ConflictSeverity.Error);
+    }
+
+    [Fact]
     public void AltGr_layout_warns_on_ctrl_alt()
         => ConflictChecker.Check(KeyBindings.Default, layoutHasAltGr: true)
             .Should().ContainSingle(c => c.Binding.Mode == WheelMode.Tools);

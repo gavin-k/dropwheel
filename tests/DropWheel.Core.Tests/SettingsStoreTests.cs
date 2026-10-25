@@ -95,6 +95,24 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public void A_version_1_file_gets_the_new_file_action_default_unless_its_set_was_edited()
+    {
+        File.WriteAllText(File_, """{ "version": 1, "actions": { "enabled": ["CopyPath", "MoveTo"] } }""");
+        var migrated = new SettingsStore(File_).Current;
+
+        File.WriteAllText(File_, """{ "version": 1, "actions": { "enabled": ["CopyPath"] } }""");
+        var edited = new SettingsStore(File_).Current;
+
+        File.WriteAllText(File_, """{ "version": 2, "actions": { "enabled": ["CopyPath", "MoveTo"] } }""");
+        var current = new SettingsStore(File_).Current;
+
+        migrated.Actions.Should().Be(FileActionSettings.Default);
+        migrated.Version.Should().Be(AppSettings.CurrentVersion);
+        edited.Actions.Enabled.Should().BeEquivalentTo([FileAction.CopyPath]);
+        current.Actions.Enabled.Should().BeEquivalentTo([FileAction.CopyPath, FileAction.MoveTo]);
+    }
+
+    [Fact]
     public void Request_carries_the_output_settings()
     {
         var settings = AppSettings.Default with { Output = new(OutputLocation.Folder, @"D:\out", "{name}_{n}", ConflictPolicy.Skip) };

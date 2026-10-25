@@ -5,9 +5,10 @@ namespace DropWheel.Core.Wheel;
 
 public enum WheelMode { Convert, Tools, Actions }
 
-public enum SlotSource { Recent, Recommended }
+public enum SlotSource { Recent, Recommended, Fixed }
 
 /// <summary>One of the six sectors.</summary>
+/// <param name="Operation">What runs a Tools or Actions item; null for a Convert item, which the graph resolves.</param>
 public sealed record WheelSlot(
     int Index,
     string ItemId,
@@ -15,21 +16,30 @@ public sealed record WheelSlot(
     string SubLabel,
     SlotSource Source,
     Availability Availability,
-    QualityEstimate? Quality);
+    QualityEstimate? Quality,
+    IWheelOperation? Operation = null);
 
 public sealed record WheelModel(WheelMode Mode, string CenterTitle, string CenterSubtitle, IReadOnlyList<WheelSlot> Slots)
 {
     public const int SlotCount = 6;
 }
 
-/// <summary>Builds the 6-slot wheel: 3 most-recent + 3 recommended, deduplicated, unavailable kept but greyed.</summary>
-public sealed class WheelBuilder(ConversionGraph graph, IRecentItems recent, IRecommender recommender)
+/// <summary>
+/// Builds the 6-slot wheel. Convert: 3 most-recent + 3 recommended, deduplicated. Tools and Actions: the
+/// operations for that mode and kind in registration order, so each keeps its place. Unavailable items
+/// are kept but greyed.
+/// </summary>
+public sealed class WheelBuilder(ConversionGraph graph, IRecentItems recent, IRecommender recommender, IReadOnlyList<IWheelOperation>? operations = null)
 {
     public WheelModel Build(IReadOnlyList<string> sourcePaths, WheelMode mode, AppSettings settings)
     {
         ArgumentOutOfRangeException.ThrowIfZero(sourcePaths.Count);
         var format = FormatRegistry.FromPath(sourcePaths[0]);
         var kind = format?.Kind ?? MediaKind.Unknown;
+        if (mode != WheelMode.Convert)
+        {
+            return BuildOperations(sourcePaths, mode, kind, settings);
+        }
 
         var picked = new List<(string id, SlotSource src)>();
         foreach (var id in recent.For(kind, mode).Take(3))
@@ -71,6 +81,22 @@ public sealed class WheelBuilder(ConversionGraph graph, IRecentItems recent, IRe
         var name = Path.GetFileName(sourcePaths[0]);
         var subtitle = sourcePaths.Count > 1 ? $"{sourcePaths.Count} 个文件" : (format?.DisplayName ?? "未知类型");
         return new WheelModel(mode, name, subtitle, slots);
+    }
+
+    private WheelModel BuildOperations(IReadOnlyList<string> sourcePaths, WheelMode mode, MediaKind kind, AppSettings settings)
+    {
+        var slots = (operations ?? []).Where(o => o.Mode == mode && o.AppliesTo(kind)).Take(WheelModel.SlotCount).Select((op, i) =>
+        {
+            var availability = op.Action is { } action && !settings.Actions.IsEnabled(action)
+                ? Availability.Unavailable(FileActionSettings.DisabledReason) with { Cause = UnavailableCause.DisabledInSettings }
+                : op.Check(settings.Request(sourcePaths, op.Id));
+            var subLabel = availability.IsAvailable ? op.Hint : availability.Cause == UnavailableCause.DisabledInSettings ? "未开启" : "不可用";
+            return new WheelSlot(i, op.Id, op.Label, subLabel, SlotSource.Fixed, availability, null, op);
+        }).ToList();
+
+        var title = mode == WheelMode.Tools ? "工具" : "动作";
+        var subtitle = sourcePaths.Count > 1 ? $"{title} · {sourcePaths.Count} 项" : title;
+        return new WheelModel(mode, Path.GetFileName(sourcePaths[0]), subtitle, slots);
     }
 }
 

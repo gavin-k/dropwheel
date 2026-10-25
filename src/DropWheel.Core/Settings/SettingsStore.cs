@@ -17,7 +17,7 @@ public sealed class SettingsStore
     {
         _path = path;
         var (loaded, problem) = JsonFile.Load(path, SettingsJson.Default.AppSettings, AppSettings.Default);
-        Current = Repair(loaded);
+        Current = Migrate(Repair(loaded));
         LoadProblem = problem;
     }
 
@@ -50,6 +50,16 @@ public sealed class SettingsStore
         Output = s.Output ?? new(),
         Actions = s.Actions?.Enabled is null ? FileActionSettings.Default : s.Actions,
         Privacy = s.Privacy ?? new(),
+    };
+
+    /// <summary>
+    /// Version 1 had no file actions in the settings window, so its files hold that version's default,
+    /// copy path and move to only. Those get today's default; a hand-edited set is kept.
+    /// </summary>
+    private static AppSettings Migrate(AppSettings s) => s.Version >= 2 ? s : s with
+    {
+        Version = AppSettings.CurrentVersion,
+        Actions = s.Actions.Enabled.SetEquals([FileAction.CopyPath, FileAction.MoveTo]) ? FileActionSettings.Default : s.Actions,
     };
 }
 

@@ -22,7 +22,8 @@ public sealed record PrivacySettings(bool StrictOffline = false, bool CheckForUp
 /// <summary>Everything the user can change in Settings. Immutable; <see cref="SettingsStore"/> swaps whole snapshots.</summary>
 public sealed record AppSettings
 {
-    public const int CurrentVersion = 1;
+    /// <summary>2: the Actions wheel's items got a new default, see <see cref="SettingsStore"/>.</summary>
+    public const int CurrentVersion = 2;
 
     public int Version { get; init; } = CurrentVersion;
 

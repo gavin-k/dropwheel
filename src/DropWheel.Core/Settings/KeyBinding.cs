@@ -58,7 +58,10 @@ public enum ConflictSeverity { None, Warning, Error }
 
 public sealed record KeyConflict(KeyBinding Binding, ConflictSeverity Severity, string Message);
 
-/// <summary>Flags clashes with Explorer drag semantics and keyboard-layout quirks. Shown live in Settings.</summary>
+/// <summary>
+/// Flags clashes with Explorer drag semantics and keyboard-layout quirks. Shown live in Settings.
+/// The Convert wheel must have keys; any other wheel with none is turned off.
+/// </summary>
 public static class ConflictChecker
 {
     public static IReadOnlyList<KeyConflict> Check(KeyBindings bindings, bool layoutHasAltGr = false)
@@ -70,7 +73,11 @@ public static class ConflictChecker
         {
             if (b.Keys == Modifiers.None)
             {
-                list.Add(new(b, ConflictSeverity.Error, "必须至少选择一个修饰键。"));
+                if (b.Mode == WheelMode.Convert)
+                {
+                    list.Add(new(b, ConflictSeverity.Error, "必须至少选择一个修饰键。"));
+                }
+
                 continue;
             }
 
