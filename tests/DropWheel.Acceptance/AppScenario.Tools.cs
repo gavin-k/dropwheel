@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO.Compression;
 using System.Text;
 using Windows.Win32.UI.Input.KeyboardAndMouse;
@@ -10,9 +11,11 @@ internal static partial class AppScenario
 
     /// <summary>
     /// The Tools wheel, opened by a Ctrl+Alt tap mid-drag: 缩小 halves a JPG into a copy named by its new
-    /// size, and 解压 unpacks a zip into a folder named after it, which 撤销 then moves to the Recycle Bin.
+    /// size, 解压 unpacks a zip into a folder named after it, which 撤销 then moves to the Recycle Bin,
+    /// 拆分 PDF puts each page of a PDF in a folder, and 压缩视频 makes a smaller H.264 MP4 with the
+    /// bundled ffmpeg.
     /// </summary>
-    private static void Tools(Checks checks, AppLog log, bool explorer)
+    private static void Tools(Checks checks, AppLog log, string exe, bool explorer)
     {
         var dir = Path.Combine(Path.GetTempPath(), "DropWheelAcceptance", "tools");
         Directory.CreateDirectory(dir);
@@ -29,6 +32,8 @@ internal static partial class AppScenario
         var stamp = DateTime.Now.ToString("HHmmss");
         HalfSize(checks, log, Path.Combine(dir, $"half-{stamp}.jpg"), explorer);
         Extract(checks, log, Path.Combine(dir, $"unzip-{stamp}.zip"), explorer);
+        SplitPdf(checks, log, Path.Combine(dir, $"split-{stamp}.pdf"), explorer);
+        CompressVideo(checks, log, Path.Combine(Path.GetDirectoryName(exe)!, "sidecars", "ffmpeg"), Path.Combine(dir, $"video-{stamp}.mp4"), explorer);
     }
 
     private static void HalfSize(Checks checks, AppLog log, string jpg, bool explorer)
@@ -94,5 +99,73 @@ internal static partial class AppScenario
         checks.Check("撤销 moves the unpacked folder to the Recycle Bin and keeps the zip",
             undone is not null && !Directory.Exists(expected) && binned.Contains(Path.GetFileName(expected)) && File.Exists(zip),
             $"{how}; {undone ?? "no 'queue: undid' line within 10 s"}; folder exists={Directory.Exists(expected)}; Recycle Bin items from the folder: [{string.Join(", ", binned)}]");
+    }
+
+    private static void SplitPdf(Checks checks, AppLog log, string pdf, bool explorer)
+    {
+        WritePdf(pdf, "one", "two");
+        if (DropOnWheel(checks, log, pdf, "tool.split-pdf", explorer, CtrlAlt) is not { } label)
+        {
+            return;
+        }
+
+        var done = log.WaitFor(30000, $"queue: {label} ");
+        var output = done is null ? null : OutputsRegex().Match(done) is { Success: true } m ? m.Groups[1].Value : null;
+        var stem = Path.GetFileNameWithoutExtension(pdf);
+        var expected = Path.Combine(Path.GetDirectoryName(pdf)!, stem);
+        var pages = output is not null && Directory.Exists(output)
+            ? Directory.GetFiles(output).Select(f => $"{Path.GetFileName(f)}{(File.ReadAllText(f, Encoding.Latin1).StartsWith("%PDF-", StringComparison.Ordinal) ? "" : " (not a PDF)")}")
+                .Order(StringComparer.Ordinal).ToList()
+            : [];
+        checks.Check("拆分 PDF puts each page in a PDF of its own in a folder named after it",
+            string.Equals(output, expected, StringComparison.OrdinalIgnoreCase) && pages.SequenceEqual([$"{stem}-01.pdf", $"{stem}-02.pdf"]),
+            $"{done ?? "no queue outcome within 30 s"}; [{string.Join(", ", pages)}]");
+    }
+
+    private static void CompressVideo(Checks checks, AppLog log, string sidecar, string mp4, bool explorer)
+    {
+        const string Name = "压缩视频 makes a smaller H.264 MP4 with the bundled ffmpeg";
+        Run(Path.Combine(sidecar, "ffmpeg.exe"),
+            ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=30:duration=4", "-f", "lavfi", "-i", "sine=duration=4",
+             "-c:v", "mpeg4", "-q:v", "2", "-c:a", "aac", "-y", mp4]);
+        if (!File.Exists(mp4))
+        {
+            checks.Check(Name, false, $"could not make the test video with {sidecar}");
+            return;
+        }
+
+        if (DropOnWheel(checks, log, mp4, "tool.compress-video", explorer, CtrlAlt) is not { } label)
+        {
+            return;
+        }
+
+        var done = log.WaitFor(120000, $"queue: {label} ");
+        var output = done is null ? null : OutputsRegex().Match(done) is { Success: true } m ? m.Groups[1].Value : null;
+        var expected = Path.Combine(Path.GetDirectoryName(mp4)!, $"{Path.GetFileNameWithoutExtension(mp4)}-压缩.mp4");
+        var found = output is not null && File.Exists(output);
+        var stream = found ? Run(Path.Combine(sidecar, "ffprobe.exe"),
+            ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=codec_name,width,height", "-of", "csv=p=0", output!]) : "";
+        var sizes = found ? $"{new FileInfo(mp4).Length} → {new FileInfo(output!).Length} bytes" : "no output";
+        checks.Check(Name,
+            found && string.Equals(output, expected, StringComparison.OrdinalIgnoreCase) && new FileInfo(output!).Length < new FileInfo(mp4).Length && stream == "h264,1280,720",
+            $"{done ?? "no queue outcome within 120 s"}; {sizes}; video stream [{stream}]");
+    }
+
+    /// <summary>Runs a sidecar tool for at most a minute and returns what it printed, trimmed.</summary>
+    private static string Run(string tool, string[] arguments)
+    {
+        using var process = Process.Start(new ProcessStartInfo(tool, arguments) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true });
+        if (process is null)
+        {
+            return "";
+        }
+
+        var output = process.StandardOutput.ReadToEndAsync();
+        if (!process.WaitForExit(60000))
+        {
+            process.Kill();
+        }
+
+        return output.Wait(5000) ? output.Result.Trim() : "";
     }
 }

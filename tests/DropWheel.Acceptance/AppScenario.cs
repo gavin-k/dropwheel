@@ -26,7 +26,7 @@ namespace DropWheel.Acceptance;
 /// a Word document with that text. Then the task window's 重试, 打开位置 and 取消 buttons are pressed, the
 /// Actions wheel opened with a Win tap copies a path, zips a folder, deletes a file once Delete is ticked
 /// in settings and starts a rename in Explorer, the Tools wheel opened with a Ctrl+Alt tap halves an
-/// image and unpacks a zip, and settings changed in the settings window take effect
+/// image, unpacks a zip, splits a PDF and compresses a video, and settings changed in the settings window take effect
 /// on the next drag. Last, a second launch with no settings file walks through the first-run guide. The
 /// app is started by path and observed only through its log file and UI Automation, so this project never
 /// references DropWheel.App.
@@ -105,7 +105,7 @@ internal static partial class AppScenario
                 Attempt(checks, "pdf to word", () => PdfToDocx(checks, log, dir, explorer));
                 Attempt(checks, "task window buttons", () => QueueButtons(checks, log, exe, explorer));
                 Attempt(checks, "file actions", () => FileActions(checks, log, app.Id, explorer));
-                Attempt(checks, "tools", () => Tools(checks, log, explorer));
+                Attempt(checks, "tools", () => Tools(checks, log, exe, explorer));
                 Attempt(checks, "settings", () => ChangeSettings(checks, log, profile, folder, explorer));
             }
         }
@@ -749,18 +749,21 @@ internal static partial class AppScenario
         bitmap.Save(path, ImageFormat.Jpeg);
     }
 
-    /// <summary>A one-page 300 × 100 pt PDF with <paramref name="text"/> in Helvetica, written by hand.</summary>
-    private static void WritePdf(string path, string text)
+    /// <summary>A PDF of 300 × 100 pt pages, one per text, each text in Helvetica; written by hand.</summary>
+    private static void WritePdf(string path, params string[] pages)
     {
-        var content = $"BT /F1 18 Tf 10 60 Td ({text}) Tj ET";
-        string[] objects =
-        [
-            "<< /Type /Catalog /Pages 2 0 R >>",
-            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 100] /Contents 4 0 R "
-                + "/Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> >>",
-            $"<< /Length {content.Length} >>\nstream\n{content}\nendstream",
-        ];
+        var objects = new List<string> { "<< /Type /Catalog /Pages 2 0 R >>", "" };
+        var kids = new List<string>();
+        foreach (var text in pages)
+        {
+            var content = $"BT /F1 18 Tf 10 60 Td ({text}) Tj ET";
+            objects.Add($"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 100] /Contents {objects.Count + 2} 0 R "
+                + "/Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> >>");
+            kids.Add($"{objects.Count} 0 R");
+            objects.Add($"<< /Length {content.Length} >>\nstream\n{content}\nendstream");
+        }
+
+        objects[1] = $"<< /Type /Pages /Kids [{string.Join(' ', kids)}] /Count {kids.Count} >>";
         var pdf = new StringBuilder("%PDF-1.4\n");
         var offsets = new List<int>();
         foreach (var (body, number) in objects.Select((o, i) => (o, i + 1)))
@@ -770,9 +773,9 @@ internal static partial class AppScenario
         }
 
         var xref = pdf.Length;
-        pdf.Append(CultureInfo.InvariantCulture, $"xref\n0 {objects.Length + 1}\n0000000000 65535 f \n");
+        pdf.Append(CultureInfo.InvariantCulture, $"xref\n0 {objects.Count + 1}\n0000000000 65535 f \n");
         offsets.ForEach(o => pdf.Append(CultureInfo.InvariantCulture, $"{o:D10} 00000 n \n"));
-        pdf.Append(CultureInfo.InvariantCulture, $"trailer\n<< /Size {objects.Length + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n");
+        pdf.Append(CultureInfo.InvariantCulture, $"trailer\n<< /Size {objects.Count + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n");
         File.WriteAllText(path, pdf.ToString(), Encoding.Latin1);
     }
 
