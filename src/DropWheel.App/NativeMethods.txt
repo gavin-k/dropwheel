@@ -55,7 +55,7 @@ WM_CONTEXTMENU
 AllowSetForegroundWindow
 ASFW_ANY
 
-// Task window: 打开位置
+// Task window 打开位置 and the guide's 试一试: select a file in Explorer
 ILCreateFromPath
 ILFree
 SHOpenFolderAndSelectItems

@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using DropWheel.App.Diagnostics;
+using DropWheel.App.Onboarding;
 using DropWheel.App.Overlay;
 using DropWheel.App.Queue;
 using DropWheel.App.Settings;
@@ -23,9 +24,10 @@ namespace DropWheel.App;
 
 /// <summary>
 /// Composition: the conversion engines, job queue with Recycle Bin undo, the hook thread and drop target
-/// host from DropWheel.Shell, the wheel overlay, the task and settings windows and the tray icon. Key
-/// changes made in Settings reach the hooks at once. One instance per session; launching again shows
-/// the task window, <c>DropWheel.exe --quit</c> exits the running one.
+/// host from DropWheel.Shell, the wheel overlay, the task, settings and first-run guide windows and the
+/// tray icon. Key changes made in Settings reach the hooks at once. One instance per session; launching
+/// again shows the task window (the guide, until it has been seen), <c>DropWheel.exe --quit</c> exits
+/// the running one.
 /// The app lives in the tray: closing the task window hides it, the tray menu's 退出 quits.
 /// </summary>
 [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1001", Justification = "Lives as long as the process; Shutdown disposes everything.")]
@@ -35,6 +37,7 @@ public partial class App : Application
     private TrayIcon? _tray;
     private QueueWindow? _queueWindow;
     private SettingsWindow? _settingsWindow;
+    private OnboardingWindow? _onboarding;
     private bool _shuttingDown;
     private DragMonitor? _monitor;
     private DropTargetHost? _host;
@@ -118,6 +121,7 @@ public partial class App : Application
                 winKey.Rebind(active);
                 queueWindow.ShowKeys(changed.Keys.KeysFor(WheelMode.Convert));
             };
+            var onboarding = _onboarding = new OnboardingWindow(settings, _queue, ui, settingsWindow.Show);
             _wheel = new WheelWindow();
             _controller = new WheelController(ui, _monitor, _host, _wheel, builder, _queue, recent, settings, tapper);
 
@@ -127,13 +131,26 @@ public partial class App : Application
             [
                 ("打开任务窗口", () => queueWindow.Show()),
                 ("设置", settingsWindow.Show),
+                ("入门指南", onboarding.Show),
                 ("退出 DropWheel", Shutdown),
             ]);
             _tray.Selected += () => queueWindow.Show();
-            _instance.Listen(show: () => ui.TryEnqueue(() => queueWindow.Show()), quit: () => ui.TryEnqueue(Shutdown));
+            void ShowHome()
+            {
+                if (settings.Current.OnboardingDone)
+                {
+                    queueWindow.Show();
+                }
+                else
+                {
+                    onboarding.Show();
+                }
+            }
 
-            // Until there is a first-run guide, a new user gets the task window and its how-to line, unless
-            // Windows started the app at sign-in (the startup task in Package.appxmanifest): then only the tray.
+            _instance.Listen(show: () => ui.TryEnqueue(ShowHome), quit: () => ui.TryEnqueue(Shutdown));
+
+            // A user who has not seen the guide gets it, unless Windows started the app at sign-in (the
+            // startup task in Package.appxmanifest): then only the tray.
             var atSignIn = AppInstance.GetCurrent().GetActivatedEventArgs().Kind == ExtendedActivationKind.StartupTask;
             if (atSignIn)
             {
@@ -141,7 +158,7 @@ public partial class App : Application
             }
             else if (!settings.Current.OnboardingDone)
             {
-                queueWindow.Show();
+                onboarding.Show();
             }
 
             await _wheel.PrewarmAsync().ConfigureAwait(true);
@@ -198,6 +215,7 @@ public partial class App : Application
         _host?.Dispose();
         _wheel?.Close();
         _settingsWindow?.Close();
+        _onboarding?.Close();
         _queueWindow?.Close();
         if (_queue is not null && !_queue.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(2)))
         {

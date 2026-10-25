@@ -169,8 +169,8 @@ internal sealed class QueueWindow
         _rows.Children.Remove(row.Element);
     }
 
-    /// <summary>Opens the folder in Explorer with the first output selected, reusing a window already showing it.</summary>
-    private static unsafe void Reveal(Job job, Row row)
+    /// <summary>Opens the folder in Explorer with the first output selected.</summary>
+    private static void Reveal(Job job, Row row)
     {
         var path = job.Outputs.FirstOrDefault(p => File.Exists(p) || Directory.Exists(p));
         if (path is null)
@@ -181,28 +181,9 @@ internal sealed class QueueWindow
             return;
         }
 
-        var item = PInvoke.ILCreateFromPath(path);
-        if (item is null)
-        {
-            FileLog.Info($"queue: could not show {path} in Explorer: no item ID for it");
-            return;
-        }
-
-        try
-        {
-            var result = PInvoke.SHOpenFolderAndSelectItems(item, 0, null, 0);
-            if (result.Failed)
-            {
-                FileLog.Info($"queue: could not show {path} in Explorer: 0x{result.Value:X8}");
-                return;
-            }
-
-            FileLog.Info($"queue: showed {path} in its folder");
-        }
-        finally
-        {
-            PInvoke.ILFree(item);
-        }
+        FileLog.Info(Explorer.Select(path) is { } problem
+            ? $"queue: could not show {path} in Explorer: {problem}"
+            : $"queue: showed {path} in its folder");
     }
 
     private async Task UndoAsync(Job job, Row row)
