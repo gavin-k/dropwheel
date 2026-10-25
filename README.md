@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-orange.svg)](LICENSE)
 ![Status: pre-alpha](https://img.shields.io/badge/status-pre--alpha-lightgrey)
 
-> **状态：pre-alpha，M1 开发中。** 已能在资源管理器里拖拽转换图片、字幕、压缩包、音视频和 PDF；未签名的 x64 / ARM64 包由 `release.yml` 产出。设置窗口能改唤出键、输出位置、文件名和重名策略，第一次启动有入门指南；Tools / Actions 轮盘还没做。产品名「DropWheel」为工作代号，随时可能更改。
+> **状态：pre-alpha，M1 开发中。** 已能在资源管理器里拖拽转换图片、字幕、压缩包、音视频和 PDF；未签名的 x64 / ARM64 包由 `release.yml` 产出。设置窗口能改唤出键、输出位置、文件名和重名策略，第一次启动有入门指南。工具轮盘（Ctrl+Alt）有压缩图片、缩小、合成 / 合并 / 拆分 PDF、压缩视频、提取音频、解压等十一项；动作轮盘（Win）有复制路径、移动到、重命名、压缩等六项。产品名「DropWheel」为工作代号，随时可能更改。
 
 ## 它是什么
 

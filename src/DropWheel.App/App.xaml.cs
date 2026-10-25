@@ -93,12 +93,12 @@ public partial class App : Application
             graph.Register(new PdfConverter());
             _ = Task.Run(() =>
             {
-                FileLog.Info(ffmpeg.Tools is { } tools ? $"ffmpeg sidecar: {tools.Ffmpeg}" : "ffmpeg sidecar not found; audio and video targets are greyed out");
+                FileLog.Info(ffmpeg.Tools is { } tools ? $"ffmpeg sidecar: {tools.Ffmpeg}" : "ffmpeg sidecar not found; audio and video targets and video tools are greyed out");
                 ffmpeg.Warmup();
             });
             var files = new ShellFileOperations();
             _queue = new JobQueue(graph, new UndoLedger(files));
-            IReadOnlyList<IWheelOperation> operations = [.. FileActions.Create(files, new Desktop(ui)), .. EngineTools.Create(archives)];
+            IReadOnlyList<IWheelOperation> operations = [.. FileActions.Create(files, new Desktop(ui)), .. EngineTools.Create(archives, ffmpeg)];
             var dataDir = ArgValue(commandLine, "--data-dir") ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DropWheel");
             var settings = new SettingsStore(Path.Combine(dataDir, "settings.json"));
             var recent = new RecentItems(path: Path.Combine(dataDir, "recent.json"));
