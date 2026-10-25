@@ -33,4 +33,25 @@ public class ConflictCheckerTests
     public void AltGr_layout_warns_on_ctrl_alt()
         => ConflictChecker.Check(KeyBindings.Default, layoutHasAltGr: true)
             .Should().ContainSingle(c => c.Binding.Mode == WheelMode.Tools);
+
+    [Fact]
+    public void Rebinding_a_wheel_changes_only_its_keys_and_adds_a_missing_one()
+    {
+        KeyBindings.Default.Rebound(WheelMode.Convert, Modifiers.Ctrl | Modifiers.Shift).Bindings.Should().Equal(
+            new KeyBinding(WheelMode.Convert, Modifiers.Ctrl | Modifiers.Shift),
+            new KeyBinding(WheelMode.Tools, Modifiers.Ctrl | Modifiers.Alt),
+            new KeyBinding(WheelMode.Actions, Modifiers.Win));
+
+        var none = KeyBindings.Default with { Bindings = [] };
+        none.KeysFor(WheelMode.Convert).Should().Be(Modifiers.None);
+        none.Rebound(WheelMode.Convert, Modifiers.Alt).KeysFor(WheelMode.Convert).Should().Be(Modifiers.Alt);
+    }
+
+    [Theory]
+    [InlineData(Modifiers.Shift, "Shift")]
+    [InlineData(Modifiers.Shift | Modifiers.Ctrl, "Ctrl+Shift")]
+    [InlineData(Modifiers.Shift | Modifiers.Alt | Modifiers.Ctrl | Modifiers.Win, "Win+Ctrl+Alt+Shift")]
+    [InlineData(Modifiers.None, "")]
+    public void Keys_are_named_in_the_order_windows_writes_shortcuts(Modifiers keys, string expected)
+        => ModifierNames.Of(keys).Should().Be(expected);
 }

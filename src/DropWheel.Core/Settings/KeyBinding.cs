@@ -32,6 +32,26 @@ public sealed record KeyBindings(
             new(WheelMode.Tools, Modifiers.Ctrl | Modifiers.Alt),
             new(WheelMode.Actions, Modifiers.Win),
         ]);
+
+    /// <summary>The keys bound to <paramref name="mode"/>, or none.</summary>
+    public Modifiers KeysFor(WheelMode mode) => Bindings.FirstOrDefault(b => b.Mode == mode)?.Keys ?? Modifiers.None;
+
+    /// <summary>These bindings with <paramref name="mode"/> on <paramref name="keys"/>, added if <paramref name="mode"/> had none.</summary>
+    public KeyBindings Rebound(WheelMode mode, Modifiers keys) => this with
+    {
+        Bindings = Bindings.Any(b => b.Mode == mode)
+            ? [.. Bindings.Select(b => b.Mode == mode ? b with { Keys = keys } : b)]
+            : [.. Bindings, new(mode, keys)],
+    };
+}
+
+public static class ModifierNames
+{
+    private static readonly (Modifiers Key, string Name)[] InWindowsOrder =
+        [(Modifiers.Win, "Win"), (Modifiers.Ctrl, "Ctrl"), (Modifiers.Alt, "Alt"), (Modifiers.Shift, "Shift")];
+
+    /// <summary>"Ctrl+Alt": the keys in the order Windows writes shortcuts, empty for none.</summary>
+    public static string Of(Modifiers keys) => string.Join("+", InWindowsOrder.Where(k => (keys & k.Key) != 0).Select(k => k.Name));
 }
 
 public enum ConflictSeverity { None, Warning, Error }
