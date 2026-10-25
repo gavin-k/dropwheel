@@ -19,15 +19,17 @@ namespace DropWheel.App;
 /// <summary>
 /// One drag's worth of wheel: a modifier tap opens it at the pointer, DragEnter on the drop target host
 /// says which files are being dragged, a drop on a sector enqueues the conversion or the file action.
-/// The wheels are Convert, Tools and Actions; see <see cref="Modes"/>.
+/// The wheels are Convert, Tools and Actions; see <see cref="Modes"/>. Letters and digits typed on the
+/// Convert wheel search every target the files can become, and the sectors show the best matches.
 ///
 /// The wheel closes on Dropped / Canceled from the host, on the hook seeing the button go up (after a
 /// grace period, because the hook sees the button-up before OLE delivers the drop), and on a watchdog
 /// that polls the physical button, so a lost hook cannot leave the wheel on screen.
 ///
-/// Threads: Invoked and PhaseChanged come from the hook thread, Entered / Hovered / Dropped / Canceled
-/// from the host thread. Everything that touches a window is queued to the UI thread; the session is
-/// only replaced on the UI thread.
+/// Threads: Invoked, Typed and PhaseChanged come from the hook thread, Entered / Hovered / Dropped /
+/// Canceled from the host thread. Everything that touches a window is queued to the UI thread; the session
+/// is only replaced on the UI thread. The model is rebuilt on the host thread when the files arrive and on
+/// the UI thread when the search changes, under the session's lock.
 /// </summary>
 internal sealed class WheelController : IDisposable
 {
@@ -43,6 +45,7 @@ internal sealed class WheelController : IDisposable
     private readonly IRecentItems _recent;
     private readonly SettingsStore _settings;
     private readonly ModifierTapper _tapper;
+    private readonly TypeAhead _typeAhead;
     private readonly DispatcherQueueTimer _idleGrace;
     private readonly DispatcherQueueTimer _watchdog;
     private volatile Session? _session;
@@ -57,7 +60,8 @@ internal sealed class WheelController : IDisposable
         JobQueue queue,
         IRecentItems recent,
         SettingsStore settings,
-        ModifierTapper tapper)
+        ModifierTapper tapper,
+        TypeAhead typeAhead)
     {
         _ui = ui;
         _monitor = monitor;
@@ -68,6 +72,7 @@ internal sealed class WheelController : IDisposable
         _recent = recent;
         _settings = settings;
         _tapper = tapper;
+        _typeAhead = typeAhead;
 
         _idleGrace = ui.CreateTimer();
         _idleGrace.Interval = IdleGrace;
@@ -78,6 +83,7 @@ internal sealed class WheelController : IDisposable
         _watchdog.Tick += (_, _) => CheckButton();
 
         _tapper.Invoked += OnInvoked;
+        _typeAhead.Typed += OnTyped;
         _monitor.PhaseChanged += OnPhaseChanged;
         _host.Entered += OnEntered;
         _host.Hovered += OnHovered;
@@ -92,6 +98,7 @@ internal sealed class WheelController : IDisposable
     public void Dispose()
     {
         _tapper.Invoked -= OnInvoked;
+        _typeAhead.Typed -= OnTyped;
         _monitor.PhaseChanged -= OnPhaseChanged;
         _host.Entered -= OnEntered;
         _host.Hovered -= OnHovered;
@@ -110,6 +117,8 @@ internal sealed class WheelController : IDisposable
         var point = _monitor.LastPoint;
         _ui.TryEnqueue(() => Open(mode, point, tappedAt));
     }
+
+    private void OnTyped(char c) => _ui.TryEnqueue(() => Type(c));
 
     private void OnPhaseChanged(DragPhase phase)
     {
@@ -136,15 +145,14 @@ internal sealed class WheelController : IDisposable
         }
 
         // Built here, before DragEnter computes its first effect, so the very first DragOver already
-        // hit-tests against the real enabled sectors.
-        var model = _builder.Build(paths, session.Mode, session.Settings);
-        session.Model = model;
-        var enabled = Enumerable.Range(0, WheelModel.SlotCount).Select(i => i < model.Slots.Count && model.Slots[i].Availability.IsAvailable).ToArray();
-        _host.Show(session.Placement with { EnabledSectors = enabled });
-        FileLog.Info($"wheel: {paths.Count} file(s) entered +{Stopwatch.GetElapsedTime(session.TappedAt).TotalMilliseconds:F0} ms after tap, slots {string.Join(",", model.Slots.Select(s => $"{s.Index}={s.ItemId}{(s.Availability.IsAvailable ? "" : "(off)")}"))}");
+        // hit-tests against the real enabled sectors. Anything typed since the tap is searched already.
+        session.Paths = paths;
+        var model = Rebuild(session)!;
+        FileLog.Info($"wheel: {paths.Count} file(s) entered +{Stopwatch.GetElapsedTime(session.TappedAt).TotalMilliseconds:F0} ms after tap, slots {Slots(model)}");
         _ui.TryEnqueue(() =>
         {
-            if (_session == session)
+            // A search typed meanwhile has already shown a newer model.
+            if (_session == session && session.Model == model)
             {
                 _wheel.SetModel(model);
             }
@@ -209,6 +217,7 @@ internal sealed class WheelController : IDisposable
         var onHub = WheelGeometry.OnHub((point.X - x) / scale, (point.Y - y) / scale);
         var placement = new WheelPlacement(x, y, scale, new bool[WheelModel.SlotCount], onHub);
         _session = new Session(mode, placement, tappedAt, _settings.Current);
+        _typeAhead.Listening = mode == WheelMode.Convert;
 
         // Order matters: the host has to end up above the wheel. If the wheel were on top, OLE would see
         // the drag leave the host and the host would report a cancel.
@@ -230,10 +239,67 @@ internal sealed class WheelController : IDisposable
         }
 
         _session = null;
+        _typeAhead.Listening = false;
         _host.Hide();
         _wheel.Hide();
         FileLog.Info($"wheel: closed ({why})");
     }
+
+    private void Type(char c)
+    {
+        var session = _session;
+        if (session is null || session.Mode != WheelMode.Convert)
+        {
+            return;
+        }
+
+        WheelModel? model;
+        lock (session.Gate)
+        {
+            var query = session.Query;
+            var next = c == TypeAhead.Backspace ? query[..Math.Max(0, query.Length - 1)] : query.Length < WheelModel.MaxQuery ? query + c : query;
+            if (next == query)
+            {
+                return;
+            }
+
+            session.Query = next;
+            model = Rebuild(session);
+        }
+
+        // Before the files are known there is nothing to search yet; DragEnter builds with the query.
+        if (model is not null)
+        {
+            _wheel.SetModel(model);
+            FileLog.Info($"wheel: search \"{session.Query}\", slots {Slots(model)}");
+        }
+    }
+
+    /// <summary>
+    /// Builds the session's model for its files and search and tells the host which sectors are live. Null
+    /// before the files are known. Any thread; the lock keeps the model and the host's sectors from two
+    /// builds from interleaving.
+    /// </summary>
+    private WheelModel? Rebuild(Session session)
+    {
+        lock (session.Gate)
+        {
+            if (session.Paths is not { } paths)
+            {
+                return null;
+            }
+
+            var model = _builder.Build(paths, session.Mode, session.Settings, session.Query);
+            session.Model = model;
+            var enabled = Enumerable.Range(0, WheelModel.SlotCount).Select(i => i < model.Slots.Count && model.Slots[i].Availability.IsAvailable).ToArray();
+            _host.Show(session.Placement with { EnabledSectors = enabled });
+            return model;
+        }
+    }
+
+    /// <summary>"0=png,1=webp,2=gif(off)", the form the acceptance run reads.</summary>
+    private static string Slots(WheelModel model)
+        => model.Slots.Count == 0 ? "none" : string.Join(",", model.Slots.Select(s => $"{s.Index}={s.ItemId}{(s.Availability.IsAvailable ? "" : "(off)")}"));
 
     private void CheckButton()
     {
@@ -273,5 +339,13 @@ internal sealed class WheelController : IDisposable
         public WheelPlacement Placement { get; } = placement;
         public long TappedAt { get; } = tappedAt;
         public volatile WheelModel? Model;
+
+        /// <summary>The files, once DragEnter said which.</summary>
+        public volatile IReadOnlyList<string>? Paths;
+
+        /// <summary>Guards <see cref="Query"/> and each rebuild of <see cref="Model"/>.</summary>
+        public Lock Gate { get; } = new();
+
+        public string Query { get; set; } = "";
     }
 }

@@ -27,7 +27,7 @@ internal static class HooksScenario
 
         var tapper = new ModifierTapper(KeyBindings.Default, TimeProvider.System);
         tapper.Invoked += m => invoked.Enqueue((m, Log.NowMs));
-        using var monitor = new DragMonitor(tapper, new WinKeyGate(KeyBindings.Default));
+        using var monitor = new DragMonitor(tapper, new WinKeyGate(KeyBindings.Default), new TypeAhead());
         monitor.PhaseChanged += p => phases.Enqueue((p, Log.NowMs));
         monitor.Faulted += faults.Enqueue;
         monitor.Start();

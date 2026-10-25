@@ -47,6 +47,7 @@ internal sealed class WheelWindow
     private readonly TextBlock _subtitle;
     private readonly TextBlock _hint;
     private WheelModel? _model;
+    private bool _hubFirst;
     private int _hovered = -1;
     private long _shownAt;
 
@@ -168,13 +169,21 @@ internal sealed class WheelWindow
         FileLog.Info($"overlay: prewarm {(frame.Task.IsCompleted ? "rendered" : "timed out")} after {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F0} ms");
     }
 
-    /// <summary>The slots to show; null while the files are not known yet (between the tap and DragEnter).</summary>
+    /// <summary>
+    /// The slots to show; null while the files are not known yet (between the tap and DragEnter). A search
+    /// replaces the model under a pointer that has not moved, so the hovered sector stays lit.
+    /// </summary>
     public void SetModel(WheelModel? model)
     {
         _model = model;
-        _hovered = -1;
+        if (model is null)
+        {
+            _hovered = -1;
+        }
+
         _title.Text = model?.CenterTitle ?? "";
         _subtitle.Text = model?.CenterSubtitle ?? "读取文件…";
+        ShowHint();
         for (var i = 0; i < WheelModel.SlotCount; i++)
         {
             var slot = model is not null && i < model.Slots.Count ? model.Slots[i] : null;
@@ -190,7 +199,13 @@ internal sealed class WheelWindow
     /// True while the wheel opened off-centre and its sectors wait for the pointer to visit the hub
     /// (see <see cref="SectorGate"/>); the hub then says so instead of the usual Esc hint.
     /// </summary>
-    public void SetHubHint(bool needed) => _hint.Text = needed ? "先移到圆心" : "Esc 取消";
+    public void SetHubHint(bool needed)
+    {
+        _hubFirst = needed;
+        ShowHint();
+    }
+
+    private void ShowHint() => _hint.Text = _hubFirst ? "先移到圆心" : _model?.HasMore == true ? "打字搜索 · Esc 取消" : "Esc 取消";
 
     public void SetHovered(int sector)
     {

@@ -17,13 +17,14 @@ public enum DragPhase { Idle, MaybeDragging, Dragging }
 ///   3. Left button up → <see cref="DragPhase.Idle"/>
 /// Modifier keys go to <see cref="ModifierTapper"/> with "dragging" meaning any phase but Idle: a drag
 /// without a drag image (WinForms DoDragDrop, or a run where SysDragImage never showed) still has to
-/// open the wheel. Win key events go through <see cref="WinKeyGate"/>.
+/// open the wheel. Win key events go through <see cref="WinKeyGate"/>, other keys through
+/// <see cref="TypeAhead"/>, which takes them while the Convert wheel is open.
 ///
 /// Windows silently removes a low-level hook whose callback runs past LowLevelHooksTimeout, so the
 /// callbacks only update state, and <see cref="PhaseChanged"/> and the tapper's Invoked are raised
 /// inline on this thread: handlers must post to their own thread and return.
 /// </summary>
-public sealed unsafe class DragMonitor(ModifierTapper tapper, WinKeyGate winKeys) : IDisposable
+public sealed unsafe class DragMonitor(ModifierTapper tapper, WinKeyGate winKeys, TypeAhead typeAhead) : IDisposable
 {
     private const int ThresholdPx = 8;
     private const uint PollMs = 25;
@@ -182,6 +183,11 @@ public sealed unsafe class DragMonitor(ModifierTapper tapper, WinKeyGate winKeys
                     {
                         tapper.OnOtherKey();
                     }
+
+                    if (typeAhead.Swallow((int)vk, down, HeldModifiers()))
+                    {
+                        return new LRESULT(1);
+                    }
                 }
                 else
                 {
@@ -222,6 +228,20 @@ public sealed unsafe class DragMonitor(ModifierTapper tapper, WinKeyGate winKeys
     {
         var button = PInvoke.GetSystemMetrics(SYSTEM_METRICS_INDEX.SM_SWAPBUTTON) != 0 ? VIRTUAL_KEY.VK_RBUTTON : VIRTUAL_KEY.VK_LBUTTON;
         return (PInvoke.GetAsyncKeyState((int)button) & 0x8000) != 0;
+    }
+
+    /// <summary>
+    /// Read from the key state rather than tracked here, so a key-up the hook never saw (Ctrl+Alt+Del takes
+    /// the ups to the secure desktop) cannot leave a modifier held for good. Inside the hook the state
+    /// still reflects the keys before this one.
+    /// </summary>
+    private static Modifiers HeldModifiers()
+    {
+        static bool Down(VIRTUAL_KEY key) => (PInvoke.GetAsyncKeyState((int)key) & 0x8000) != 0;
+        return (Down(VIRTUAL_KEY.VK_SHIFT) ? Modifiers.Shift : Modifiers.None)
+            | (Down(VIRTUAL_KEY.VK_CONTROL) ? Modifiers.Ctrl : Modifiers.None)
+            | (Down(VIRTUAL_KEY.VK_MENU) ? Modifiers.Alt : Modifiers.None)
+            | (Down(VIRTUAL_KEY.VK_LWIN) || Down(VIRTUAL_KEY.VK_RWIN) ? Modifiers.Win : Modifiers.None);
     }
 
     private void StopPolling()

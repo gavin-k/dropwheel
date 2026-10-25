@@ -23,7 +23,8 @@ namespace DropWheel.Acceptance;
 /// on the VTT sector must come out as UTF-8 WebVTT, a zip dropped on the 7z sector as a 7z, and a WAV dropped
 /// on the MP3 sector as an MP3 made by the bundled ffmpeg, a JPG dropped on the PDF sector as a PDF whose
 /// page, dropped on the PNG sector, comes back as a PNG, and a PDF with text dropped on the DOCX sector as
-/// a Word document with that text. Then the task window's 重试, 打开位置 and 取消 buttons are pressed, the
+/// a Word document with that text, and a JPG dropped on the BMP sector, which only typing "bmp" on the wheel
+/// brings up, as a bitmap. Then the task window's 重试, 打开位置 and 取消 buttons are pressed, the
 /// Actions wheel opened with a Win tap copies a path, zips a folder, deletes a file once Delete is ticked
 /// in settings and starts a rename in Explorer, the Tools wheel opened with a Ctrl+Alt tap halves an
 /// image, unpacks a zip, splits a PDF and compresses a video, and settings changed in the settings window take effect
@@ -103,6 +104,7 @@ internal static partial class AppScenario
                 Attempt(checks, "encode audio", () => EncodeAudio(checks, log, dir, explorer));
                 Attempt(checks, "image to pdf and back", () => RoundTripPdf(checks, log, dir, explorer));
                 Attempt(checks, "pdf to word", () => PdfToDocx(checks, log, dir, explorer));
+                Attempt(checks, "search a format", () => SearchFormat(checks, log, dir, explorer));
                 Attempt(checks, "task window buttons", () => QueueButtons(checks, log, exe, explorer));
                 Attempt(checks, "file actions", () => FileActions(checks, log, app.Id, explorer));
                 Attempt(checks, "tools", () => Tools(checks, log, exe, explorer));
@@ -403,13 +405,13 @@ internal static partial class AppScenario
     /// <summary>
     /// Drags <paramref name="source"/>, opens the wheel with <paramref name="key"/>, drops on the
     /// <paramref name="target"/> sector and waits for the queue. A <paramref name="quiet"/> key is tapped first
-    /// and must not open the wheel.
+    /// and must not open the wheel; <paramref name="search"/> is typed on the open wheel, see <see cref="TypeSearch"/>.
     /// </summary>
     /// <returns>The output path, or null after a failed check.</returns>
     private static string? ConvertThroughWheel(Checks checks, AppLog log, string source, string target, bool explorer,
-        VIRTUAL_KEY[]? keys = null, VIRTUAL_KEY? quiet = null)
+        VIRTUAL_KEY[]? keys = null, VIRTUAL_KEY? quiet = null, string? search = null)
     {
-        if (DropOnWheel(checks, log, source, target, explorer, keys, quiet) is not { } label)
+        if (DropOnWheel(checks, log, source, target, explorer, keys, quiet, search: search) is not { } label)
         {
             return null;
         }
@@ -427,7 +429,7 @@ internal static partial class AppScenario
     /// </summary>
     /// <returns>The job's label, or null after a failed check.</returns>
     private static string? DropOnWheel(Checks checks, AppLog log, string source, string target, bool explorer,
-        VIRTUAL_KEY[]? keys = null, VIRTUAL_KEY? quiet = null, Action? beforeRelease = null, Action<string>? afterDrop = null)
+        VIRTUAL_KEY[]? keys = null, VIRTUAL_KEY? quiet = null, Action? beforeRelease = null, Action<string>? afterDrop = null, string? search = null)
     {
         using var drag = DragSource.Open(source, explorer);
         var mid = drag.PressAndDrag();
@@ -446,8 +448,14 @@ internal static partial class AppScenario
         }
 
         var entered = log.WaitFor(2000, "file(s) entered");
+        if (search is not null && entered is not null)
+        {
+            entered = TypeSearch(checks, log, search) ?? $"no search line within 2 s after typing; {entered}";
+        }
+
         var sector = SlotOf(entered, target);
-        checks.Check($"{Path.GetExtension(source)} drag offers {target}", sector >= 0, entered ?? "no 'file(s) entered' line within 2 s");
+        checks.Check($"{Path.GetExtension(source)} drag offers {target}{(search is null ? "" : " once searched for")}", sector >= 0,
+            entered ?? "no 'file(s) entered' line within 2 s");
         if (sector < 0)
         {
             Input.MoveSmooth(mid, new Point(w.X, w.Y), 4, 30);

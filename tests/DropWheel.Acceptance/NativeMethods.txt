@@ -1,5 +1,6 @@
 // CsWin32 projections for the acceptance driver.
 SendInput
+GetAsyncKeyState
 INPUT
 VIRTUAL_KEY
 FindWindow

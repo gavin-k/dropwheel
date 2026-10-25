@@ -83,5 +83,5 @@ sidecar 引擎（ffmpeg / soffice）通过 `SidecarProcess` 统一启动：低�
 ## 无障碍
 
 - 覆盖层是真正的窗口，轮盘扇区是 `Button`，`AutomationProperties.Name = "{格式}，{最近/推荐}{，不可用：原因}"`。
-- 键盘：方向键环绕选择，Enter 确认，Esc 取消，`/` 聚焦搜索；覆盖层打开时焦点进入，关闭后焦点还给来源窗口。
+- 键盘：方向键环绕选择，Enter 确认，Esc 取消；覆盖层打开时焦点进入，关闭后焦点还给来源窗口。拖动中轮盘不抢焦点，焦点留在拖动来源，所以转换轮盘上的搜索靠键盘钩子：不按 Ctrl / Alt / Win 时吞掉字母、数字和退格，Esc 放行给系统取消拖动。
 - 所有状态文字 + 图标；对比度 ≥ 4.5:1；`UISettings.AnimationsEnabled == false` 时关闭全部动效。
