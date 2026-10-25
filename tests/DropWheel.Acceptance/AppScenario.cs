@@ -25,7 +25,8 @@ namespace DropWheel.Acceptance;
 /// page, dropped on the PNG sector, comes back as a PNG, and a PDF with text dropped on the DOCX sector as
 /// a Word document with that text. Then the task window's 重试, 打开位置 and 取消 buttons are pressed, the
 /// Actions wheel opened with a Win tap copies a path, zips a folder, deletes a file once Delete is ticked
-/// in settings and starts a rename in Explorer, and settings changed in the settings window take effect
+/// in settings and starts a rename in Explorer, the Tools wheel opened with a Ctrl+Alt tap halves an
+/// image and unpacks a zip, and settings changed in the settings window take effect
 /// on the next drag. Last, a second launch with no settings file walks through the first-run guide. The
 /// app is started by path and observed only through its log file and UI Automation, so this project never
 /// references DropWheel.App.
@@ -104,6 +105,7 @@ internal static partial class AppScenario
                 Attempt(checks, "pdf to word", () => PdfToDocx(checks, log, dir, explorer));
                 Attempt(checks, "task window buttons", () => QueueButtons(checks, log, exe, explorer));
                 Attempt(checks, "file actions", () => FileActions(checks, log, app.Id, explorer));
+                Attempt(checks, "tools", () => Tools(checks, log, explorer));
                 Attempt(checks, "settings", () => ChangeSettings(checks, log, profile, folder, explorer));
             }
         }
@@ -405,9 +407,9 @@ internal static partial class AppScenario
     /// </summary>
     /// <returns>The output path, or null after a failed check.</returns>
     private static string? ConvertThroughWheel(Checks checks, AppLog log, string source, string target, bool explorer,
-        VIRTUAL_KEY key = VIRTUAL_KEY.VK_LSHIFT, VIRTUAL_KEY? quiet = null)
+        VIRTUAL_KEY[]? keys = null, VIRTUAL_KEY? quiet = null)
     {
-        if (DropOnWheel(checks, log, source, target, explorer, key, quiet) is not { } label)
+        if (DropOnWheel(checks, log, source, target, explorer, keys, quiet) is not { } label)
         {
             return null;
         }
@@ -425,7 +427,7 @@ internal static partial class AppScenario
     /// </summary>
     /// <returns>The job's label, or null after a failed check.</returns>
     private static string? DropOnWheel(Checks checks, AppLog log, string source, string target, bool explorer,
-        VIRTUAL_KEY key = VIRTUAL_KEY.VK_LSHIFT, VIRTUAL_KEY? quiet = null, Action? beforeRelease = null, Action<string>? afterDrop = null)
+        VIRTUAL_KEY[]? keys = null, VIRTUAL_KEY? quiet = null, Action? beforeRelease = null, Action<string>? afterDrop = null)
     {
         using var drag = DragSource.Open(source, explorer);
         var mid = drag.PressAndDrag();
@@ -438,7 +440,7 @@ internal static partial class AppScenario
             log.Mark();
         }
 
-        if (Tap(checks, log, mid, key) is not { } w)
+        if (Tap(checks, log, mid, keys) is not { } w)
         {
             return null;
         }
@@ -478,22 +480,23 @@ internal static partial class AppScenario
 
     private readonly record struct Wheel(int X, int Y, double Scale);
 
-    /// <summary>Taps <paramref name="key"/> and returns where the app says it put the wheel.</summary>
-    private static Wheel? Tap(Checks checks, AppLog log, Point mid, VIRTUAL_KEY key = VIRTUAL_KEY.VK_LSHIFT)
+    /// <summary>Taps <paramref name="keys"/>, Shift when null, and returns where the app says it put the wheel.</summary>
+    private static Wheel? Tap(Checks checks, AppLog log, Point mid, VIRTUAL_KEY[]? keys = null)
     {
-        PressAndRelease(key);
+        keys ??= [VIRTUAL_KEY.VK_LSHIFT];
+        PressAndRelease(keys);
         var shown = log.WaitFor(2000, "wheel: shown");
         var frame = log.WaitFor(1000, "overlay: first frame");
         var m = shown is null ? null : ShownRegex().Match(shown);
         if (m is not { Success: true })
         {
-            checks.Check($"{KeyName(key)} tap mid-drag shows the wheel", false, shown ?? "no 'wheel: shown' within 2 s");
+            checks.Check($"{KeyName(keys)} tap mid-drag shows the wheel", false, shown ?? "no 'wheel: shown' within 2 s");
             return null;
         }
 
         var showMs = double.Parse(m.Groups["ms"].Value, CultureInfo.InvariantCulture);
         var frameMs = frame is not null && FrameRegex().Match(frame) is { Success: true } f ? double.Parse(f.Groups[1].Value, CultureInfo.InvariantCulture) : double.NaN;
-        checks.Check($"{KeyName(key)} tap mid-drag shows the wheel within {BudgetMs} ms", showMs + frameMs <= BudgetMs,
+        checks.Check($"{KeyName(keys)} tap mid-drag shows the wheel within {BudgetMs} ms", showMs + frameMs <= BudgetMs,
             $"shown {showMs:F1} ms after the hook saw the tap, first frame {frameMs:F0} ms later");
         var wheel = new Wheel(int.Parse(m.Groups["x"].Value, CultureInfo.InvariantCulture), int.Parse(m.Groups["y"].Value, CultureInfo.InvariantCulture),
             double.Parse(m.Groups["s"].Value, CultureInfo.InvariantCulture));
@@ -503,17 +506,30 @@ internal static partial class AppScenario
         return wheel;
     }
 
-    private static void PressAndRelease(VIRTUAL_KEY key)
+    /// <summary>Presses <paramref name="keys"/> in order and lets them go in reverse, well inside the 300 ms tap window.</summary>
+    private static void PressAndRelease(params VIRTUAL_KEY[] keys)
     {
-        Input.Key(key, up: false);
-        Thread.Sleep(70);
-        Input.Key(key, up: true);
+        foreach (var key in keys)
+        {
+            Input.Key(key, up: false);
+            Thread.Sleep(30);
+        }
+
+        Thread.Sleep(40);
+        foreach (var key in keys.Reverse())
+        {
+            Input.Key(key, up: true);
+            Thread.Sleep(20);
+        }
     }
+
+    private static string KeyName(VIRTUAL_KEY[] keys) => string.Join("+", keys.Select(KeyName));
 
     private static string KeyName(VIRTUAL_KEY key) => key switch
     {
         VIRTUAL_KEY.VK_LSHIFT => "Shift",
         VIRTUAL_KEY.VK_LCONTROL => "Ctrl",
+        VIRTUAL_KEY.VK_LMENU => "Alt",
         VIRTUAL_KEY.VK_LWIN => "Win",
         _ => key.ToString(),
     };

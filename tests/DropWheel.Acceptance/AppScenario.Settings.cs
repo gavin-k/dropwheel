@@ -65,7 +65,7 @@ internal static partial class AppScenario
 
         var jpg = Path.Combine(dir, $"m1s-{DateTime.Now:HHmmss}.jpg");
         WriteJpeg(jpg, 320, 200);
-        var png = ConvertThroughWheel(checks, log, jpg, "png", explorer, VIRTUAL_KEY.VK_LCONTROL, quiet: VIRTUAL_KEY.VK_LSHIFT);
+        var png = ConvertThroughWheel(checks, log, jpg, "png", explorer, [VIRTUAL_KEY.VK_LCONTROL], quiet: VIRTUAL_KEY.VK_LSHIFT);
         var expected = Path.Combine(folder, $"{Path.GetFileNameWithoutExtension(jpg)}-dw.png");
         checks.Check("the PNG goes to the new output folder under the new name", png is not null && string.Equals(png, expected, StringComparison.OrdinalIgnoreCase),
             $"{png ?? "no output"}, expected {expected}");

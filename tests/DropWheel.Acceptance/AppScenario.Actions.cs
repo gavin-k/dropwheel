@@ -60,7 +60,7 @@ internal static partial class AppScenario
         // waits up to 5 s for an owner that is not pumping messages. The path carries this run's time.
         (bool Open, string Owner)? start = null;
         string? entered = null;
-        var label = DropOnWheel(checks, log, file, "action.copy-path", explorer, VIRTUAL_KEY.VK_LWIN, beforeRelease: () =>
+        var label = DropOnWheel(checks, log, file, "action.copy-path", explorer, [VIRTUAL_KEY.VK_LWIN], beforeRelease: () =>
         {
             start = StartMenu();
             entered = log.Find("file(s) entered");
@@ -84,7 +84,7 @@ internal static partial class AppScenario
         Write(Path.Combine(folder, "a.txt"));
         Write(Path.Combine(folder, "sub", "b.txt"));
         Directory.CreateDirectory(Path.Combine(folder, "empty"));
-        if (DropOnWheel(checks, log, folder, "action.zip", explorer, VIRTUAL_KEY.VK_LWIN) is not { } label)
+        if (DropOnWheel(checks, log, folder, "action.zip", explorer, [VIRTUAL_KEY.VK_LWIN]) is not { } label)
         {
             return;
         }
@@ -119,7 +119,7 @@ internal static partial class AppScenario
             return;
         }
 
-        if (DropOnWheel(checks, log, file, "action.recycle", explorer, VIRTUAL_KEY.VK_LWIN) is not { } label)
+        if (DropOnWheel(checks, log, file, "action.recycle", explorer, [VIRTUAL_KEY.VK_LWIN]) is not { } label)
         {
             return;
         }
@@ -134,7 +134,7 @@ internal static partial class AppScenario
     private static void Rename(Checks checks, AppLog log, string file, bool explorer)
     {
         // Looked at before the drag source goes away: from Explorer, the app reuses the window the drag started in.
-        DropOnWheel(checks, log, file, "action.rename", explorer, VIRTUAL_KEY.VK_LWIN, afterDrop: label =>
+        DropOnWheel(checks, log, file, "action.rename", explorer, [VIRTUAL_KEY.VK_LWIN], afterDrop: label =>
         {
             var done = log.WaitFor(10000, $"queue: {label} ");
             var window = ExplorerSource.FolderWindow(Path.GetDirectoryName(file)!, 5000);
@@ -160,7 +160,7 @@ internal static partial class AppScenario
         var target = Path.Combine(folder, Path.GetFileName(file));
         var how = "no picker";
         var picked = Stopwatch.StartNew();
-        if (DropOnWheel(checks, log, file, copy ? "action.copy-to" : "action.move-to", explorer, VIRTUAL_KEY.VK_LWIN, afterDrop: _ =>
+        if (DropOnWheel(checks, log, file, copy ? "action.copy-to" : "action.move-to", explorer, [VIRTUAL_KEY.VK_LWIN], afterDrop: _ =>
         {
             // Answered while the drag source is still open: that is the window the picker must come up over.
             var dialog = Picker(checks, app, $"把 {Path.GetFileName(file)} {verb}");
@@ -195,7 +195,7 @@ internal static partial class AppScenario
 
     private static void ClosePicker(Checks checks, AppLog log, int app, string file, bool explorer)
     {
-        if (DropOnWheel(checks, log, file, "action.move-to", explorer, VIRTUAL_KEY.VK_LWIN, afterDrop: _ =>
+        if (DropOnWheel(checks, log, file, "action.move-to", explorer, [VIRTUAL_KEY.VK_LWIN], afterDrop: _ =>
         {
             if (Picker(checks: null, app, "") is { IsNull: false } dialog)
             {
