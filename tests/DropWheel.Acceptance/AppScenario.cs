@@ -23,8 +23,8 @@ namespace DropWheel.Acceptance;
 /// on the VTT sector must come out as UTF-8 WebVTT, a zip dropped on the 7z sector as a 7z, and a WAV dropped
 /// on the MP3 sector as an MP3 made by the bundled ffmpeg, a JPG dropped on the PDF sector as a PDF whose
 /// page, dropped on the PNG sector, comes back as a PNG, and a PDF with text dropped on the DOCX sector as
-/// a Word document with that text. Last, settings changed in the settings window take effect on the next
-/// drag. The app is started by path and observed only through its log file and UI Automation, so this
+/// a Word document with that text. Then the task window's 重试, 打开位置 and 取消 buttons are pressed, and
+/// last, settings changed in the settings window take effect on the next drag. The app is started by path and observed only through its log file and UI Automation, so this
 /// project never references DropWheel.App.
 /// </summary>
 internal static partial class AppScenario
@@ -99,6 +99,7 @@ internal static partial class AppScenario
                 Attempt(checks, "encode audio", () => EncodeAudio(checks, log, dir, explorer));
                 Attempt(checks, "image to pdf and back", () => RoundTripPdf(checks, log, dir, explorer));
                 Attempt(checks, "pdf to word", () => PdfToDocx(checks, log, dir, explorer));
+                Attempt(checks, "task window buttons", () => QueueButtons(checks, log, exe, explorer));
                 Attempt(checks, "settings", () => ChangeSettings(checks, log, profile, folder, explorer));
             }
         }
@@ -401,6 +402,25 @@ internal static partial class AppScenario
     private static string? ConvertThroughWheel(Checks checks, AppLog log, string source, string target, bool explorer,
         VIRTUAL_KEY key = VIRTUAL_KEY.VK_LSHIFT, VIRTUAL_KEY? quiet = null)
     {
+        if (DropOnWheel(checks, log, source, target, explorer, key, quiet) is not { } label)
+        {
+            return null;
+        }
+
+        var done = log.WaitFor(30000, $"queue: {label} ");
+        var output = done is null ? null : OutputsRegex().Match(done) is { Success: true } m ? m.Groups[1].Value : null;
+        checks.Check($"{Path.GetExtension(source)} → {target} finishes", output is not null && File.Exists(output), done ?? "no queue outcome within 30 s");
+        return output is not null && File.Exists(output) ? output : null;
+    }
+
+    /// <summary>
+    /// The drag and drop of <see cref="ConvertThroughWheel"/>, with <paramref name="beforeRelease"/> run just
+    /// before the button goes up.
+    /// </summary>
+    /// <returns>The job's label, or null after a failed check.</returns>
+    private static string? DropOnWheel(Checks checks, AppLog log, string source, string target, bool explorer,
+        VIRTUAL_KEY key = VIRTUAL_KEY.VK_LSHIFT, VIRTUAL_KEY? quiet = null, Action? beforeRelease = null)
+    {
         using var drag = DragSource.Open(source, explorer);
         var mid = drag.PressAndDrag();
         log.Mark();
@@ -429,6 +449,7 @@ internal static partial class AppScenario
 
         Input.MoveSmooth(new Point(mid.X + 6, mid.Y + 6), SectorPoint(w, sector), 8, 30);
         Thread.Sleep(250);
+        beforeRelease?.Invoke();
         Input.LeftUp();
         var enqueued = log.WaitFor(3000, "wheel: enqueued ");
         if (enqueued is null)
@@ -437,11 +458,7 @@ internal static partial class AppScenario
             return null;
         }
 
-        var label = enqueued[(enqueued.IndexOf("wheel: enqueued ", StringComparison.Ordinal) + "wheel: enqueued ".Length)..];
-        var done = log.WaitFor(30000, $"queue: {label} ");
-        var output = done is null ? null : OutputsRegex().Match(done) is { Success: true } m ? m.Groups[1].Value : null;
-        checks.Check($"{Path.GetExtension(source)} → {target} finishes", output is not null && File.Exists(output), done ?? "no queue outcome within 30 s");
-        return output is not null && File.Exists(output) ? output : null;
+        return enqueued[(enqueued.IndexOf("wheel: enqueued ", StringComparison.Ordinal) + "wheel: enqueued ".Length)..];
     }
 
     /// <summary>60 DIP below the top of the work area: the wheel needs 162, so it is pulled down about 100.</summary>

@@ -211,6 +211,35 @@ internal static unsafe class ExplorerSource
         return null;
     }
 
+    /// <summary>The Explorer window showing <paramref name="folder"/>, or a null handle after <paramref name="timeoutMs"/>.</summary>
+    public static HWND FolderWindow(string folder, int timeoutMs)
+    {
+        var title = Path.GetFileName(folder);
+        HWND found = default;
+        Checks.Wait(() => !(found = Cabinets().FirstOrDefault(h => IsFolderWindow(h, title))).IsNull, timeoutMs);
+        return found;
+    }
+
+    /// <summary>Whether <paramref name="file"/> is selected in the items view of <paramref name="window"/>, waiting up to 10 s for it to be.</summary>
+    public static bool IsSelected(HWND window, string file, out string how)
+    {
+        var uia = (IUIAutomation)new CUIAutomation8();
+        var viewCond = uia.CreatePropertyCondition(UIA_PROPERTY_ID.UIA_ClassNamePropertyId, "UIItemsView");
+        var itemCond = uia.CreatePropertyCondition(UIA_PROPERTY_ID.UIA_NamePropertyId, Path.GetFileName(file));
+        var stemCond = uia.CreatePropertyCondition(UIA_PROPERTY_ID.UIA_NamePropertyId, Path.GetFileNameWithoutExtension(file));
+        IUIAutomationElement? item = null;
+        var selected = false;
+        Checks.Wait(() =>
+        {
+            var view = uia.ElementFromHandle(window).FindFirst(ComTreeScope.TreeScope_Descendants, viewCond);
+            item = view?.FindFirst(ComTreeScope.TreeScope_Children, itemCond) ?? view?.FindFirst(ComTreeScope.TreeScope_Children, stemCond);
+            selected = item is not null && ((IUIAutomationSelectionItemPattern)item.GetCurrentPattern(UIA_PATTERN_ID.UIA_SelectionItemPatternId)).CurrentIsSelected;
+            return selected;
+        }, 10000);
+        how = item is null ? $"no item '{Path.GetFileName(file)}' in '{WindowText(window)}'" : $"item '{item.CurrentName}' in '{WindowText(window)}' selected={selected}";
+        return selected;
+    }
+
     public static void Close(HWND window)
     {
         if (!window.IsNull)
