@@ -45,6 +45,22 @@ public class ModifierTapperTests
     }
 
     [Fact]
+    public void Rebinding_takes_effect_on_the_next_tap()
+    {
+        var t = Tapper();
+        t.Rebind(KeyBindings.Default with { Bindings = [new(WheelMode.Convert, Modifiers.Ctrl)] });
+
+        foreach (var key in new[] { Modifiers.Shift, Modifiers.Ctrl })
+        {
+            t.OnModifier(key, true, true);
+            After(50);
+            t.OnModifier(key, false, true);
+        }
+
+        _invoked.Should().Equal(WheelMode.Convert);
+    }
+
+    [Fact]
     public void Tap_outside_a_drag_does_nothing()
     {
         var t = Tapper();

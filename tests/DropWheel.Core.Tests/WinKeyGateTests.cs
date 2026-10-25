@@ -40,6 +40,17 @@ public class WinKeyGateTests
     }
 
     [Fact]
+    public void Rebinding_away_from_win_still_swallows_the_up_of_a_swallowed_down()
+    {
+        _gate.Swallow(true, true).Should().BeTrue();
+        _gate.Rebind(KeyBindings.Default with { Bindings = [new(WheelMode.Convert, Modifiers.Shift)] });
+
+        _gate.Swallow(false, true).Should().BeTrue();
+        _gate.Swallow(true, true).Should().BeFalse();
+        _gate.Swallow(false, true).Should().BeFalse();
+    }
+
+    [Fact]
     public void Never_swallows_when_win_is_not_bound()
     {
         var gate = new WinKeyGate(KeyBindings.Default with { Bindings = [new(WheelMode.Convert, Modifiers.Shift)] });

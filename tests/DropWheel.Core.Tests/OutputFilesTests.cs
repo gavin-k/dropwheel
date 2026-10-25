@@ -38,6 +38,18 @@ public sealed class OutputFilesTests : IDisposable
     }
 
     [Fact]
+    public async Task An_output_folder_that_does_not_exist_yet_is_created()
+    {
+        var source = Source("a.srt");
+        var folder = Path.Combine(_dir, "out", "subtitles");
+
+        var output = await OutputFiles.WriteAsync(new([source], "vtt", folder), source, 0, Now, temp => File.WriteAllTextAsync(temp, "WEBVTT"));
+
+        output.Should().Be(Path.Combine(folder, "a.vtt"));
+        File.ReadAllText(output!).Should().Be("WEBVTT");
+    }
+
+    [Fact]
     public void A_file_that_appears_while_writing_is_not_overwritten()
     {
         var source = Source("a.srt");

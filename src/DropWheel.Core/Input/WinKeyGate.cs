@@ -13,8 +13,11 @@ namespace DropWheel.Core.Input;
 /// </remarks>
 public sealed class WinKeyGate(KeyBindings bindings)
 {
-    private readonly bool _winBound = bindings.Bindings.Any(b => (b.Keys & Modifiers.Win) != 0);
+    private volatile bool _winBound = WinBound(bindings);
     private bool _swallowing;
+
+    /// <summary>Swaps the bindings, from any thread. A press already being swallowed is swallowed to its key-up.</summary>
+    public void Rebind(KeyBindings bindings) => _winBound = WinBound(bindings);
 
     /// <summary>True if the hook should swallow this Win key event instead of passing it on.</summary>
     public bool Swallow(bool isDown, bool dragging)
@@ -29,4 +32,6 @@ public sealed class WinKeyGate(KeyBindings bindings)
         _swallowing = false;
         return swallowed;
     }
+
+    private static bool WinBound(KeyBindings bindings) => bindings.Bindings.Any(b => (b.Keys & Modifiers.Win) != 0);
 }

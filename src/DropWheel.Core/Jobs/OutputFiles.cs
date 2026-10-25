@@ -102,6 +102,8 @@ public static class OutputFiles
             return null;
         }
 
+        // A chosen output folder may not exist yet, or no longer.
+        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
         var temp = Path.Combine(Path.GetDirectoryName(target)!, $".{Path.GetFileName(target)}.{Guid.NewGuid():N}{TempSuffix}");
         try
         {

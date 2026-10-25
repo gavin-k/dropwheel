@@ -16,6 +16,7 @@ namespace DropWheel.Core.Input;
 /// </remarks>
 public sealed class ModifierTapper(KeyBindings bindings, TimeProvider time)
 {
+    private volatile KeyBindings _bindings = bindings;
     private Modifiers _held = Modifiers.None;
     private Modifiers _combo = Modifiers.None;
     private long _pressedAt;
@@ -28,6 +29,7 @@ public sealed class ModifierTapper(KeyBindings bindings, TimeProvider time)
     /// <summary>Feed a modifier transition. <paramref name="isDown"/> is true on key-down, including auto-repeat.</summary>
     public void OnModifier(Modifiers key, bool isDown, bool dragging)
     {
+        var current = _bindings;
         if (isDown)
         {
             if (_held == Modifiers.None)
@@ -40,7 +42,7 @@ public sealed class ModifierTapper(KeyBindings bindings, TimeProvider time)
 
             _held |= key;
             _combo |= key;
-            if (bindings.Style == InvokeStyle.Hold && dragging && !_spent && Bound(_combo) is { } held)
+            if (current.Style == InvokeStyle.Hold && dragging && !_spent && Bound(current, _combo) is { } held)
             {
                 _spent = true;
                 Invoked?.Invoke(held);
@@ -55,18 +57,24 @@ public sealed class ModifierTapper(KeyBindings bindings, TimeProvider time)
         }
 
         _held &= ~key;
-        if (_held != Modifiers.None || bindings.Style != InvokeStyle.Tap)
+        if (_held != Modifiers.None || current.Style != InvokeStyle.Tap)
         {
             return;
         }
 
         if (dragging && _pressedWhileDragging && !_spent
-            && time.GetElapsedTime(_pressedAt).TotalMilliseconds <= bindings.TapWindowMs
-            && Bound(_combo) is { } tapped)
+            && time.GetElapsedTime(_pressedAt).TotalMilliseconds <= current.TapWindowMs
+            && Bound(current, _combo) is { } tapped)
         {
             Invoked?.Invoke(tapped);
         }
     }
+
+    /// <summary>
+    /// Swaps the bindings, from any thread, when Settings change them. A press already under way is judged
+    /// by the bindings in place when its last key comes up.
+    /// </summary>
+    public void Rebind(KeyBindings bindings) => _bindings = bindings;
 
     /// <summary>A non-modifier key went down: the modifiers held now are part of a shortcut, not a tap.</summary>
     public void OnOtherKey()
@@ -77,5 +85,5 @@ public sealed class ModifierTapper(KeyBindings bindings, TimeProvider time)
         }
     }
 
-    private WheelMode? Bound(Modifiers combo) => bindings.Bindings.FirstOrDefault(b => b.Keys == combo)?.Mode;
+    private static WheelMode? Bound(KeyBindings bindings, Modifiers combo) => bindings.Bindings.FirstOrDefault(b => b.Keys == combo)?.Mode;
 }
