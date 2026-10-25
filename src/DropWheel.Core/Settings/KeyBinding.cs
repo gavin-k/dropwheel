@@ -95,7 +95,7 @@ public static class ConflictChecker
 
             if (layoutHasAltGr && b.Keys == (Modifiers.Ctrl | Modifiers.Alt))
             {
-                list.Add(new(b, ConflictSeverity.Warning, "当前键盘布局中 Ctrl+Alt 等同于 AltGr，建议改键。"));
+                list.Add(new(b, ConflictSeverity.Warning, "已安装的键盘布局里有 AltGr 键，Windows 把它当作 Ctrl+Alt，建议换一组键。"));
             }
         }
 

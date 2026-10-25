@@ -2,6 +2,7 @@ using DropWheel.App.Diagnostics;
 using DropWheel.Core.Jobs;
 using DropWheel.Core.Settings;
 using DropWheel.Core.Wheel;
+using DropWheel.Shell;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Text;
 using Microsoft.UI.Windowing;
@@ -38,6 +39,7 @@ internal sealed class SettingsWindow
     private readonly Dictionary<(WheelMode Mode, Modifiers Key), CheckBox> _keys = [];
     private readonly Dictionary<FileAction, CheckBox> _actions = [];
     private readonly InfoBar _keyProblem = new() { IsClosable = false };
+    private bool _altGr;
     private readonly NumberBox _tapWindow = new()
     {
         Header = "轻点时限（毫秒）",
@@ -145,7 +147,7 @@ internal sealed class SettingsWindow
         var page = new StackPanel { Spacing = 24, Padding = new Thickness(20, 16, 20, 24) };
         page.Children.Add(new TextBlock { Text = "设置", FontSize = 20, FontWeight = FontWeights.SemiBold });
         page.Children.Add(_saveProblem);
-        page.Children.Add(Section("唤出轮盘", "拖动文件时，把一行里选中的键一起按下再松开，那个轮盘就会在鼠标处弹出。转换轮盘把文件转成别的格式；动作轮盘复制路径、重命名、压缩或删除，一个键都不选就不会弹出。", keys, _keyProblem, _tapWindow));
+        page.Children.Add(Section("唤出轮盘", "拖动文件时，把一行里选中的键一起按下再松开，那个轮盘就会在鼠标处弹出。转换轮盘把文件转成别的格式；工具轮盘压缩、缩小、拆分或提取音频；动作轮盘复制路径、重命名、压缩或删除。工具和动作轮盘一个键都不选就不会弹出。", keys, _keyProblem, _tapWindow));
         page.Children.Add(Section("文件动作", "动作轮盘上哪几项能用。没勾选的仍然显示，只是灰色。删除默认不勾选，免得手一滑把文件扔进回收站。", actions));
         page.Children.Add(Section("输出", null,
             _nextToSource,
@@ -254,7 +256,9 @@ internal sealed class SettingsWindow
 
         _loading = false;
 
-        ShowConflicts(ConflictChecker.Check(current.Keys));
+        _altGr = KeyboardLayouts.AnyHasAltGr(); // a layout added since the window last opened counts too
+        FileLog.Info(_altGr ? "settings: a keyboard layout has AltGr, Ctrl+Alt gets a warning" : "settings: no keyboard layout has AltGr");
+        ShowConflicts(ConflictChecker.Check(current.Keys, _altGr));
         _tapWindow.Value = current.Keys.TapWindowMs;
         (current.Output.Location == OutputLocation.Folder ? _toFolder : _nextToSource).IsChecked = true;
         _folder.Text = current.Output.Folder.Length == 0 ? "还没有选择文件夹" : current.Output.Folder;
@@ -276,7 +280,7 @@ internal sealed class SettingsWindow
         }
 
         var keys = KeyOrder.Where(k => _keys[(mode, k)].IsChecked == true).Aggregate(Modifiers.None, (all, k) => all | k);
-        var conflicts = ConflictChecker.Check(_settings.Current.Keys.Rebound(mode, keys));
+        var conflicts = ConflictChecker.Check(_settings.Current.Keys.Rebound(mode, keys), _altGr);
         ShowConflicts(conflicts);
         if (keys == _settings.Current.Keys.KeysFor(mode))
         {

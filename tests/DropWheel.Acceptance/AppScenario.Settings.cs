@@ -29,6 +29,11 @@ internal static partial class AppScenario
             return;
         }
 
+        // Both test machines type Chinese and English only, so the warning must stay away; the refusal below
+        // is matched in full and would fail if it carried the AltGr warning too.
+        var layouts = log.WaitFor(2000, "keyboard layout has AltGr");
+        checks.Check("the settings window reads the installed keyboard layouts for AltGr", layouts is not null, layouts ?? "no keyboard layout line");
+
         var saved = File.ReadAllText(file);
         Toggle("转换 Shift");
         var refusal = Element(SettingsTitle, "这组按键没有保存 必须至少选择一个修饰键。", out how);

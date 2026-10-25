@@ -77,6 +77,10 @@ EnumThreadWindows
 GetClassName
 WM_CLOSE
 
+// Settings: warn about Ctrl+Alt when a layout has AltGr
+GetKeyboardLayoutList
+VkKeyScanEx
+
 // Later milestones
 RegisterHotKey
 UnregisterHotKey
