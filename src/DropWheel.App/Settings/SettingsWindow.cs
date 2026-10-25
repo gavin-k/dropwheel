@@ -20,8 +20,8 @@ namespace DropWheel.App.Settings;
 
 /// <summary>
 /// The settings that change what the app does today: the keys that open each wheel and how quick a tap
-/// must be, which items the Actions wheel offers, where results go, what they are called and what happens
-/// when the name is taken, and whether Windows starts it at sign-in; and what this computer keeps or sends:
+/// must be, with a note when the wheel is solid because Windows has transparency effects off; which items
+/// the Actions wheel offers, where results go, what they are called and what happens when the name is taken, and whether Windows starts it at sign-in; and what this computer keeps or sends:
 /// the network requests counted since start, and the logs, which name the files converted, to open or
 /// clear. Each change is saved as it is made,
 /// the file name a moment after typing stops. Keys that <see cref="ConflictChecker"/> calls an error are
@@ -56,6 +56,15 @@ internal sealed class SettingsWindow
     };
     private readonly ToggleSwitch _longPress = new() { Header = "触屏或笔长按唤出转换轮盘", OnContent = "开", OffContent = "关" };
     private readonly TextBlock _longPressNote = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = 0.75 };
+    private readonly Windows.UI.ViewManagement.UISettings _system = new(); // kept: it raises AdvancedEffectsEnabledChanged only while alive
+    private readonly InfoBar _solidWheel = new()
+    {
+        Severity = InfoBarSeverity.Informational,
+        IsOpen = true,
+        IsClosable = false,
+        Title = "轮盘是纯色的",
+        Message = "Windows 的「透明效果」关着，轮盘用深灰底色代替半透明，用起来没有区别。想要半透明，在「个性化 › 颜色」里打开透明效果。",
+    };
     private readonly ToggleSwitch _edgeDock = new() { Header = "拖到屏幕左右边缘时弹出停靠栏", OnContent = "开", OffContent = "关" };
     private readonly RadioButton _nextToSource = new() { Content = "放在源文件旁边", GroupName = "location" };
     private readonly RadioButton _toFolder = new() { Content = "统一放到一个文件夹", GroupName = "location" };
@@ -123,6 +132,15 @@ internal sealed class SettingsWindow
             actions.Children.Add(box);
         }
 
+        var colors = new HyperlinkButton { Content = "打开颜色设置" };
+        colors.Click += async (_, _) =>
+        {
+            var opened = await Windows.System.Launcher.LaunchUriAsync(new Uri("ms-settings:colors"));
+            FileLog.Info(opened ? "settings: opened Windows colour settings" : "settings: could not open Windows colour settings");
+        };
+        _solidWheel.ActionButton = colors;
+        _system.AdvancedEffectsEnabledChanged += (_, _) => ui.TryEnqueue(ShowEffects);
+
         _tapWindow.ValueChanged += (_, e) => TapWindowChanged(e.NewValue);
         _longPress.Toggled += (_, _) =>
         {
@@ -159,6 +177,7 @@ internal sealed class SettingsWindow
         AutomationProperties.SetAutomationId(_naming, "naming"); // for the acceptance driver
         AutomationProperties.SetAutomationId(_longPress, "touch-long-press");
         AutomationProperties.SetAutomationId(_edgeDock, "edge-dock");
+        AutomationProperties.SetAutomationId(_solidWheel, "solid-wheel");
         _namingPause = ui.CreateTimer();
         _namingPause.Interval = TimeSpan.FromMilliseconds(600);
         _namingPause.IsRepeating = false;
@@ -180,7 +199,7 @@ internal sealed class SettingsWindow
         var page = new StackPanel { Spacing = 24, Padding = new Thickness(20, 16, 20, 24) };
         page.Children.Add(new TextBlock { Text = "设置", FontSize = 20, FontWeight = FontWeights.SemiBold });
         page.Children.Add(_saveProblem);
-        page.Children.Add(Section("唤出轮盘", "拖动文件时，把一行里选中的键一起按下再松开，那个轮盘就会在鼠标处弹出。转换轮盘把文件转成别的格式；工具轮盘压缩、缩小、拆分或提取音频；动作轮盘复制路径、重命名、压缩或删除。工具和动作轮盘一个键都不选就不会弹出。", keys, _keyProblem, _tapWindow, _longPress, _longPressNote));
+        page.Children.Add(Section("唤出轮盘", "拖动文件时，把一行里选中的键一起按下再松开，那个轮盘就会在鼠标处弹出。转换轮盘把文件转成别的格式；工具轮盘压缩、缩小、拆分或提取音频；动作轮盘复制路径、重命名、压缩或删除。工具和动作轮盘一个键都不选就不会弹出。", keys, _keyProblem, _tapWindow, _longPress, _longPressNote, _solidWheel));
         page.Children.Add(Section("停靠栏", "拖动文件时把鼠标推到屏幕左边或右边，那里会弹出停靠栏。文件先放进去，可以从几个文件夹陆续收集，回头一起或一个个拖走。放进去和拖出来都不会移动原文件，拖到文件夹里是复制。", _edgeDock));
         page.Children.Add(Section("文件动作", "动作轮盘上哪几项能用。没勾选的仍然显示，只是灰色。删除默认不勾选，免得手一滑把文件扔进回收站。", actions));
         page.Children.Add(Section("输出", null,
@@ -310,8 +329,20 @@ internal sealed class SettingsWindow
             ConflictPolicy.Skip => 1,
             _ => -1, // a policy only a hand-edited file can hold; shown as unset
         };
+        ShowEffects();
         ShowNetwork();
         _logNote.Text = $"日志记下了转换过的文件路径，用来排查问题，只留最近 {LogRetention.KeepDays} 天，不会发给任何人。";
+    }
+
+    /// <summary>
+    /// Shows the note while transparency effects are off, when acrylic falls back to its solid colour. The
+    /// note is collapsed rather than closed, so that it leaves the automation tree as well.
+    /// </summary>
+    private void ShowEffects()
+    {
+        var on = _system.AdvancedEffectsEnabled;
+        FileLog.Info(on ? "settings: transparency effects on" : "settings: transparency effects off, telling the wheel is solid");
+        _solidWheel.Visibility = on ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private void ShowNetwork() => _network.Text = $"这次启动以来的网络请求：{_networkWatch.Count} 次";
