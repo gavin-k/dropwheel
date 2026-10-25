@@ -166,13 +166,17 @@ internal static unsafe class ExplorerSource
         var uia = (IUIAutomation)new CUIAutomation8();
         var viewCond = uia.CreatePropertyCondition(UIA_PROPERTY_ID.UIA_ClassNamePropertyId, "UIItemsView");
         var itemCond = uia.CreatePropertyCondition(UIA_PROPERTY_ID.UIA_NamePropertyId, name);
+
+        // With "hide extensions for known file types" on, the item is named without its extension. Which
+        // types count as known varies (here .jpg kept its extension, .png and .srt lost theirs).
+        var stemCond = uia.CreatePropertyCondition(UIA_PROPERTY_ID.UIA_NamePropertyId, Path.GetFileNameWithoutExtension(file));
         while (DateTime.UtcNow < deadline)
         {
             var t0 = sw.ElapsedMilliseconds;
             var root = uia.ElementFromHandle(LastWindow);
             var view = root.FindFirst(ComTreeScope.TreeScope_Descendants, viewCond);
             var t1 = sw.ElapsedMilliseconds;
-            var item = view?.FindFirst(ComTreeScope.TreeScope_Children, itemCond);
+            var item = view?.FindFirst(ComTreeScope.TreeScope_Children, itemCond) ?? view?.FindFirst(ComTreeScope.TreeScope_Children, stemCond);
             var t2 = sw.ElapsedMilliseconds;
             Log.Info($"explorer: UIA view {(view is null ? "not found" : "found")} in {t1 - t0} ms, item {(item is null ? "not found" : "found")} in {t2 - t1} ms");
             if (item is null && view is not null && sw.ElapsedMilliseconds > 4000)

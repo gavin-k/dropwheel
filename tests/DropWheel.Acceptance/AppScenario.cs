@@ -31,6 +31,14 @@ internal static partial class AppScenario
         var checks = new Checks();
         var dir = Path.Combine(Path.GetTempPath(), "DropWheelAcceptance", "m0");
         Directory.CreateDirectory(dir);
+
+        // Explorer's items view only realises the first screenful of items for UI Automation, so earlier
+        // runs' outputs would eventually push this run's files out of reach.
+        foreach (var old in Directory.GetFiles(dir))
+        {
+            File.Delete(old);
+        }
+
         var jpg = Path.Combine(dir, $"m0-{DateTime.Now:HHmmss}.jpg");
         WriteJpeg(jpg, 640, 400);
         var jpgLength = new FileInfo(jpg).Length;
