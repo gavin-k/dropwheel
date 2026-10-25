@@ -49,10 +49,7 @@
   <!-- Geometry -->
   <CornerRadius x:Key="DwControlRadius">4</CornerRadius>
   <CornerRadius x:Key="DwCardRadius">8</CornerRadius>
-  <x:Double x:Key="DwWheelDiameter">320</x:Double>
-  <x:Double x:Key="DwWheelOuterRadius">156</x:Double>
-  <x:Double x:Key="DwWheelInnerRadius">58</x:Double>
-  <x:Double x:Key="DwWheelCenterDiameter">116</x:Double>
+  <!-- The wheel's sizes are in WheelGeometry (DropWheel.Core), which both draws it and hit-tests it. -->
 
   <!-- Motion (ms). 全部受 UISettings.AnimationsEnabled 控制 -->
   <x:Double x:Key="DwMotionWheelIn">150</x:Double>
