@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   core:
-    name: Core & tests (${{ matrix.os }})
+    name: Core, engines & tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -21,17 +21,19 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
-      - run: dotnet restore src/DropWheel.Core/DropWheel.Core.csproj
       - run: dotnet restore tests/DropWheel.Core.Tests/DropWheel.Core.Tests.csproj
+      - run: dotnet restore tests/DropWheel.Engines.Tests/DropWheel.Engines.Tests.csproj
       - run: dotnet build tests/DropWheel.Core.Tests/DropWheel.Core.Tests.csproj -c Release --no-restore
+      - run: dotnet build tests/DropWheel.Engines.Tests/DropWheel.Engines.Tests.csproj -c Release --no-restore
       - run: dotnet test tests/DropWheel.Core.Tests/DropWheel.Core.Tests.csproj -c Release --no-build --logger "trx;LogFileName=core.trx"
+      - run: dotnet test tests/DropWheel.Engines.Tests/DropWheel.Engines.Tests.csproj -c Release --no-build --logger "trx;LogFileName=engines.trx"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: test-results-${{ matrix.os }}
           path: '**/*.trx'
 
-  # 完整解决方案（Core + Engines + Shell + WinUI App），Windows 专用，不签名。
+  # 完整解决方案（Core + Engines + Shell + WinUI App），Windows 专用，不签名。引擎测试已在上面的矩阵里跑。
   # 用 dotnet build 而不是 msbuild：.slnx 已为每个项目声明了 x64/ARM64 平台映射。
   app:
     name: WinUI app (x64)
@@ -43,9 +45,3 @@ jobs:
           global-json-file: global.json
       - run: dotnet restore DropWheel.slnx -p:Platform=x64
       - run: dotnet build DropWheel.slnx -c Release -p:Platform=x64 -p:AppxPackageSigningEnabled=false --no-restore
-      - run: dotnet test tests/DropWheel.Engines.Tests/DropWheel.Engines.Tests.csproj -c Release -p:Platform=x64 --no-build --logger "trx;LogFileName=engines.trx"
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: test-results-engines
-          path: '**/engines.trx'
