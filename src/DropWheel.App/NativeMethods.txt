@@ -64,3 +64,6 @@ SHOpenFolderAndSelectItems
 // Settings: the startup task needs package identity
 GetCurrentPackageFullName
 WIN32_ERROR
+
+// Diagnostics: whether mouse input comes as WM_POINTER, which a Win32 drag loop never reads
+IsMouseInPointerEnabled

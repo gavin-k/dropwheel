@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using DropWheel.App.Diagnostics;
+using DropWheel.App.Dock;
 using DropWheel.App.Onboarding;
 using DropWheel.App.Overlay;
 using DropWheel.App.Queue;
@@ -27,8 +28,8 @@ namespace DropWheel.App;
 
 /// <summary>
 /// Composition: the conversion engines and file actions, job queue with Recycle Bin undo, the hook thread
-/// and drop target host from DropWheel.Shell, the wheel overlay, the task, settings and first-run guide windows and the
-/// tray icon. Key changes made in Settings reach the hooks at once. One instance per session; launching
+/// and drop target host from DropWheel.Shell, the wheel overlay, the dock at the screen edge, the task, settings and
+/// first-run guide windows and the tray icon. Key changes made in Settings reach the hooks at once. One instance per session; launching
 /// again shows the task window (the guide, until it has been seen), <c>DropWheel.exe --quit</c> exits
 /// the running one.
 /// The app lives in the tray: closing the task window hides it, the tray menu's 退出 quits.
@@ -47,6 +48,7 @@ public partial class App : Application
     private JobQueue? _queue;
     private WheelController? _controller;
     private WheelWindow? _wheel;
+    private DockWindow? _dock;
     private NetworkWatch? _network;
 
     public App()
@@ -122,7 +124,8 @@ public partial class App : Application
             var winKey = new WinKeyGate(settings.Current.Keys);
             var typeAhead = new TypeAhead();
             var longPress = new LongPress(settings.Current.Keys);
-            _monitor = new DragMonitor(tapper, winKey, typeAhead, longPress);
+            var edgeDock = new EdgeDock(settings.Current.Keys);
+            _monitor = new DragMonitor(tapper, winKey, typeAhead, longPress, edgeDock);
             _monitor.Faulted += ex => FileLog.Error("hook thread handler failed", ex);
             _host = new DropTargetHost();
 
@@ -134,11 +137,13 @@ public partial class App : Application
                 tapper.Rebind(changed.Keys);
                 winKey.Rebind(changed.Keys);
                 longPress.Rebind(changed.Keys);
+                edgeDock.Rebind(changed.Keys);
                 queueWindow.ShowKeys(changed.Keys.KeysFor(WheelMode.Convert));
             };
             var onboarding = _onboarding = new OnboardingWindow(settings, _queue, ui, settingsWindow.Show);
             _wheel = new WheelWindow();
-            _controller = new WheelController(ui, _monitor, _host, _wheel, builder, _queue, recent, settings, tapper, longPress, typeAhead);
+            var controller = _controller = new WheelController(ui, _monitor, _host, _wheel, builder, _queue, recent, settings, tapper, longPress, typeAhead);
+            _dock = new DockWindow(ui, _monitor, () => controller.IsOpen);
 
             _host.Start();
             _monitor.Start();
@@ -177,7 +182,8 @@ public partial class App : Application
             }
 
             await _wheel.PrewarmAsync().ConfigureAwait(true);
-            FileLog.Info($"ready: hooks and drop target up, log {FileLog.CurrentFile}, settings {dataDir}");
+            FileLog.Info($"ready: hooks and drop target up, log {FileLog.CurrentFile}, settings {dataDir}, "
+                + $"mouse in pointer {(Windows.Win32.PInvoke.IsMouseInPointerEnabled() ? "on" : "off")}");
 
             if (Array.IndexOf(commandLine, "--wheel-preview") is var preview and >= 0)
             {
@@ -229,6 +235,7 @@ public partial class App : Application
         _monitor?.Dispose();
         _host?.Dispose();
         _wheel?.Close();
+        _dock?.Close();
         _settingsWindow?.Close();
         _onboarding?.Close();
         _queueWindow?.Close();

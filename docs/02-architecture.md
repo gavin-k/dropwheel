@@ -9,7 +9,7 @@
 │  ├─ QueueWindow       任务队列 / 详情                              │
 │  ├─ SettingsWindow    键位 · 输出 · 命名 · 重名 · 动作 · 隐私        │
 │  ├─ OnboardingWindow  20 秒引导                                    │
-│  └─ TrayDock          屏幕边缘停靠托盘                              │
+│  └─ DockWindow        屏幕边缘停靠栏，WinUI 拖动源拖出（CanDrag）     │
 ├─────────────────────────────────────────────────────────────────┤
 │ DropWheel.Shell (Win32 互操作)                                    │
 │  ├─ DragMonitor       唯一的钩子线程：WH_MOUSE_LL + WH_KEYBOARD_LL │
@@ -46,7 +46,7 @@ WheelOpen ──(修饰键再轻点)──▶ WheelOpen(其他 mode)
 WheelOpen ──(松手在扇区)──▶ IDropTarget::Drop → Enqueue(job) → Idle
 WheelOpen ──(松手在中心/外部 | Esc)──▶ DROPEFFECT_NONE → Idle
 Dragging ──(松手, 未轻点)──▶ Idle   // 覆盖层从未显示, Shell 原生语义
-Dragging ──(松手在屏幕边缘停靠区)──▶ TrayDock.Add(files) → Idle
+Dragging ──(推到屏幕左右外缘)──▶ DockWindow 显示 ──(松手在停靠栏)──▶ 记下路径 → Idle   // 没放下就隐藏；拖出用 WinUI 的拖动，不经 Shell 的 DoDragDrop
 ```
 
 ## 领域模型（Core）

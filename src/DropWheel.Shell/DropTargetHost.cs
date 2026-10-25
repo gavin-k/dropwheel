@@ -46,8 +46,14 @@ public sealed unsafe class DropTargetHost : IDisposable
 
     public DropTargetHost() => _target = new Target(this);
 
-    /// <summary>A drag entered while the host was shown. Paths are empty when the data has no CF_HDROP.</summary>
+    /// <summary>A drag entered while the host was shown. Paths are empty when the data names no file.</summary>
     public event Action<IReadOnlyList<string>>? Entered;
+
+    /// <summary>
+    /// A line for the log about the drag that entered: its data had no CF_HDROP, and either the Shell's item
+    /// list named the files instead or nothing did, with the formats the data offers.
+    /// </summary>
+    public event Action<string>? Noted;
 
     /// <summary>The sector under the pointer changed, enabled or not, so a disabled one can say why; -1 means none.</summary>
     public event Action<int>? Hovered;
@@ -201,7 +207,23 @@ public sealed unsafe class DropTargetHost : IDisposable
         return PInvoke.DefWindowProc(hwnd, msg, wParam, lParam);
     }
 
-    private static List<string> FilePaths(IDataObject data)
+    /// <summary>The paths in CF_HDROP, else those of the Shell's item list (a drag out of a WinUI app may offer only that).</summary>
+    private List<string> FilePaths(IDataObject data)
+    {
+        var paths = DropPaths(data);
+        if (paths.Count > 0)
+        {
+            return paths;
+        }
+
+        paths = ItemPaths(data);
+        Noted?.Invoke(paths.Count > 0
+            ? $"no CF_HDROP, {paths.Count} path(s) from the Shell's item list"
+            : $"no file paths in the drag, which offers {FormatNames(data)}");
+        return paths;
+    }
+
+    private static List<string> DropPaths(IDataObject data)
     {
         var format = new FORMATETC
         {
@@ -243,6 +265,69 @@ public sealed unsafe class DropTargetHost : IDisposable
         }
     }
 
+    private static List<string> ItemPaths(IDataObject data)
+    {
+        var paths = new List<string>();
+        try
+        {
+            PInvoke.SHCreateShellItemArrayFromDataObject((System.Runtime.InteropServices.ComTypes.IDataObject)data, typeof(IShellItemArray).GUID, out var created).ThrowOnFailure();
+            var items = (IShellItemArray)created;
+            items.GetCount(out var count);
+            for (uint i = 0; i < count; i++)
+            {
+                items.GetItemAt(i, out var item);
+                try
+                {
+                    item.GetDisplayName(SIGDN.SIGDN_FILESYSPATH, out var name);
+                    try
+                    {
+                        paths.Add(name.ToString());
+                    }
+                    finally
+                    {
+                        Marshal.FreeCoTaskMem((nint)name.Value);
+                    }
+                }
+                catch (COMException)
+                {
+                    // Not in the file system: a mail attachment, a phone's photo.
+                }
+            }
+        }
+        catch (COMException)
+        {
+        }
+
+        return paths;
+    }
+
+    /// <summary>"CF_UNICODETEXT(13), FileGroupDescriptorW, …": what the data can be read as, for the log.</summary>
+    private static string FormatNames(IDataObject data)
+    {
+        var names = new List<string>();
+        try
+        {
+            data.EnumFormatEtc((uint)DATADIR.DATADIR_GET, out var formats);
+            var format = default(FORMATETC);
+            uint fetched;
+            Span<char> name = stackalloc char[128];
+            while (formats.Next(1, &format, &fetched).Value == 0 && fetched == 1) // S_FALSE once the list runs out
+            {
+                fixed (char* p = name)
+                {
+                    var length = PInvoke.GetClipboardFormatName(format.cfFormat, p, name.Length);
+                    names.Add(length > 0 ? new string(p, 0, length) : $"{(CLIPBOARD_FORMAT)format.cfFormat}({format.cfFormat})");
+                }
+            }
+        }
+        catch (COMException ex)
+        {
+            names.Add($"(listing failed: 0x{ex.HResult:X8})");
+        }
+
+        return names.Count == 0 ? "no format" : string.Join(", ", names.Distinct());
+    }
+
     /// <summary>The IDropTarget OLE calls. Runs on the host thread.</summary>
     private sealed class Target(DropTargetHost host) : IDropTarget
     {
@@ -262,7 +347,7 @@ public sealed unsafe class DropTargetHost : IDisposable
 
         public void DragEnter(IDataObject pDataObj, MODIFIERKEYS_FLAGS grfKeyState, POINTL pt, DROPEFFECT* pdwEffect)
         {
-            _paths = FilePaths(pDataObj);
+            _paths = host.FilePaths(pDataObj);
             _inside = true;
             _hovered = -1;
             host.Entered?.Invoke(_paths);
@@ -285,7 +370,7 @@ public sealed unsafe class DropTargetHost : IDisposable
         {
             *pdwEffect = Effect(pt, *pdwEffect);
             var sector = _hovered;
-            var paths = _paths.Count > 0 ? _paths : FilePaths(pDataObj);
+            var paths = _paths.Count > 0 ? _paths : host.FilePaths(pDataObj);
             Reset();
             if (*pdwEffect == DROPEFFECT.DROPEFFECT_COPY && paths.Count > 0)
             {

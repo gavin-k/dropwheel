@@ -56,6 +56,7 @@ internal sealed class SettingsWindow
     };
     private readonly ToggleSwitch _longPress = new() { Header = "触屏或笔长按唤出转换轮盘", OnContent = "开", OffContent = "关" };
     private readonly TextBlock _longPressNote = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = 0.75 };
+    private readonly ToggleSwitch _edgeDock = new() { Header = "拖到屏幕左右边缘时弹出停靠栏", OnContent = "开", OffContent = "关" };
     private readonly RadioButton _nextToSource = new() { Content = "放在源文件旁边", GroupName = "location" };
     private readonly RadioButton _toFolder = new() { Content = "统一放到一个文件夹", GroupName = "location" };
     private readonly TextBlock _folder = new() { TextWrapping = TextWrapping.Wrap, Opacity = 0.75, VerticalAlignment = VerticalAlignment.Center };
@@ -130,6 +131,13 @@ internal sealed class SettingsWindow
                 Save($"touch long press {(_longPress.IsOn ? "on" : "off")}", s => s with { Keys = s.Keys with { TouchLongPress = _longPress.IsOn } });
             }
         };
+        _edgeDock.Toggled += (_, _) =>
+        {
+            if (_edgeDock.IsOn != _settings.Current.Keys.EdgeDock)
+            {
+                Save($"edge dock {(_edgeDock.IsOn ? "on" : "off")}", s => s with { Keys = s.Keys with { EdgeDock = _edgeDock.IsOn } });
+            }
+        };
         _nextToSource.Checked += (_, _) =>
         {
             if (_settings.Current.Output.Location != OutputLocation.NextToSource)
@@ -150,6 +158,7 @@ internal sealed class SettingsWindow
 
         AutomationProperties.SetAutomationId(_naming, "naming"); // for the acceptance driver
         AutomationProperties.SetAutomationId(_longPress, "touch-long-press");
+        AutomationProperties.SetAutomationId(_edgeDock, "edge-dock");
         _namingPause = ui.CreateTimer();
         _namingPause.Interval = TimeSpan.FromMilliseconds(600);
         _namingPause.IsRepeating = false;
@@ -172,6 +181,7 @@ internal sealed class SettingsWindow
         page.Children.Add(new TextBlock { Text = "设置", FontSize = 20, FontWeight = FontWeights.SemiBold });
         page.Children.Add(_saveProblem);
         page.Children.Add(Section("唤出轮盘", "拖动文件时，把一行里选中的键一起按下再松开，那个轮盘就会在鼠标处弹出。转换轮盘把文件转成别的格式；工具轮盘压缩、缩小、拆分或提取音频；动作轮盘复制路径、重命名、压缩或删除。工具和动作轮盘一个键都不选就不会弹出。", keys, _keyProblem, _tapWindow, _longPress, _longPressNote));
+        page.Children.Add(Section("停靠栏", "拖动文件时把鼠标推到屏幕左边或右边，那里会弹出停靠栏。文件先放进去，可以从几个文件夹陆续收集，回头一起或一个个拖走。放进去和拖出来都不会移动原文件，拖到文件夹里是复制。", _edgeDock));
         page.Children.Add(Section("文件动作", "动作轮盘上哪几项能用。没勾选的仍然显示，只是灰色。删除默认不勾选，免得手一滑把文件扔进回收站。", actions));
         page.Children.Add(Section("输出", null,
             _nextToSource,
@@ -288,6 +298,7 @@ internal sealed class SettingsWindow
         ShowConflicts(ConflictChecker.Check(current.Keys, _altGr));
         _tapWindow.Value = current.Keys.TapWindowMs;
         _longPress.IsOn = current.Keys.TouchLongPress;
+        _edgeDock.IsOn = current.Keys.EdgeDock;
         _longPressNote.Text = $"拖动时手指或笔停在原地 {current.Keys.LongPressMs} 毫秒，转换轮盘就会弹出，鼠标停住不会。习惯停一下再抬起的话，轮盘会挡住要放下的地方，可以关掉。";
         (current.Output.Location == OutputLocation.Folder ? _toFolder : _nextToSource).IsChecked = true;
         _folder.Text = current.Output.Folder.Length == 0 ? "还没有选择文件夹" : current.Output.Folder;

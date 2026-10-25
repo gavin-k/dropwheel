@@ -90,11 +90,15 @@ internal sealed class WheelController : IDisposable
         _typeAhead.Typed += OnTyped;
         _monitor.PhaseChanged += OnPhaseChanged;
         _host.Entered += OnEntered;
+        _host.Noted += OnNoted;
         _host.Hovered += OnHovered;
         _host.HubReached += OnHubReached;
         _host.Dropped += OnDropped;
         _host.Canceled += OnCanceled;
     }
+
+    /// <summary>True from the moment the wheel opens until it closes; any thread.</summary>
+    public bool IsOpen => _session is not null;
 
     /// <summary>The wheels, in the order Settings lists their keys.</summary>
     public static IReadOnlyList<WheelMode> Modes { get; } = [WheelMode.Convert, WheelMode.Tools, WheelMode.Actions];
@@ -106,6 +110,7 @@ internal sealed class WheelController : IDisposable
         _typeAhead.Typed -= OnTyped;
         _monitor.PhaseChanged -= OnPhaseChanged;
         _host.Entered -= OnEntered;
+        _host.Noted -= OnNoted;
         _host.Hovered -= OnHovered;
         _host.HubReached -= OnHubReached;
         _host.Dropped -= OnDropped;
@@ -167,6 +172,8 @@ internal sealed class WheelController : IDisposable
             }
         });
     }
+
+    private void OnNoted(string note) => FileLog.Info($"wheel: {note}");
 
     private void OnHovered(int sector) => _ui.TryEnqueue(() => _wheel.SetHovered(sector));
 

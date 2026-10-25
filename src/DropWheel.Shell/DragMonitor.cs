@@ -21,13 +21,16 @@ public enum DragPhase { Idle, MaybeDragging, Dragging }
 /// without a drag image (WinForms DoDragDrop, or a run where SysDragImage never showed) still has to
 /// open the wheel. Win key events go through <see cref="WinKeyGate"/>, other keys through
 /// <see cref="TypeAhead"/>, which takes them while the Convert wheel is open. The pointer moves of a
-/// drag go to <see cref="LongPress"/>, which says when to start its timer.
+/// drag go to <see cref="LongPress"/>, which says when to start its timer, and those of a drag with a
+/// drag image to <see cref="EdgeDock"/>, which says when the pointer is against an edge of the screen.
 ///
 /// Windows silently removes a low-level hook whose callback runs past LowLevelHooksTimeout, so the
-/// callbacks only update state, and <see cref="PhaseChanged"/> and the Invoked events of the tapper and
-/// the long-press are raised inline on this thread: handlers must post to their own thread and return.
+/// callbacks only update state, and <see cref="PhaseChanged"/>, <see cref="EdgeReached"/> and the Invoked
+/// events of the tapper and the long-press are raised inline on this thread: handlers must post to their
+/// own thread and return.
 /// </summary>
-public sealed unsafe class DragMonitor(ModifierTapper tapper, WinKeyGate winKeys, TypeAhead typeAhead, LongPress? longPress = null) : IDisposable
+public sealed unsafe class DragMonitor(ModifierTapper tapper, WinKeyGate winKeys, TypeAhead typeAhead, LongPress? longPress = null, EdgeDock? edgeDock = null)
+    : IDisposable
 {
     private const int ThresholdPx = 8;
     private const uint PollMs = 25;
@@ -41,11 +44,19 @@ public sealed unsafe class DragMonitor(ModifierTapper tapper, WinKeyGate winKeys
     private int _slop;
     private bool _buttonDown;
     private System.Drawing.Point _downAt;
+    private RECT _monitor;
+    private int _edgeZone;
     private long _pointer;
     private volatile DragPhase _phase;
 
     /// <summary>Raised on the hook thread, inside the hook callback.</summary>
     public event Action<DragPhase>? PhaseChanged;
+
+    /// <summary>
+    /// The pointer of a drag with a drag image arrived at the left or right edge of the screen, at x, y in
+    /// physical pixels. Raised on the hook thread, inside the hook callback.
+    /// </summary>
+    public event Action<DockSide, int, int>? EdgeReached;
 
     /// <summary>A handler threw on the hook thread. The exception is not rethrown: it would cross into user32.</summary>
     public event Action<Exception>? Faulted;
@@ -165,6 +176,11 @@ public sealed unsafe class DragMonitor(ModifierTapper tapper, WinKeyGate winKeys
                 {
                     _holdTimer = PInvoke.SetTimer(default, _holdTimer, (uint)hold.TotalMilliseconds, null); // the same id restarts it
                 }
+
+                if (message == PInvoke.WM_MOUSEMOVE && _phase == DragPhase.Dragging && edgeDock is { Enabled: true })
+                {
+                    CheckEdge(pt);
+                }
             }
             catch (Exception ex)
             {
@@ -264,7 +280,38 @@ public sealed unsafe class DragMonitor(ModifierTapper tapper, WinKeyGate winKeys
         StopPolling();
         StopHold();
         longPress?.Reset();
+        edgeDock?.Reset();
+        _monitor = default; // displays may change between drags
         Transition(DragPhase.Idle);
+    }
+
+    /// <summary>
+    /// Feeds a move to <see cref="EdgeDock"/>. The monitor's bounds are looked up when the pointer leaves the
+    /// last one's; whether an edge has a monitor beyond it only when the pointer is against that edge.
+    /// </summary>
+    private void CheckEdge(System.Drawing.Point pt)
+    {
+        if (pt.X < _monitor.left || pt.X >= _monitor.right || pt.Y < _monitor.top || pt.Y >= _monitor.bottom)
+        {
+            var monitor = PInvoke.MonitorFromPoint(pt, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST);
+            var info = new MONITORINFO { cbSize = (uint)sizeof(MONITORINFO) };
+            if (!PInvoke.GetMonitorInfo(monitor, ref info))
+            {
+                return;
+            }
+
+            _monitor = info.rcMonitor;
+            var dpi = PInvoke.GetDpiForMonitor(monitor, MONITOR_DPI_TYPE.MDT_EFFECTIVE_DPI, out var x, out _).Succeeded ? x : 96u;
+            _edgeZone = (int)Math.Ceiling(EdgeDock.ZoneDip * dpi / 96.0);
+        }
+
+        var bounds = _monitor;
+        bool IsOpen(DockSide side) => PInvoke.MonitorFromPoint(new System.Drawing.Point(side == DockSide.Left ? bounds.left - 1 : bounds.right, pt.Y),
+            MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONULL).IsNull;
+        if (edgeDock!.OnMove(pt.X, bounds.left, bounds.right, _edgeZone, IsOpen) is { } reached)
+        {
+            EdgeReached?.Invoke(reached, pt.X, pt.Y);
+        }
     }
 
     /// <summary><see cref="LongPress.SlopDip"/> in physical pixels on the monitor under <paramref name="pt"/>.</summary>

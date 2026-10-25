@@ -32,6 +32,8 @@ WM_TIMER
 VIRTUAL_KEY
 GetAsyncKeyState
 MonitorFromPoint
+GetMonitorInfo
+MONITORINFO
 GetDpiForMonitor
 
 // Drop target host
@@ -47,6 +49,11 @@ DVASPECT
 TYMED
 DragQueryFile
 ReleaseStgMedium
+SHCreateShellItemArrayFromDataObject
+IShellItemArray
+DATADIR
+IEnumFORMATETC
+GetClipboardFormatName
 RegisterClassEx
 UnregisterClass
 CreateWindowEx

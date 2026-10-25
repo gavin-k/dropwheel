@@ -13,11 +13,11 @@ internal static partial class AppScenario
 
     /// <summary>
     /// Through the settings window, the way a screen reader would use it: unticking the only key is refused
-    /// with the reason and nothing is saved; Ctrl instead of Shift, touch long press off, the output folder
-    /// preset in settings.json and a file-name template are saved; 隐私与离线 counts no network request, opens
-    /// the log folder and clears the logs; a resting finger then opens nothing, and the
-    /// next drag opens the wheel on Ctrl, not Shift, and puts the PNG in that folder, which does not exist
-    /// yet, under the new name.
+    /// with the reason and nothing is saved; Ctrl instead of Shift, touch long press off, the dock off, the
+    /// output folder preset in settings.json and a file-name template are saved; 隐私与离线 counts no network
+    /// request, opens the log folder and clears the logs; a resting finger then opens nothing, nor does a
+    /// drag pushed against the edge, and the next drag opens the wheel on Ctrl, not Shift, and puts the PNG
+    /// in that folder, which does not exist yet, under the new name.
     /// </summary>
     private static void ChangeSettings(Checks checks, AppLog log, string profile, string folder, bool explorer)
     {
@@ -47,13 +47,15 @@ internal static partial class AppScenario
         var keys = log.WaitFor(2000, "settings: saved convert keys Ctrl");
         Pattern<IUIAutomationTogglePattern>("touch-long-press", UIA_PATTERN_ID.UIA_TogglePatternId, byId: true)?.Toggle();
         var touch = log.WaitFor(2000, "settings: saved touch long press off");
+        Pattern<IUIAutomationTogglePattern>("edge-dock", UIA_PATTERN_ID.UIA_TogglePatternId, byId: true)?.Toggle();
+        var dock = log.WaitFor(2000, "settings: saved edge dock off");
         Pattern<IUIAutomationSelectionItemPattern>("统一放到一个文件夹", UIA_PATTERN_ID.UIA_SelectionItemPatternId)?.Select();
         var location = log.WaitFor(2000, $"settings: saved output folder {folder}");
         SetText("naming", "{name}-dw");
         var naming = log.WaitFor(3000, "settings: saved naming {name}-dw");
-        checks.Check("Ctrl, long press off, the output folder and the file name are saved as they are changed",
-            keys is not null && touch is not null && location is not null && naming is not null,
-            $"{keys ?? "no keys line"}; {touch ?? "no long press line"}; {location ?? "no folder line"}; {naming ?? "no naming line"}");
+        checks.Check("Ctrl, long press off, the dock off, the output folder and the file name are saved as they are changed",
+            keys is not null && touch is not null && dock is not null && location is not null && naming is not null,
+            $"{keys ?? "no keys line"}; {touch ?? "no long press line"}; {dock ?? "no dock line"}; {location ?? "no folder line"}; {naming ?? "no naming line"}");
 
         Privacy(checks, log);
 
@@ -63,11 +65,11 @@ internal static partial class AppScenario
         var convert = json.RootElement.GetProperty("keys").GetProperty("bindings").EnumerateArray()
             .FirstOrDefault(b => b.GetProperty("mode").GetString() == "Convert");
         var output = json.RootElement.GetProperty("output");
-        var held = json.RootElement.GetProperty("keys").TryGetProperty("touchLongPress", out var on) ? (on.GetBoolean() ? "on" : "off") : "missing";
-        var onDisk = $"convert {(convert.ValueKind == JsonValueKind.Object ? convert.GetProperty("keys").GetString() : "missing")}, long press {held}, "
-            + $"location {output.GetProperty("location").GetString()}, naming {output.GetProperty("naming").GetString()}";
+        string Flag(string name) => json.RootElement.GetProperty("keys").TryGetProperty(name, out var on) ? (on.GetBoolean() ? "on" : "off") : "missing";
+        var onDisk = $"convert {(convert.ValueKind == JsonValueKind.Object ? convert.GetProperty("keys").GetString() : "missing")}, long press {Flag("touchLongPress")}, "
+            + $"dock {Flag("edgeDock")}, location {output.GetProperty("location").GetString()}, naming {output.GetProperty("naming").GetString()}";
         checks.Check("closing the settings window hides it, and settings.json holds the changes",
-            hidden && onDisk == "convert Ctrl, long press off, location Folder, naming {name}-dw",
+            hidden && onDisk == "convert Ctrl, long press off, dock off, location Folder, naming {name}-dw",
             $"visible={(bool)PInvoke.IsWindowVisible(window)}; {onDisk}");
 
         var dir = Path.Combine(Path.GetTempPath(), "DropWheelAcceptance", "settings");
@@ -80,6 +82,7 @@ internal static partial class AppScenario
         var jpg = Path.Combine(dir, $"m1s-{DateTime.Now:HHmmss}.jpg");
         WriteJpeg(jpg, 320, 200);
         RestOpensNothing(checks, log, jpg, explorer, Input.Touch, "with long press off a finger resting mid-drag opens nothing");
+        EdgeOpensNothing(checks, log, jpg, explorer);
         var png = ConvertThroughWheel(checks, log, jpg, "png", explorer, [VIRTUAL_KEY.VK_LCONTROL], quiet: VIRTUAL_KEY.VK_LSHIFT);
         var expected = Path.Combine(folder, $"{Path.GetFileNameWithoutExtension(jpg)}-dw.png");
         checks.Check("the PNG goes to the new output folder under the new name", png is not null && string.Equals(png, expected, StringComparison.OrdinalIgnoreCase),
