@@ -55,8 +55,9 @@ WM_CONTEXTMENU
 AllowSetForegroundWindow
 ASFW_ANY
 
-// Task window 打开位置 and the guide's 试一试: select a file in Explorer
+// Task window 打开位置, the guide's 试一试 and the 重命名 action: select a file in Explorer
 ILCreateFromPath
+ILFindLastID
 ILFree
 SHOpenFolderAndSelectItems
 

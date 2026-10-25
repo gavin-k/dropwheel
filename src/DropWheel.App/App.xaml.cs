@@ -5,6 +5,7 @@ using DropWheel.App.Overlay;
 using DropWheel.App.Queue;
 using DropWheel.App.Settings;
 using DropWheel.App.Tray;
+using DropWheel.Core.Actions;
 using DropWheel.Core.Conversion;
 using DropWheel.Core.Input;
 using DropWheel.Core.Jobs;
@@ -23,8 +24,8 @@ using Microsoft.Windows.AppLifecycle;
 namespace DropWheel.App;
 
 /// <summary>
-/// Composition: the conversion engines, job queue with Recycle Bin undo, the hook thread and drop target
-/// host from DropWheel.Shell, the wheel overlay, the task, settings and first-run guide windows and the
+/// Composition: the conversion engines and file actions, job queue with Recycle Bin undo, the hook thread
+/// and drop target host from DropWheel.Shell, the wheel overlay, the task, settings and first-run guide windows and the
 /// tray icon. Key changes made in Settings reach the hooks at once. One instance per session; launching
 /// again shows the task window (the guide, until it has been seen), <c>DropWheel.exe --quit</c> exits
 /// the running one.
@@ -93,7 +94,9 @@ public partial class App : Application
                 FileLog.Info(ffmpeg.Tools is { } tools ? $"ffmpeg sidecar: {tools.Ffmpeg}" : "ffmpeg sidecar not found; audio and video targets are greyed out");
                 ffmpeg.Warmup();
             });
-            _queue = new JobQueue(graph, new UndoLedger(new ShellFileOperations()));
+            var files = new ShellFileOperations();
+            _queue = new JobQueue(graph, new UndoLedger(files));
+            var operations = FileActions.Create(files, new Desktop(ui));
             var dataDir = ArgValue(commandLine, "--data-dir") ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DropWheel");
             var settings = new SettingsStore(Path.Combine(dataDir, "settings.json"));
             var recent = new RecentItems(path: Path.Combine(dataDir, "recent.json"));
@@ -102,7 +105,7 @@ public partial class App : Application
                 FileLog.Error(problem);
             }
 
-            var builder = new WheelBuilder(graph, recent, new DefaultRecommender(graph));
+            var builder = new WheelBuilder(graph, recent, new DefaultRecommender(graph), operations);
 
             var bindings = WheelController.Active(settings.Current.Keys);
             var tapper = new ModifierTapper(bindings, TimeProvider.System);
@@ -111,7 +114,7 @@ public partial class App : Application
             _monitor.Faulted += ex => FileLog.Error("hook thread handler failed", ex);
             _host = new DropTargetHost();
 
-            var settingsWindow = _settingsWindow = new SettingsWindow(settings, ui);
+            var settingsWindow = _settingsWindow = new SettingsWindow(settings, operations, ui);
             var queueWindow = _queueWindow = new QueueWindow(_queue, ui, settingsWindow.Show);
             queueWindow.ShowKeys(settings.Current.Keys.KeysFor(WheelMode.Convert));
             settings.Changed += changed =>

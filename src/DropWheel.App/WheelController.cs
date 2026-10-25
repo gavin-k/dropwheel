@@ -18,8 +18,8 @@ namespace DropWheel.App;
 
 /// <summary>
 /// One drag's worth of wheel: a modifier tap opens it at the pointer, DragEnter on the drop target host
-/// says which files are being dragged, a drop on a sector enqueues the conversion. M0 is the Convert
-/// wheel only.
+/// says which files are being dragged, a drop on a sector enqueues the conversion or the file action.
+/// The wheels are Convert and Actions; see <see cref="Modes"/>.
 ///
 /// The wheel closes on Dropped / Canceled from the host, on the hook seeing the button go up (after a
 /// grace period, because the hook sees the button-up before OLE delivers the drop), and on a watchdog
@@ -86,11 +86,11 @@ internal sealed class WheelController : IDisposable
         _host.Canceled += OnCanceled;
     }
 
-    /// <summary>
-    /// The bindings the hooks act on: Convert only. Binding Win or Ctrl+Alt to wheels M0 does not have would
-    /// swallow the Win key mid-drag for nothing.
-    /// </summary>
-    public static KeyBindings Active(KeyBindings keys) => keys with { Bindings = [.. keys.Bindings.Where(b => b.Mode == WheelMode.Convert)] };
+    /// <summary>The wheels there are. Tools has no items yet, and binding its keys would only swallow them mid-drag.</summary>
+    public static IReadOnlyList<WheelMode> Modes { get; } = [WheelMode.Convert, WheelMode.Actions];
+
+    /// <summary>The bindings the hooks act on: those of <see cref="Modes"/>.</summary>
+    public static KeyBindings Active(KeyBindings keys) => keys with { Bindings = [.. keys.Bindings.Where(b => Modes.Contains(b.Mode))] };
 
     public void Dispose()
     {
@@ -182,9 +182,15 @@ internal sealed class WheelController : IDisposable
                 return;
             }
 
-            var label = paths.Count == 1 ? $"{Path.GetFileName(paths[0])} → {slot.Label}" : $"{paths.Count} 个文件 → {slot.Label}";
-            _queue.Enqueue(session!.Settings.Request(paths, slot.ItemId), label);
-            _recent.Touch(FormatRegistry.FromPath(paths[0])?.Kind ?? MediaKind.Unknown, session.Mode, slot.ItemId);
+            var label = paths.Count == 1 ? $"{Path.GetFileName(paths[0])} → {slot.Label}" : $"{paths.Count} 项 → {slot.Label}";
+
+            // File actions never count against the daily quota, and only conversions have recent items.
+            _queue.Enqueue(session!.Settings.Request(paths, slot.ItemId), label, slot.Operation, countsTowardQuota: session.Mode != WheelMode.Actions);
+            if (session.Mode == WheelMode.Convert)
+            {
+                _recent.Touch(FormatRegistry.FromPath(paths[0])?.Kind ?? MediaKind.Unknown, session.Mode, slot.ItemId);
+            }
+
             FileLog.Info($"wheel: enqueued {label}");
         });
     }
@@ -195,9 +201,9 @@ internal sealed class WheelController : IDisposable
 
     private void Open(WheelMode mode, (int X, int Y) point, long tappedAt)
     {
-        if (mode != WheelMode.Convert)
+        if (!Modes.Contains(mode))
         {
-            FileLog.Info($"wheel: {mode} tap ignored, M0 has the Convert wheel only");
+            FileLog.Info($"wheel: {mode} tap ignored, that wheel has no items yet");
             return;
         }
 

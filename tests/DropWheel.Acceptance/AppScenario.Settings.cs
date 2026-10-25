@@ -30,13 +30,13 @@ internal static partial class AppScenario
         }
 
         var saved = File.ReadAllText(file);
-        Toggle("Shift");
+        Toggle("转换 Shift");
         var refusal = Element(SettingsTitle, "这组按键没有保存 必须至少选择一个修饰键。", out how);
         var notSaved = log.WaitFor(2000, "settings: convert keys '' not saved");
         checks.Check("unticking the only key says why and saves nothing", refusal is not null && notSaved is not null && File.ReadAllText(file) == saved,
             $"{how}; {notSaved ?? "no 'not saved' line"}; settings.json {(File.ReadAllText(file) == saved ? "unchanged" : "changed")}");
 
-        Toggle("Ctrl");
+        Toggle("转换 Ctrl");
         var keys = log.WaitFor(2000, "settings: saved convert keys Ctrl");
         Pattern<IUIAutomationSelectionItemPattern>("统一放到一个文件夹", UIA_PATTERN_ID.UIA_SelectionItemPatternId)?.Select();
         var location = log.WaitFor(2000, $"settings: saved output folder {folder}");

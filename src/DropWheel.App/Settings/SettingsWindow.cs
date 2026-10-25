@@ -17,12 +17,12 @@ using Windows.Win32.Foundation;
 namespace DropWheel.App.Settings;
 
 /// <summary>
-/// The settings that change what the app does today: the keys that open the Convert wheel and how quick a
-/// tap must be, where results go, what they are called and what happens when the name is taken, and
-/// whether Windows starts it at sign-in. Each change is saved as it is made, the file name a moment after
-/// typing stops. Keys that
-/// <see cref="ConflictChecker"/> calls an error are shown with the reason and not saved, so the wheel is
-/// never left without a way to open it. Closing only hides the window.
+/// The settings that change what the app does today: the keys that open each wheel and how quick a tap
+/// must be, which items the Actions wheel offers, where results go, what they are called and what happens
+/// when the name is taken, and whether Windows starts it at sign-in. Each change is saved as it is made,
+/// the file name a moment after typing stops. Keys that <see cref="ConflictChecker"/> calls an error are
+/// shown with the reason and not saved, so the Convert wheel is never left without a way to open it.
+/// Closing only hides the window.
 /// </summary>
 /// <remarks>
 /// Change handlers compare with <see cref="SettingsStore.Current"/> and save only a difference, because
@@ -35,7 +35,8 @@ internal sealed class SettingsWindow
     private static readonly Modifiers[] KeyOrder = [Modifiers.Shift, Modifiers.Ctrl, Modifiers.Alt, Modifiers.Win];
     private readonly Window _window;
     private readonly SettingsStore _settings;
-    private readonly Dictionary<Modifiers, CheckBox> _keys = [];
+    private readonly Dictionary<(WheelMode Mode, Modifiers Key), CheckBox> _keys = [];
+    private readonly Dictionary<FileAction, CheckBox> _actions = [];
     private readonly InfoBar _keyProblem = new() { IsClosable = false };
     private readonly NumberBox _tapWindow = new()
     {
@@ -61,8 +62,10 @@ internal sealed class SettingsWindow
     private readonly DispatcherQueueTimer _namingPause;
     private StartupTask? _startupTask;
     private bool _placed;
+    private bool _loading;
 
-    public SettingsWindow(SettingsStore settings, DispatcherQueue ui)
+    /// <param name="operations">The wheel items; those with a <see cref="IWheelOperation.Action"/> get a switch under 文件动作.</param>
+    public SettingsWindow(SettingsStore settings, IReadOnlyList<IWheelOperation> operations, DispatcherQueue ui)
     {
         _settings = settings;
         _window = new Window { Title = "DropWheel 设置" };
@@ -77,14 +80,33 @@ internal sealed class SettingsWindow
             }
         };
 
-        var keys = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
-        foreach (var key in KeyOrder)
+        var keys = new StackPanel { Spacing = 4 };
+        foreach (var mode in WheelController.Modes)
         {
-            var box = new CheckBox { Content = ModifierNames.Of(key), MinWidth = 88 };
-            box.Checked += (_, _) => KeysChanged();
-            box.Unchecked += (_, _) => KeysChanged();
-            _keys[key] = box;
-            keys.Children.Add(box);
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+            row.Children.Add(new TextBlock { Text = WheelName(mode), Width = 48, VerticalAlignment = VerticalAlignment.Center });
+            foreach (var key in KeyOrder)
+            {
+                var box = new CheckBox { Content = ModifierNames.Of(key), MinWidth = 88 };
+                AutomationProperties.SetName(box, $"{WheelName(mode)} {ModifierNames.Of(key)}");
+                box.Checked += (_, _) => KeysChanged(mode);
+                box.Unchecked += (_, _) => KeysChanged(mode);
+                _keys[(mode, key)] = box;
+                row.Children.Add(box);
+            }
+
+            keys.Children.Add(row);
+        }
+
+        var actions = new StackPanel { Spacing = 4 };
+        foreach (var op in operations.Where(o => o.Action is not null))
+        {
+            var action = op.Action!.Value;
+            var box = new CheckBox { Content = $"{op.Label}（{op.Hint}）" };
+            box.Checked += (_, _) => ActionChanged(action, true);
+            box.Unchecked += (_, _) => ActionChanged(action, false);
+            _actions[action] = box;
+            actions.Children.Add(box);
         }
 
         _tapWindow.ValueChanged += (_, e) => TapWindowChanged(e.NewValue);
@@ -123,7 +145,8 @@ internal sealed class SettingsWindow
         var page = new StackPanel { Spacing = 24, Padding = new Thickness(20, 16, 20, 24) };
         page.Children.Add(new TextBlock { Text = "设置", FontSize = 20, FontWeight = FontWeights.SemiBold });
         page.Children.Add(_saveProblem);
-        page.Children.Add(Section("唤出转换轮盘", "拖动文件时，把选中的键一起按下再松开，转换轮盘就会在鼠标处弹出。", keys, _keyProblem, _tapWindow));
+        page.Children.Add(Section("唤出轮盘", "拖动文件时，把一行里选中的键一起按下再松开，那个轮盘就会在鼠标处弹出。转换轮盘把文件转成别的格式；动作轮盘复制路径、重命名、压缩或删除，一个键都不选就不会弹出。", keys, _keyProblem, _tapWindow));
+        page.Children.Add(Section("文件动作", "动作轮盘上哪几项能用。没勾选的仍然显示，只是灰色。删除默认不勾选，免得手一滑把文件扔进回收站。", actions));
         page.Children.Add(Section("输出", null,
             _nextToSource,
             _toFolder,
@@ -203,14 +226,33 @@ internal sealed class SettingsWindow
         return section;
     }
 
+    private static string WheelName(WheelMode mode) => mode switch
+    {
+        WheelMode.Convert => "转换",
+        WheelMode.Tools => "工具",
+        WheelMode.Actions => "动作",
+        _ => mode.ToString(),
+    };
+
+    /// <summary>
+    /// Ticking a row's boxes one by one passes through combinations that are not the saved ones; if the
+    /// events come at once, <see cref="_loading"/> stops them being saved, if they come later, they match.
+    /// </summary>
     private void Load()
     {
         var current = _settings.Current;
-        var convert = current.Keys.KeysFor(WheelMode.Convert);
-        foreach (var (key, box) in _keys)
+        _loading = true;
+        foreach (var ((mode, key), box) in _keys)
         {
-            box.IsChecked = (convert & key) != 0;
+            box.IsChecked = (current.Keys.KeysFor(mode) & key) != 0;
         }
+
+        foreach (var (action, box) in _actions)
+        {
+            box.IsChecked = current.Actions.IsEnabled(action);
+        }
+
+        _loading = false;
 
         ShowConflicts(ConflictChecker.Check(WheelController.Active(current.Keys)));
         _tapWindow.Value = current.Keys.TapWindowMs;
@@ -226,23 +268,42 @@ internal sealed class SettingsWindow
         };
     }
 
-    private void KeysChanged()
+    private void KeysChanged(WheelMode mode)
     {
-        var keys = KeyOrder.Where(k => _keys[k].IsChecked == true).Aggregate(Modifiers.None, (all, k) => all | k);
-        var conflicts = ConflictChecker.Check(WheelController.Active(_settings.Current.Keys.Rebound(WheelMode.Convert, keys)));
-        ShowConflicts(conflicts);
-        if (keys == _settings.Current.Keys.KeysFor(WheelMode.Convert))
+        if (_loading)
         {
             return;
         }
 
+        var keys = KeyOrder.Where(k => _keys[(mode, k)].IsChecked == true).Aggregate(Modifiers.None, (all, k) => all | k);
+        var conflicts = ConflictChecker.Check(WheelController.Active(_settings.Current.Keys.Rebound(mode, keys)));
+        ShowConflicts(conflicts);
+        if (keys == _settings.Current.Keys.KeysFor(mode))
+        {
+            return;
+        }
+
+        var what = $"{mode.ToString().ToLowerInvariant()} keys";
         if (conflicts.Any(c => c.Severity == ConflictSeverity.Error))
         {
-            FileLog.Info($"settings: convert keys '{ModifierNames.Of(keys)}' not saved: {string.Join(" ", conflicts.Select(c => c.Message))}");
+            FileLog.Info($"settings: {what} '{ModifierNames.Of(keys)}' not saved: {string.Join(" ", conflicts.Select(c => c.Message))}");
             return;
         }
 
-        Save($"convert keys {ModifierNames.Of(keys)}", s => s with { Keys = s.Keys.Rebound(WheelMode.Convert, keys) });
+        Save($"{what} {ModifierNames.Of(keys)}", s => s with { Keys = s.Keys.Rebound(mode, keys) });
+    }
+
+    private void ActionChanged(FileAction action, bool on)
+    {
+        if (_loading || _settings.Current.Actions.IsEnabled(action) == on)
+        {
+            return;
+        }
+
+        Save($"file action {action} {(on ? "on" : "off")}", s => s with
+        {
+            Actions = new(on ? s.Actions.Enabled.Add(action) : s.Actions.Enabled.Remove(action)),
+        });
     }
 
     private void ShowConflicts(IReadOnlyList<KeyConflict> conflicts)
