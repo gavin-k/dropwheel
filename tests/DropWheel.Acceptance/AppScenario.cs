@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Globalization;
+using System.Text;
 using System.Text.RegularExpressions;
 using DropWheel.Core.Wheel;
 using Windows.Win32;
@@ -17,7 +18,8 @@ namespace DropWheel.Acceptance;
 /// The M0 acceptance flow against the real app: drag a JPG, tap Shift, release on the PNG sector, expect
 /// a PNG next to the JPG; press Undo in the task window, expect the PNG in the Recycle Bin. Then a second
 /// drag released off the wheel must convert nothing, and near the top edge, where the wheel opens shifted
-/// with a sector under the pointer, an immediate release must convert nothing either. The app is started
+/// with a sector under the pointer, an immediate release must convert nothing either. Last, an SRT dropped
+/// on the VTT sector must come out as UTF-8 WebVTT. The app is started
 /// by path and observed only through its log file and UI Automation, so this project never references
 /// DropWheel.App.
 /// </summary>
@@ -79,6 +81,7 @@ internal static partial class AppScenario
                 Attempt(checks, "convert and undo", () => ConvertAndUndo(checks, log, app, jpg, jpgLength, explorer));
                 Attempt(checks, "release off the wheel", () => ReleaseOff(checks, log, jpg, explorer));
                 Attempt(checks, "wheel shifted at the edge", () => EdgeShift(checks, log, jpg, explorer));
+                Attempt(checks, "convert a subtitle", () => ConvertSubtitle(checks, log, dir, explorer));
             }
         }
         finally
@@ -254,6 +257,63 @@ internal static partial class AppScenario
                 log.WaitFor(30000, $"queue: {label} ");
             }
         }
+    }
+
+    /// <summary>SRT → VTT through the wheel: proves a second engine is registered and offered for its kind.</summary>
+    private static void ConvertSubtitle(Checks checks, AppLog log, string dir, bool explorer)
+    {
+        var srt = Path.Combine(dir, $"m1-{DateTime.Now:HHmmss}.srt");
+        File.WriteAllText(srt, "1\r\n00:00:01,000 --> 00:00:02,500\r\n<i>你好</i>\r\n世界\r\n");
+        var output = ConvertThroughWheel(checks, log, srt, "vtt", explorer);
+        if (output is null)
+        {
+            return;
+        }
+
+        var bytes = File.ReadAllBytes(output);
+        var text = Encoding.UTF8.GetString(bytes);
+        checks.Check("VTT lands next to the SRT as UTF-8 WebVTT",
+            SameDir(output, srt) && bytes is [0xEF, 0xBB, 0xBF, ..] && text.Contains("WEBVTT", StringComparison.Ordinal) && text.Contains("00:00:01.000 --> 00:00:02.500\r\n<i>你好</i>\r\n世界", StringComparison.Ordinal),
+            $"{output}: {text.ReplaceLineEndings("⏎")}");
+    }
+
+    /// <summary>Drags <paramref name="source"/>, drops it on the <paramref name="target"/> sector and waits for the queue.</summary>
+    /// <returns>The output path, or null after a failed check.</returns>
+    private static string? ConvertThroughWheel(Checks checks, AppLog log, string source, string target, bool explorer)
+    {
+        using var drag = DragSource.Open(source, explorer);
+        var mid = drag.PressAndDrag();
+        log.Mark();
+        if (TapShift(checks, log, mid) is not { } w)
+        {
+            return null;
+        }
+
+        var entered = log.WaitFor(2000, "file(s) entered");
+        var sector = SlotOf(entered, target);
+        checks.Check($"{Path.GetExtension(source)} drag offers {target}", sector >= 0, entered ?? "no 'file(s) entered' line within 2 s");
+        if (sector < 0)
+        {
+            Input.MoveSmooth(mid, new Point(w.X, w.Y), 4, 30);
+            Input.LeftUp();
+            return null;
+        }
+
+        Input.MoveSmooth(new Point(mid.X + 6, mid.Y + 6), SectorPoint(w, sector), 8, 30);
+        Thread.Sleep(250);
+        Input.LeftUp();
+        var enqueued = log.WaitFor(3000, "wheel: enqueued ");
+        if (enqueued is null)
+        {
+            checks.Check($"release on the {target} sector enqueues a conversion", false, log.Find("wheel: closed") ?? "wheel never closed");
+            return null;
+        }
+
+        var label = enqueued[(enqueued.IndexOf("wheel: enqueued ", StringComparison.Ordinal) + "wheel: enqueued ".Length)..];
+        var done = log.WaitFor(30000, $"queue: {label} ");
+        var output = done is null ? null : OutputsRegex().Match(done) is { Success: true } m ? m.Groups[1].Value : null;
+        checks.Check($"{Path.GetExtension(source)} → {target} finishes", output is not null && File.Exists(output), done ?? "no queue outcome within 30 s");
+        return output is not null && File.Exists(output) ? output : null;
     }
 
     /// <summary>60 DIP below the top of the work area: the wheel needs 162, so it is pulled down about 100.</summary>

@@ -11,6 +11,7 @@ public sealed class DefaultRecommender(ConversionGraph graph) : IRecommender
     private static readonly Dictionary<MediaKind, string[]> Preferred = new()
     {
         [MediaKind.Image] = ["png", "jpg", "webp", "avif", "gif", "tiff", "bmp"],
+        [MediaKind.Subtitle] = ["srt", "vtt", "ass", "lrc", "ssa"],
     };
 
     public IEnumerable<string> For(IReadOnlyList<string> sourcePaths, MediaKind kind, WheelMode mode)
