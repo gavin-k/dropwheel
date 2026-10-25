@@ -103,7 +103,7 @@ internal static partial class AppScenario
                 Attempt(checks, "image to pdf and back", () => RoundTripPdf(checks, log, dir, explorer));
                 Attempt(checks, "pdf to word", () => PdfToDocx(checks, log, dir, explorer));
                 Attempt(checks, "task window buttons", () => QueueButtons(checks, log, exe, explorer));
-                Attempt(checks, "file actions", () => FileActions(checks, log, explorer));
+                Attempt(checks, "file actions", () => FileActions(checks, log, app.Id, explorer));
                 Attempt(checks, "settings", () => ChangeSettings(checks, log, profile, folder, explorer));
             }
         }

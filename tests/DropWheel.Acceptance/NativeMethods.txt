@@ -30,3 +30,7 @@ IUIAutomationValuePattern
 GetClassName
 SendMessage
 WM_GETTEXT
+WM_SETTEXT
+WM_COMMAND
+GetDlgItem
+IsWindow
