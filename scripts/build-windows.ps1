@@ -3,6 +3,7 @@
     Build, test and package DropWheel on Windows.
 
 .DESCRIPTION
+    0. scripts/fetch-sidecars.ps1 -Arch <x64|arm64>   (pinned ffmpeg LGPL build -> tools/sidecars)
     1. dotnet build DropWheel.slnx -c Release -p:Platform=<x64|ARM64>
     2. dotnet test  tests/DropWheel.Core.Tests and tests/DropWheel.Engines.Tests
     3. winapp pack  src/DropWheel.App  -> ./artifacts/DropWheel_<version>_<arch>.msix   (unsigned)
@@ -58,6 +59,11 @@ function Invoke-Checked([string]$title, [scriptblock]$cmd) {
 $winappVersion = '?'
 if (((winapp --version 2>&1) | Out-String) -match '(\d+\.\d+[\d.]*)') { $winappVersion = $Matches[1] }
 Write-Host "DropWheel build  ·  $Configuration | $Platform  ·  dotnet $(dotnet --version)  ·  winapp $winappVersion"
+
+# The app copies tools/sidecars/ffmpeg/<arch> next to itself, and the Engines tests run that ffmpeg from the PATH.
+Write-Host "`n==> fetch the ffmpeg sidecar ($Arch)" -ForegroundColor Cyan
+& (Join-Path $RepoRoot 'scripts\fetch-sidecars.ps1') -Arch $Arch
+$env:Path = (Join-Path $RepoRoot "tools\sidecars\ffmpeg\$Arch") + ';' + $env:Path
 
 Invoke-Checked "dotnet build DropWheel.slnx -c $Configuration -p:Platform=$Platform" {
     dotnet build DropWheel.slnx -c $Configuration -p:Platform=$Platform

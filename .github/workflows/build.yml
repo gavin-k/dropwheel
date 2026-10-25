@@ -21,6 +21,21 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
+      # The ffmpeg engine tests run the real ffmpeg from the PATH: the distro's on Linux, the bundled pinned build on Windows.
+      - name: ffmpeg (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - uses: actions/cache@v4
+        if: runner.os == 'Windows'
+        with:
+          path: tools/sidecars/.download
+          key: sidecars-${{ hashFiles('scripts/sidecars.lock') }}
+      - name: ffmpeg (Windows, bundled build)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ./scripts/fetch-sidecars.ps1 -Arch x64
+          Add-Content $env:GITHUB_PATH (Resolve-Path tools/sidecars/ffmpeg/x64).Path
       - run: dotnet restore tests/DropWheel.Core.Tests/DropWheel.Core.Tests.csproj
       - run: dotnet restore tests/DropWheel.Engines.Tests/DropWheel.Engines.Tests.csproj
       - run: dotnet build tests/DropWheel.Core.Tests/DropWheel.Core.Tests.csproj -c Release --no-restore
@@ -43,5 +58,18 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
+      - uses: actions/cache@v4
+        with:
+          path: tools/sidecars/.download
+          key: sidecars-${{ hashFiles('scripts/sidecars.lock') }}
+      - name: Fetch the ffmpeg sidecar
+        shell: pwsh
+        run: ./scripts/fetch-sidecars.ps1 -Arch x64
       - run: dotnet restore DropWheel.slnx -p:Platform=x64
       - run: dotnet build DropWheel.slnx -c Release -p:Platform=x64 -p:AppxPackageSigningEnabled=false --no-restore
+      - name: The sidecar is in the build output
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem src/DropWheel.App/bin -Recurse -Filter ffmpeg.exe | Where-Object { $_.Directory.FullName -like '*sidecars*ffmpeg' }
+          if (-not $exe) { throw 'sidecars/ffmpeg/ffmpeg.exe missing from the app output' }
+          $exe.FullName

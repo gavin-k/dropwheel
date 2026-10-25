@@ -37,6 +37,16 @@ jobs:
           Add-Content $env:GITHUB_PATH $dest
           & (Join-Path $dest 'winapp.exe') --version
 
+      - uses: actions/cache@v4
+        with:
+          path: tools/sidecars/.download
+          key: sidecars-${{ hashFiles('scripts/sidecars.lock') }}
+
+      # ffmpeg (LGPL) ships beside DropWheel.exe as sidecars/ffmpeg, see ADR-0003 and docs/05-licenses.md.
+      - name: Fetch sidecars (x64 + arm64)
+        shell: pwsh
+        run: ./scripts/fetch-sidecars.ps1
+
       - name: Core tests
         run: |
           dotnet restore tests/DropWheel.Core.Tests/DropWheel.Core.Tests.csproj
@@ -58,6 +68,26 @@ jobs:
           Push-Location artifacts/arm64
           winapp pack ../../src/DropWheel.App/DropWheel.App.csproj -c Release --arch arm64 --no-sign
           Pop-Location
+
+      # 每个 .msix 都要带上本架构的 ffmpeg：x64 包里放了 ARM64 的 ffmpeg 会直接跑不起来。
+      - name: Check the ffmpeg sidecar in each package
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $machines = @{ x64 = 0x8664; arm64 = 0xAA64 }
+          foreach ($arch in 'x64', 'arm64') {
+            foreach ($msix in Get-ChildItem "artifacts/$arch" -Filter *.msix -Recurse) {
+              $zip = [IO.Compression.ZipFile]::OpenRead($msix.FullName)
+              try {
+                $entry = $zip.Entries | Where-Object { $_.FullName -like '*sidecars/ffmpeg/ffmpeg.exe' } | Select-Object -First 1
+                if (-not $entry) { throw "$($msix.Name) has no sidecars/ffmpeg/ffmpeg.exe" }
+                $stream = $entry.Open(); $buf = New-Object byte[] 1024; $stream.ReadExactly($buf, 0, $buf.Length); $stream.Dispose()
+                $machine = [BitConverter]::ToUInt16($buf, [BitConverter]::ToInt32($buf, 0x3C) + 4)
+                if ($machine -ne $machines[$arch]) { throw "$($msix.Name): $($entry.FullName) is machine 0x$('{0:X}' -f $machine), expected $arch" }
+                "$($msix.Name): $($entry.FullName) ($arch)"
+              } finally { $zip.Dispose() }
+            }
+          }
 
       # 多架构 bundle：winapp 对每个 --arch 各 publish 一次并合成 .msixbundle
       - name: Pack msixbundle (x64 + arm64)

@@ -28,5 +28,5 @@ winapp embed-identity ./publish/x64/DropWheel.exe
 
 放在 `tools/sidecars/<name>/<arch>/`（不入库，由 CI 下载并校验 SHA-256）：
 
-- `ffmpeg/`：FFmpeg **LGPL** 构建（x64、arm64）+ `LICENSE.LGPL` + 构建配置与源码链接
+- `ffmpeg/`：FFmpeg **LGPL** shared 构建（x64、arm64），含 `ffmpeg.exe`、`ffprobe.exe`、DLL、`LICENSE.txt`、`SOURCE.txt`。运行 `scripts/fetch-sidecars.ps1`（或 `.sh`）按 `scripts/sidecars.lock` 下载并校验 SHA-256，可重复执行。App 项目构建时把对应架构的目录复制到输出的 `sidecars/ffmpeg/`；目录不存在就不复制，轮盘上的音视频目标灰显。`build-windows.ps1` 和 CI 会先自动下载。
 - LibreOffice 不随包分发，运行时按需下载到 `%LOCALAPPDATA%\DropWheel\modules\`

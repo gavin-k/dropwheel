@@ -32,6 +32,20 @@
     <Manifest Include="$(ApplicationManifest)" />
   </ItemGroup>
 
+  <!--
+    ffmpeg sidecar (LGPL, kept out of process, see ADR-0003), fetched into tools/sidecars by scripts/fetch-sidecars.{sh,ps1}.
+    Ships as sidecars/ffmpeg next to DropWheel.exe. Without it the app still builds and greys out audio and video targets.
+    The RuntimeIdentifier is only known up front when it is passed in (winapp pack, publish); a plain build has the Platform.
+  -->
+  <PropertyGroup>
+    <SidecarArch Condition="$(RuntimeIdentifier.EndsWith('arm64')) or ('$(RuntimeIdentifier)' == '' and '$(Platform)' == 'ARM64')">arm64</SidecarArch>
+    <SidecarArch Condition="'$(SidecarArch)' == ''">x64</SidecarArch>
+    <SidecarDir>$(MSBuildThisFileDirectory)../../tools/sidecars/ffmpeg/$(SidecarArch)/</SidecarDir>
+  </PropertyGroup>
+  <ItemGroup Condition="Exists('$(SidecarDir)ffmpeg.exe')">
+    <Content Include="$(SidecarDir)**" Exclude="$(SidecarDir).sha256" Link="sidecars/ffmpeg/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" />
