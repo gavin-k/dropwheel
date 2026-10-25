@@ -24,3 +24,6 @@ GetForegroundWindow
 GetDC
 ReleaseDC
 BitBlt
+IUIAutomationTogglePattern
+IUIAutomationSelectionItemPattern
+IUIAutomationValuePattern

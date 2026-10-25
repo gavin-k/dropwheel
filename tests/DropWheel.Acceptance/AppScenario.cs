@@ -21,10 +21,11 @@ namespace DropWheel.Acceptance;
 /// drag released off the wheel must convert nothing, and near the top edge, where the wheel opens shifted
 /// with a sector under the pointer, an immediate release must convert nothing either. Last, an SRT dropped
 /// on the VTT sector must come out as UTF-8 WebVTT, a zip dropped on the 7z sector as a 7z, and a WAV dropped
-/// on the MP3 sector as an MP3 made by the bundled ffmpeg, and a JPG dropped on the PDF sector as a PDF whose
-/// page, dropped on the PNG sector, comes back as a PNG. The app is
-/// started by path and observed only through its log file and UI Automation, so this project never
-/// references DropWheel.App.
+/// on the MP3 sector as an MP3 made by the bundled ffmpeg, a JPG dropped on the PDF sector as a PDF whose
+/// page, dropped on the PNG sector, comes back as a PNG, and a PDF with text dropped on the DOCX sector as
+/// a Word document with that text. Last, settings changed in the settings window take effect on the next
+/// drag. The app is started by path and observed only through its log file and UI Automation, so this
+/// project never references DropWheel.App.
 /// </summary>
 internal static partial class AppScenario
 {
@@ -68,7 +69,16 @@ internal static partial class AppScenario
         }
 
         Directory.CreateDirectory(profile);
-        File.WriteAllText(Path.Combine(profile, "settings.json"), """{ "version": 1, "onboardingDone": true }""");
+
+        // An output folder chosen earlier but not in use, and not there yet: the settings scenario switches to it.
+        var folder = Path.Combine(Path.GetTempPath(), "DropWheelAcceptance", "out");
+        if (Directory.Exists(folder))
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+
+        File.WriteAllText(Path.Combine(profile, "settings.json"),
+            $$"""{ "version": 1, "onboardingDone": true, "output": { "folder": "{{folder.Replace(@"\", @"\\", StringComparison.Ordinal)}}" } }""");
 
         var log = new AppLog();
         var started = Log.NowMs;
@@ -88,6 +98,8 @@ internal static partial class AppScenario
                 Attempt(checks, "repack an archive", () => RepackArchive(checks, log, dir, explorer));
                 Attempt(checks, "encode audio", () => EncodeAudio(checks, log, dir, explorer));
                 Attempt(checks, "image to pdf and back", () => RoundTripPdf(checks, log, dir, explorer));
+                Attempt(checks, "pdf to word", () => PdfToDocx(checks, log, dir, explorer));
+                Attempt(checks, "settings", () => ChangeSettings(checks, log, profile, folder, explorer));
             }
         }
         finally
@@ -105,7 +117,7 @@ internal static partial class AppScenario
         var foreground = PInvoke.GetForegroundWindow();
         using var before = Capture(SystemInformation.VirtualScreen);
         log.Mark();
-        var wheel = TapShift(checks, log, mid);
+        var wheel = Tap(checks, log, mid);
         if (wheel is not { } w)
         {
             return;
@@ -176,7 +188,7 @@ internal static partial class AppScenario
         using var source = DragSource.Open(jpg, explorer);
         var mid = source.PressAndDrag();
         log.Mark();
-        if (TapShift(checks, log, mid) is not { } w)
+        if (Tap(checks, log, mid) is not { } w)
         {
             return;
         }
@@ -211,7 +223,7 @@ internal static partial class AppScenario
             Input.MoveSmooth(mid, edge, 8, 30);
             Thread.Sleep(250);
             log.Mark();
-            if (TapShift(checks, log, edge) is not { } w)
+            if (Tap(checks, log, edge) is not { } w)
             {
                 return;
             }
@@ -241,7 +253,7 @@ internal static partial class AppScenario
             Input.MoveSmooth(mid, edge, 8, 30);
             Thread.Sleep(250);
             log.Mark();
-            if (TapShift(checks, log, edge) is not { } w)
+            if (Tap(checks, log, edge) is not { } w)
             {
                 return;
             }
@@ -351,14 +363,56 @@ internal static partial class AppScenario
             $"{png}: {page.Width} × {page.Height}");
     }
 
-    /// <summary>Drags <paramref name="source"/>, drops it on the <paramref name="target"/> sector and waits for the queue.</summary>
+    /// <summary>A PDF with a line of text → DOCX: proves the text survives as text in a document Word can open.</summary>
+    private static void PdfToDocx(Checks checks, AppLog log, string dir, bool explorer)
+    {
+        const string Text = "Hello DropWheel";
+        var pdf = Path.Combine(dir, $"m1d-{DateTime.Now:HHmmss}.pdf");
+        WritePdf(pdf, Text);
+        var docx = ConvertThroughWheel(checks, log, pdf, "docx", explorer);
+        if (docx is null)
+        {
+            return;
+        }
+
+        var bytes = File.ReadAllBytes(docx);
+        string? words = null;
+        if (bytes is [(byte)'P', (byte)'K', ..])
+        {
+            using var zip = ZipFile.OpenRead(docx);
+            if (zip.GetEntry("word/document.xml") is { } entry)
+            {
+                using var reader = new StreamReader(entry.Open());
+                words = TagRegex().Replace(reader.ReadToEnd(), "");
+            }
+        }
+
+        checks.Check("DOCX lands next to the PDF with the page's text in word/document.xml",
+            SameDir(docx, pdf) && words?.Contains(Text, StringComparison.Ordinal) == true,
+            $"{docx}: {bytes.Length} bytes, {(words is null ? "no word/document.xml" : $"text \"{words.Trim()}\"")}");
+    }
+
+    /// <summary>
+    /// Drags <paramref name="source"/>, opens the wheel with <paramref name="key"/>, drops on the
+    /// <paramref name="target"/> sector and waits for the queue. A <paramref name="quiet"/> key is tapped first
+    /// and must not open the wheel.
+    /// </summary>
     /// <returns>The output path, or null after a failed check.</returns>
-    private static string? ConvertThroughWheel(Checks checks, AppLog log, string source, string target, bool explorer)
+    private static string? ConvertThroughWheel(Checks checks, AppLog log, string source, string target, bool explorer,
+        VIRTUAL_KEY key = VIRTUAL_KEY.VK_LSHIFT, VIRTUAL_KEY? quiet = null)
     {
         using var drag = DragSource.Open(source, explorer);
         var mid = drag.PressAndDrag();
         log.Mark();
-        if (TapShift(checks, log, mid) is not { } w)
+        if (quiet is { } other)
+        {
+            PressAndRelease(other);
+            var opened = log.WaitFor(700, "wheel: shown");
+            checks.Check($"{KeyName(other)} tap mid-drag no longer opens the wheel", opened is null, opened ?? "no 'wheel: shown' within 700 ms");
+            log.Mark();
+        }
+
+        if (Tap(checks, log, mid, key) is not { } w)
         {
             return null;
         }
@@ -399,24 +453,22 @@ internal static partial class AppScenario
 
     private readonly record struct Wheel(int X, int Y, double Scale);
 
-    /// <summary>Taps Shift and returns where the app says it put the wheel.</summary>
-    private static Wheel? TapShift(Checks checks, AppLog log, Point mid)
+    /// <summary>Taps <paramref name="key"/> and returns where the app says it put the wheel.</summary>
+    private static Wheel? Tap(Checks checks, AppLog log, Point mid, VIRTUAL_KEY key = VIRTUAL_KEY.VK_LSHIFT)
     {
-        Input.Key(VIRTUAL_KEY.VK_LSHIFT, up: false);
-        Thread.Sleep(70);
-        Input.Key(VIRTUAL_KEY.VK_LSHIFT, up: true);
+        PressAndRelease(key);
         var shown = log.WaitFor(2000, "wheel: shown");
         var frame = log.WaitFor(1000, "overlay: first frame");
         var m = shown is null ? null : ShownRegex().Match(shown);
         if (m is not { Success: true })
         {
-            checks.Check("Shift tap mid-drag shows the wheel", false, shown ?? "no 'wheel: shown' within 2 s");
+            checks.Check($"{KeyName(key)} tap mid-drag shows the wheel", false, shown ?? "no 'wheel: shown' within 2 s");
             return null;
         }
 
         var showMs = double.Parse(m.Groups["ms"].Value, CultureInfo.InvariantCulture);
         var frameMs = frame is not null && FrameRegex().Match(frame) is { Success: true } f ? double.Parse(f.Groups[1].Value, CultureInfo.InvariantCulture) : double.NaN;
-        checks.Check($"Shift tap mid-drag shows the wheel within {BudgetMs} ms", showMs + frameMs <= BudgetMs,
+        checks.Check($"{KeyName(key)} tap mid-drag shows the wheel within {BudgetMs} ms", showMs + frameMs <= BudgetMs,
             $"shown {showMs:F1} ms after the hook saw the tap, first frame {frameMs:F0} ms later");
         var wheel = new Wheel(int.Parse(m.Groups["x"].Value, CultureInfo.InvariantCulture), int.Parse(m.Groups["y"].Value, CultureInfo.InvariantCulture),
             double.Parse(m.Groups["s"].Value, CultureInfo.InvariantCulture));
@@ -425,6 +477,20 @@ internal static partial class AppScenario
         Input.MoveSmooth(mid, new Point(mid.X + 6, mid.Y + 6), 3, 30);
         return wheel;
     }
+
+    private static void PressAndRelease(VIRTUAL_KEY key)
+    {
+        Input.Key(key, up: false);
+        Thread.Sleep(70);
+        Input.Key(key, up: true);
+    }
+
+    private static string KeyName(VIRTUAL_KEY key) => key switch
+    {
+        VIRTUAL_KEY.VK_LSHIFT => "Shift",
+        VIRTUAL_KEY.VK_LCONTROL => "Ctrl",
+        _ => key.ToString(),
+    };
 
     /// <summary>Sector of an enabled item in a "slots 0=png,1=webp,2=gif(off)" log line, or -1.</summary>
     private static int SlotOf(string? entered, string item)
@@ -472,30 +538,40 @@ internal static partial class AppScenario
         return new Point(w.X + (int)Math.Round(dx * w.Scale), w.Y + (int)Math.Round(dy * w.Scale));
     }
 
-    private static bool PressUndo(string label, out string how)
+    private static bool PressUndo(string label, out string how) => Invoke(QueueTitle, $"撤销 {label}", out how);
+
+    /// <summary>Presses the button named <paramref name="name"/> in the window titled <paramref name="title"/>, the way a screen reader would.</summary>
+    private static bool Invoke(string title, string name, out string how)
     {
-        var window = PInvoke.FindWindow(null, QueueTitle);
+        if (Element(title, name, out how) is not { } button)
+        {
+            return false;
+        }
+
+        ((IUIAutomationInvokePattern)button.GetCurrentPattern(UIA_PATTERN_ID.UIA_InvokePatternId)).Invoke();
+        how = $"invoked '{name}'";
+        return true;
+    }
+
+    /// <summary>
+    /// The first element named <paramref name="name"/>, or with that automation id when <paramref name="byId"/>,
+    /// in the window titled <paramref name="title"/>, waiting up to 3 s for it.
+    /// </summary>
+    private static IUIAutomationElement? Element(string title, string name, out string how, bool byId = false)
+    {
+        var window = PInvoke.FindWindow(null, title);
         if (window.IsNull)
         {
-            how = $"no window titled '{QueueTitle}'";
-            return false;
+            how = $"no window titled '{title}'";
+            return null;
         }
 
         var uia = (IUIAutomation)new CUIAutomation8();
-        var name = $"撤销 {label}";
-        var condition = uia.CreatePropertyCondition(UIA_PROPERTY_ID.UIA_NamePropertyId, name);
-        IUIAutomationElement? button = null;
-        Checks.Wait(() => (button = uia.ElementFromHandle(window).FindFirst(ComTreeScope.TreeScope_Descendants, condition)) is not null, 3000);
-        if (button is null)
-        {
-            how = $"no element named '{name}'";
-            return false;
-        }
-
-        var invoke = (IUIAutomationInvokePattern)button.GetCurrentPattern(UIA_PATTERN_ID.UIA_InvokePatternId);
-        invoke.Invoke();
-        how = $"invoked '{name}'";
-        return true;
+        var condition = uia.CreatePropertyCondition(byId ? UIA_PROPERTY_ID.UIA_AutomationIdPropertyId : UIA_PROPERTY_ID.UIA_NamePropertyId, name);
+        IUIAutomationElement? element = null;
+        Checks.Wait(() => (element = uia.ElementFromHandle(window).FindFirst(ComTreeScope.TreeScope_Descendants, condition)) is not null, 3000);
+        how = element is null ? $"no element {(byId ? "with id" : "named")} '{name}' in '{title}'" : $"found '{name}'";
+        return element;
     }
 
     /// <summary>
@@ -631,6 +707,33 @@ internal static partial class AppScenario
         bitmap.Save(path, ImageFormat.Jpeg);
     }
 
+    /// <summary>A one-page 300 × 100 pt PDF with <paramref name="text"/> in Helvetica, written by hand.</summary>
+    private static void WritePdf(string path, string text)
+    {
+        var content = $"BT /F1 18 Tf 10 60 Td ({text}) Tj ET";
+        string[] objects =
+        [
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 100] /Contents 4 0 R "
+                + "/Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> >>",
+            $"<< /Length {content.Length} >>\nstream\n{content}\nendstream",
+        ];
+        var pdf = new StringBuilder("%PDF-1.4\n");
+        var offsets = new List<int>();
+        foreach (var (body, number) in objects.Select((o, i) => (o, i + 1)))
+        {
+            offsets.Add(pdf.Length);
+            pdf.Append(CultureInfo.InvariantCulture, $"{number} 0 obj\n{body}\nendobj\n");
+        }
+
+        var xref = pdf.Length;
+        pdf.Append(CultureInfo.InvariantCulture, $"xref\n0 {objects.Length + 1}\n0000000000 65535 f \n");
+        offsets.ForEach(o => pdf.Append(CultureInfo.InvariantCulture, $"{o:D10} 00000 n \n"));
+        pdf.Append(CultureInfo.InvariantCulture, $"trailer\n<< /Size {objects.Length + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n");
+        File.WriteAllText(path, pdf.ToString(), Encoding.Latin1);
+    }
+
     /// <summary>A 16-bit mono PCM WAV of a 440 Hz tone.</summary>
     private static void WriteWav(string path, int rate, int seconds)
     {
@@ -713,4 +816,7 @@ internal static partial class AppScenario
 
     [GeneratedRegex(@" done in \d+ ms, outputs (.+)$")]
     private static partial Regex OutputsRegex();
+
+    [GeneratedRegex("<[^>]+>")]
+    private static partial Regex TagRegex();
 }
