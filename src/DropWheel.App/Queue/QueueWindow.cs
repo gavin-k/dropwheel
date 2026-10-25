@@ -6,7 +6,6 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
-using Windows.Foundation;
 using Windows.Graphics;
 using Windows.Win32;
 using Windows.Win32.Foundation;
@@ -14,8 +13,8 @@ using Windows.Win32.Foundation;
 namespace DropWheel.App.Queue;
 
 /// <summary>
-/// M0 task list: one row per job with its state and an Undo button once it is done. Closing the window
-/// quits the app until there is a tray icon. Job events arrive on the queue's worker thread and are
+/// Task list: one row per job with its state and an Undo button once it is done. Closing the window only
+/// hides it; the app keeps running in the tray. Job events arrive on the queue's worker thread and are
 /// marshalled to the UI thread here.
 /// </summary>
 internal sealed class QueueWindow
@@ -26,6 +25,7 @@ internal sealed class QueueWindow
     private readonly StackPanel _rows = new() { Spacing = 8 };
     private readonly TextBlock _empty;
     private readonly Dictionary<Guid, Row> _byJob = [];
+    private bool _placed;
 
     public QueueWindow(JobQueue queue, DispatcherQueue ui)
     {
@@ -33,6 +33,14 @@ internal sealed class QueueWindow
         _ui = ui;
         _window = new Window { Title = "DropWheel 任务" };
         _window.AppWindow.SetIcon("Assets/DropWheel.ico");
+        _window.AppWindow.Closing += (window, e) =>
+        {
+            if (!Quitting)
+            {
+                e.Cancel = true;
+                window.Hide();
+            }
+        };
         _empty = new TextBlock
         {
             Text = "从资源管理器拖动文件时轻点 Shift，轮盘会在鼠标处弹出；松手到扇区即开始转换。",
@@ -57,20 +65,37 @@ internal sealed class QueueWindow
         };
     }
 
-    public event TypedEventHandler<object, WindowEventArgs>? Closed
+    public HWND Handle => new(WinRT.Interop.WindowNative.GetWindowHandle(_window));
+
+    /// <summary>Set before <see cref="Close"/> so the close is not turned into a hide.</summary>
+    public bool Quitting { get; set; }
+
+    /// <summary>Shows the window, the first time in the bottom-right of the primary work area.</summary>
+    public void Show(bool activate = true)
     {
-        add => _window.Closed += value;
-        remove => _window.Closed -= value;
+        if (!_placed)
+        {
+            var area = DisplayArea.Primary.WorkArea;
+            var scale = PInvoke.GetDpiForWindow(Handle) / 96.0;
+            var (w, h) = ((int)(440 * scale), (int)(380 * scale));
+            _window.AppWindow.MoveAndResize(new RectInt32(area.X + area.Width - w - 24, area.Y + area.Height - h - 24, w, h));
+            _placed = true;
+        }
+
+        if (activate)
+        {
+            _window.Activate();
+        }
+        else
+        {
+            _window.AppWindow.Show(activateWindow: false);
+        }
     }
 
-    /// <summary>Shows the window in the bottom-right of the primary work area.</summary>
-    public void Show()
+    public void Close()
     {
-        var area = DisplayArea.Primary.WorkArea;
-        var scale = PInvoke.GetDpiForWindow(new HWND(WinRT.Interop.WindowNative.GetWindowHandle(_window))) / 96.0;
-        var (w, h) = ((int)(440 * scale), (int)(380 * scale));
-        _window.AppWindow.MoveAndResize(new RectInt32(area.X + area.Width - w - 24, area.Y + area.Height - h - 24, w, h));
-        _window.Activate();
+        Quitting = true;
+        _window.Close();
     }
 
     private static void LogOutcome(Job job)
@@ -104,7 +129,10 @@ internal sealed class QueueWindow
             _byJob[job.Id] = row;
             _rows.Children.Remove(_empty);
             _rows.Children.Insert(0, row.Element);
-            _window.AppWindow.Show(false);
+            if (!_window.AppWindow.IsVisible)
+            {
+                Show(activate: false);
+            }
         }
 
         row.Refresh();

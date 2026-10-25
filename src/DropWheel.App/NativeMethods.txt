@@ -32,3 +32,25 @@ GetAsyncKeyState
 GetSystemMetrics
 VIRTUAL_KEY
 GetDpiForWindow
+
+// Tray icon (Tray/TrayIcon.cs) and single instance hand-over
+Shell_NotifyIcon
+NOTIFYICONDATAW
+NOTIFYICON_VERSION_4
+RegisterWindowMessage
+LoadImage
+DestroyIcon
+GetSystemMetricsForDpi
+CreatePopupMenu
+AppendMenu
+TrackPopupMenuEx
+TRACK_POPUP_MENU_FLAGS
+DestroyMenu
+SetForegroundWindow
+PostMessage
+WM_APP
+WM_USER
+WM_NULL
+WM_CONTEXTMENU
+AllowSetForegroundWindow
+ASFW_ANY

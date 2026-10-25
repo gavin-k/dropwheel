@@ -72,7 +72,7 @@ internal static partial class AppScenario
         }
         finally
         {
-            Quit(checks, log, app);
+            Quit(checks, log, app, exe);
         }
 
         return checks.Report($"DropWheel.App M0 ({(explorer ? "Explorer" : "WinForms")} source)");
@@ -257,8 +257,11 @@ internal static partial class AppScenario
         return true;
     }
 
-    /// <summary>Closing the task window quits the app; it must exit on its own and say so in its log.</summary>
-    private static void Quit(Checks checks, AppLog log, Process app)
+    /// <summary>
+    /// Closing the task window only hides it (the app lives in the tray); a second launch with --quit makes
+    /// the running instance exit on its own and say so in its log.
+    /// </summary>
+    private static void Quit(Checks checks, AppLog log, Process app, string exe)
     {
         if (app.HasExited)
         {
@@ -272,15 +275,38 @@ internal static partial class AppScenario
             PInvoke.PostMessage(window, PInvoke.WM_CLOSE, new WPARAM(0), new LPARAM(0));
         }
 
-        var exited = app.WaitForExit(8000);
+        var exitedOnClose = app.WaitForExit(1500);
+        checks.Check("closing the task window hides it and keeps the app running", !window.IsNull && !exitedOnClose && !PInvoke.IsWindowVisible(window),
+            window.IsNull ? "no task window" : exitedOnClose ? $"exited with {app.ExitCode}" : $"running, window visible={(bool)PInvoke.IsWindowVisible(window)}");
+
+        if (!exitedOnClose && !window.IsNull)
+        {
+            using var again = Process.Start(new ProcessStartInfo(exe) { UseShellExecute = false });
+            var againExited = again?.WaitForExit(10000) == true;
+            var shown = Checks.Wait(() => PInvoke.IsWindowVisible(window), 5000);
+            checks.Check("launching again shows the running instance's task window", againExited && shown && !app.HasExited,
+                $"second process exited={againExited}, task window visible={shown}, first still running={!app.HasExited}");
+            PInvoke.PostMessage(window, PInvoke.WM_CLOSE, new WPARAM(0), new LPARAM(0));
+            exitedOnClose = app.WaitForExit(1500);
+        }
+
+        var exited = exitedOnClose;
+        if (!exited)
+        {
+            using var quit = Process.Start(new ProcessStartInfo(exe, ["--quit"]) { UseShellExecute = false });
+            var quitExited = quit?.WaitForExit(10000) == true;
+            exited = app.WaitForExit(10000);
+            log.Poll();
+            checks.Check("DropWheel.exe --quit ends the running instance", exited && log.Find("shutting down") is not null,
+                exited ? $"exit code {app.ExitCode}; --quit process exited={quitExited}; {log.Find("asked it to quit") ?? "no hand-over line"}" : "still running 10 s after --quit, killed");
+        }
+
         if (!exited)
         {
             app.Kill();
         }
 
         log.Poll();
-        checks.Check("closing the task window quits the app", exited && log.Find("shutting down") is not null,
-            exited ? $"exit code {app.ExitCode}" : "still running after 8 s, killed");
         checks.Check("app logged no errors", log.Find(" ERROR ") is null, log.Find(" ERROR ") ?? "none");
     }
 

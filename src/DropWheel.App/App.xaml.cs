@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using DropWheel.App.Diagnostics;
 using DropWheel.App.Overlay;
 using DropWheel.App.Queue;
+using DropWheel.App.Tray;
 using DropWheel.Core.Conversion;
 using DropWheel.Core.Input;
 using DropWheel.Core.Jobs;
@@ -15,14 +16,18 @@ using Microsoft.UI.Xaml;
 namespace DropWheel.App;
 
 /// <summary>
-/// M0 composition: Magick image engine, job queue with Recycle Bin undo, the hook thread and drop target
-/// host from DropWheel.Shell, the wheel overlay and the queue window. One instance per session (named
-/// mutex). Closing the queue window quits until there is a tray icon.
+/// Composition: Magick image engine, job queue with Recycle Bin undo, the hook thread and drop target
+/// host from DropWheel.Shell, the wheel overlay, the task window and the tray icon. One instance per
+/// session; launching again shows the task window, <c>DropWheel.exe --quit</c> exits the running one.
+/// The app lives in the tray: closing the task window hides it, the tray menu's 退出 quits.
 /// </summary>
 [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1001", Justification = "Lives as long as the process; Shutdown disposes everything.")]
 public partial class App : Application
 {
-    private Mutex? _singleInstance;
+    private SingleInstance? _instance;
+    private TrayIcon? _tray;
+    private QueueWindow? _queueWindow;
+    private bool _shuttingDown;
     private DragMonitor? _monitor;
     private DropTargetHost? _host;
     private JobQueue? _queue;
@@ -39,11 +44,23 @@ public partial class App : Application
 
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
-        _singleInstance = new Mutex(initiallyOwned: true, @"Local\DropWheel.App", out var first);
-        if (!first)
+        var commandLine = Environment.GetCommandLineArgs();
+        var quit = commandLine.Contains("--quit");
+        _instance = new SingleInstance();
+        if (!_instance.IsFirst || quit)
         {
-            FileLog.Info("another DropWheel is already running in this session; exiting");
+            if (_instance.IsFirst)
+            {
+                FileLog.Info("--quit: no DropWheel is running in this session");
+            }
+            else
+            {
+                _instance.Signal(quit);
+                FileLog.Info($"another DropWheel is already running in this session; asked it to {(quit ? "quit" : "show its task window")}");
+            }
+
             FileLog.Flush(TimeSpan.FromSeconds(1));
+            _instance.Dispose();
             Exit();
             return;
         }
@@ -56,7 +73,6 @@ public partial class App : Application
             var graph = new ConversionGraph();
             graph.Register(new MagickImageConverter());
             _queue = new JobQueue(graph, new UndoLedger(new ShellFileOperations()));
-            var commandLine = Environment.GetCommandLineArgs();
             var dataDir = ArgValue(commandLine, "--data-dir") ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DropWheel");
             var settings = new SettingsStore(Path.Combine(dataDir, "settings.json"));
             var recent = new RecentItems(path: Path.Combine(dataDir, "recent.json"));
@@ -74,14 +90,26 @@ public partial class App : Application
             _monitor.Faulted += ex => FileLog.Error("hook thread handler failed", ex);
             _host = new DropTargetHost();
 
-            var queueWindow = new QueueWindow(_queue, ui);
-            queueWindow.Closed += (_, _) => Shutdown();
+            var queueWindow = _queueWindow = new QueueWindow(_queue, ui);
             _wheel = new WheelWindow();
             _controller = new WheelController(ui, _monitor, _host, _wheel, builder, _queue, recent, settings, tapper);
 
             _host.Start();
             _monitor.Start();
-            queueWindow.Show();
+            _tray = new TrayIcon(queueWindow.Handle, "DropWheel", Path.Combine(AppContext.BaseDirectory, "Assets", "DropWheel.ico"),
+            [
+                ("打开任务窗口", () => queueWindow.Show()),
+                ("退出 DropWheel", Shutdown),
+            ]);
+            _tray.Selected += () => queueWindow.Show();
+            _instance.Listen(show: () => ui.TryEnqueue(() => queueWindow.Show()), quit: () => ui.TryEnqueue(Shutdown));
+
+            // Until there is a first-run guide, a new user gets the task window and its how-to line.
+            if (!settings.Current.OnboardingDone)
+            {
+                queueWindow.Show();
+            }
+
             await _wheel.PrewarmAsync().ConfigureAwait(true);
             FileLog.Info($"ready: hooks and drop target up, log {FileLog.CurrentFile}, settings {dataDir}");
 
@@ -123,18 +151,26 @@ public partial class App : Application
 
     private void Shutdown()
     {
+        if (_shuttingDown)
+        {
+            return;
+        }
+
+        _shuttingDown = true;
         FileLog.Info("shutting down");
+        _tray?.Dispose();
         _controller?.Dispose();
         _monitor?.Dispose();
         _host?.Dispose();
         _wheel?.Close();
+        _queueWindow?.Close();
         if (_queue is not null && !_queue.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(2)))
         {
             FileLog.Info("a job was still running at exit");
         }
 
         FileLog.Flush(TimeSpan.FromSeconds(1));
-        _singleInstance?.Dispose();
+        _instance?.Dispose();
         Exit();
     }
 }
