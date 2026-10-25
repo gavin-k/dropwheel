@@ -205,4 +205,55 @@ public sealed class FfmpegPlanTests
         info.Audio.Should().ContainSingle().Which.Should().BeEquivalentTo(new MediaTrack(1, "audio", "flac", BitsPerSample: 24, Channels: 2));
         info.Streams[2].AttachedPicture.Should().BeTrue();
     }
+
+    [Fact]
+    public void Compress_scales_4k_down_to_1080p_at_a_modest_rate()
+    {
+        var job = FfmpegPlan.Compress(Info(new(0, "video", "hevc", 3840, 2160, 30, 40_000_000), new(1, "audio", "aac", BitRate: 256_000, Channels: 2)), Bundled);
+
+        Joined(job).Should().Be("-map 0:0 -map 0:1 -vf scale=1920:1080 -c:v h264_mf -b:v 3110400 -c:a aac -b:a 128k -movflags +faststart -f mp4");
+        (job.Width, job.Height).Should().Be((1920, 1080));
+    }
+
+    [Fact]
+    public void Compress_keeps_a_portrait_1080p_size_holds_the_rate_below_the_source_and_copies_small_aac()
+    {
+        var job = FfmpegPlan.Compress(Info(new(0, "video", "h264", 1080, 1920, 30, 2_000_000), new(1, "audio", "aac", BitRate: 128_000, Channels: 2)), Bundled);
+
+        Joined(job).Should().Be("-map 0:0 -map 0:1 -vf scale=1080:1920 -c:v h264_mf -b:v 1200000 -c:a copy -movflags +faststart -f mp4");
+    }
+
+    [Fact]
+    public void Compress_rounds_to_even_sizes_and_gives_surround_more_bits()
+    {
+        var job = FfmpegPlan.Compress(Info(new(0, "video", "mpeg4", 1001, 601, 25), new(1, "audio", "ac3", Channels: 6)), Bundled);
+
+        Joined(job).Should().Contain("-vf scale=1000:600 ").And.Contain("-c:a aac -b:a 256k");
+        (job.Width, job.Height).Should().Be((1000, 600));
+    }
+
+    [Fact]
+    public void Compress_falls_back_to_libx264_at_crf_26_and_needs_a_picture()
+    {
+        Joined(FfmpegPlan.Compress(Info(H264(), Aac()), new HashSet<string> { "libx264", "aac" })).Should().Contain("-c:v libx264 -crf 26 -pix_fmt yuv420p");
+
+        var act = () => FfmpegPlan.Compress(Info(Aac(0)), Bundled);
+        act.Should().Throw<InvalidDataException>().WithMessage("没有视频画面");
+    }
+
+    [Theory]
+    [InlineData("hevc", "mp4", "-map 0:0 -c:v copy -tag:v hvc1 -movflags +faststart -f mp4")]
+    [InlineData("mpeg4", "mkv", "-map 0:0 -c:v copy -bsf:v mpeg4_unpack_bframes -f matroska")]
+    [InlineData("mpeg4", "avi", "-map 0:0 -c:v copy -f avi")]
+    [InlineData("vc1", "mkv", "-map 0:0 -c:v copy -f matroska")]
+    public void Mute_copies_only_the_picture_into_the_same_container(string codec, string container, string expected) =>
+        Joined(FfmpegPlan.Mute(Info(new(0, "video", codec, 640, 360, 25), Aac(), new(2, "subtitle", "subrip")), container)).Should().Be(expected);
+
+    [Fact]
+    public void Mute_needs_a_picture()
+    {
+        var act = () => FfmpegPlan.Mute(Info(Aac(0)), "mkv");
+
+        act.Should().Throw<InvalidDataException>().WithMessage("没有视频画面");
+    }
 }

@@ -10,7 +10,7 @@ namespace DropWheel.Engines.Media;
 /// </summary>
 public sealed class FfmpegConverter : IConverter
 {
-    private const string Missing = "找不到 ffmpeg 组件，请重新安装 DropWheel";
+    internal const string Missing = "找不到 ffmpeg 组件，请重新安装 DropWheel";
 
     private readonly Lazy<FfmpegTools?> _tools;
     private readonly TimeProvider _time;
@@ -137,23 +137,35 @@ public sealed class FfmpegConverter : IConverter
     {
         var info = await MediaProbe.ProbeAsync(tools.Ffprobe, source, cancellationToken).ConfigureAwait(false);
         var job = FfmpegPlan.Build(info, request.TargetFormatId, encoders);
-        return await OutputFiles.WriteAsync(request, source, index, _time.GetLocalNow(), async temp =>
-        {
-            var result = await new SidecarProcess(tools.Ffmpeg).RunAsync(
-                FfmpegPlan.Command(source, job, temp),
-                line =>
-                {
-                    if (FfmpegPlan.Progress(line, info.Duration) is { } p)
-                    {
-                        progress.Report(p);
-                    }
-                },
-                cancellationToken).ConfigureAwait(false);
-            if (result.ExitCode != 0)
+        return await OutputFiles.WriteAsync(request, source, index, _time.GetLocalNow(),
+            temp => EncodeAsync(tools, source, job, info.Duration, temp, progress, cancellationToken), job.Width, job.Height).ConfigureAwait(false);
+    }
+
+    /// <summary>Runs <paramref name="job"/> on <paramref name="source"/>, reporting progress against its <paramref name="duration"/>.</summary>
+    /// <exception cref="InvalidDataException">ffmpeg failed; the message names the file.</exception>
+    internal static async Task EncodeAsync(
+        FfmpegTools tools,
+        string source,
+        FfmpegJob job,
+        TimeSpan? duration,
+        string output,
+        IProgress<double> progress,
+        CancellationToken cancellationToken)
+    {
+        var result = await new SidecarProcess(tools.Ffmpeg).RunAsync(
+            FfmpegPlan.Command(source, job, output),
+            line =>
             {
-                throw new InvalidDataException(Failure(source, result));
-            }
-        }, job.Width, job.Height).ConfigureAwait(false);
+                if (FfmpegPlan.Progress(line, duration) is { } p)
+                {
+                    progress.Report(p);
+                }
+            },
+            cancellationToken).ConfigureAwait(false);
+        if (result.ExitCode != 0)
+        {
+            throw new InvalidDataException(Failure(source, result));
+        }
     }
 
     private static string Failure(string source, SidecarResult result)
@@ -168,7 +180,7 @@ public sealed class FfmpegConverter : IConverter
     }
 
     /// <summary>Asked once and cached; a failed attempt is retried by the next caller.</summary>
-    private Task<IReadOnlySet<string>> EncodersAsync(FfmpegTools tools)
+    internal Task<IReadOnlySet<string>> EncodersAsync(FfmpegTools tools)
     {
         lock (_gate)
         {

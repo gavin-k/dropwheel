@@ -23,6 +23,9 @@ public static class FfmpegPlan
     /// <summary>Lossless targets, which make files bigger without making lossy sources better.</summary>
     public static readonly string[] Lossless = ["wav", "flac", "aiff"];
 
+    /// <summary>For <see cref="Compress"/>: 1080p, or 1080 wide for a portrait video.</summary>
+    private const int MaxShortSide = 1080;
+
     /// <summary>The output is a temp file without the real extension, so the muxer is always named.</summary>
     private static readonly Dictionary<string, string> Muxers = new()
     {
@@ -174,17 +177,7 @@ public static class FfmpegPlan
         {
             if (CopyVideo[target].Contains(video.Codec))
             {
-                args.AddRange(["-c:v", "copy"]);
-                if (video.Codec == "hevc" && target is "mp4" or "mov")
-                {
-                    // The tag QuickTime and the Windows Photos app expect; ffmpeg defaults to hev1.
-                    args.AddRange(["-tag:v", "hvc1"]);
-                }
-                else if (video.Codec == "mpeg4" && target != "avi")
-                {
-                    // DivX-style packed B-frames are only valid in AVI.
-                    args.AddRange(["-bsf:v", "mpeg4_unpack_bframes"]);
-                }
+                args.AddRange(CopyVideoInto(target, video.Codec));
             }
             else
             {
@@ -208,6 +201,79 @@ public static class FfmpegPlan
 
         return new(Finish(args, target), width, height);
     }
+
+    /// <summary>
+    /// The picture as it is, in the container it came in, without sound. Only the first video stream is kept:
+    /// subtitles and cover art go too.
+    /// </summary>
+    /// <exception cref="InvalidDataException">There is no picture.</exception>
+    public static FfmpegJob Mute(MediaInfo info, string container)
+    {
+        var video = info.Video ?? throw new InvalidDataException("没有视频画面");
+        List<string> args = ["-map", $"0:{video.Index}", .. CopyVideoInto(container, video.Codec)];
+        return new(Finish(args, container), video.Width, video.Height);
+    }
+
+    /// <summary>
+    /// A smaller MP4 to send: at most 1080 pixels on the short side, H.264 at about 0.05 bit per pixel and never
+    /// above 60% of the source's rate, AAC at 128 kbit/s unless the source's AAC is already that small. Whether
+    /// the result is actually smaller is only known afterwards.
+    /// </summary>
+    /// <exception cref="InvalidDataException">There is no picture, or this build has no encoder for it.</exception>
+    public static FfmpegJob Compress(MediaInfo info, IReadOnlySet<string> encoders)
+    {
+        var video = info.Video ?? throw new InvalidDataException("没有视频画面");
+        var args = new List<string> { "-map", $"0:{video.Index}" };
+        foreach (var a in info.Audio)
+        {
+            args.AddRange(["-map", $"0:{a.Index}"]);
+        }
+
+        int? width = null, height = null;
+        if (video is { Width: int w and > 0, Height: int h and > 0 })
+        {
+            // Display size: ffmpeg turns a rotated picture upright before the filter runs.
+            var scale = Math.Min(1.0, (double)MaxShortSide / Math.Min(w, h));
+            (width, height) = (Even(w * scale), Even(h * scale));
+            args.AddRange(["-vf", FormattableString.Invariant($"scale={width}:{height}")]);
+        }
+        else
+        {
+            args.AddRange(["-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2"]);
+        }
+
+        var fps = video.FrameRate is double f and > 0 and < 240 ? f : 30;
+        var rate = Math.Clamp(0.05 * (width ?? 1280) * (height ?? 720) * fps, 300_000, 6_000_000);
+        if ((video.BitRate ?? info.BitRate) is long source and > 0)
+        {
+            rate = Math.Max(Math.Min(rate, 0.6 * source), 100_000);
+        }
+
+        args.AddRange(First(encoders, "H.264",
+            ["-c:v", "h264_mf", "-b:v", ((long)rate).ToString(CultureInfo.InvariantCulture)],
+            ["-c:v", "libx264", "-crf", "26", "-pix_fmt", "yuv420p"],
+            ["-c:v", "mpeg4", "-q:v", "5"]));
+        if (info.Audio.Count > 0)
+        {
+            args.AddRange(info.Audio.All(a => a is { Codec: "aac", BitRate: <= 160_000 })
+                ? ["-c:a", "copy"]
+                : First(encoders, "AAC", ["-c:a", "aac", "-b:a", info.Audio.Max(a => a.Channels ?? 2) > 2 ? "256k" : "128k"]));
+        }
+
+        return new(Finish(args, "mp4"), width, height);
+
+        static int Even(double size) => Math.Max(2, (int)Math.Round(size / 2) * 2);
+    }
+
+    /// <summary>Stream-copies a video stream of <paramref name="codec"/> into <paramref name="target"/>.</summary>
+    private static string[] CopyVideoInto(string target, string codec) => (codec, target) switch
+    {
+        // The tag QuickTime and the Windows Photos app expect; ffmpeg defaults to hev1.
+        ("hevc", "mp4" or "mov") => ["-c:v", "copy", "-tag:v", "hvc1"],
+        // DivX-style packed B-frames are only valid in AVI.
+        ("mpeg4", not "avi") => ["-c:v", "copy", "-bsf:v", "mpeg4_unpack_bframes"],
+        _ => ["-c:v", "copy"],
+    };
 
     private static FfmpegJob Audio(MediaInfo info, string target, IReadOnlySet<string> encoders)
     {
