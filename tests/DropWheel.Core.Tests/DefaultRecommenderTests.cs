@@ -31,6 +31,23 @@ public class DefaultRecommenderTests
     }
 
     [Fact]
+    public void Images_offer_pdf_after_the_two_common_formats()
+    {
+        var graph = Graph("jpg", "png", "webp", "avif", "gif", "bmp", "tiff", "pdf");
+        new DefaultRecommender(graph).For(["a.png"], MediaKind.Image, WheelMode.Convert).Take(3)
+            .Should().Equal("jpg", "pdf", "webp");
+    }
+
+    [Fact]
+    public void A_pdf_is_offered_as_page_images_then_text()
+    {
+        var graph = new ConversionGraph();
+        graph.Register(new TestConverter([new("pdf", "txt"), new("pdf", "jpg"), new("pdf", "png")]));
+        new DefaultRecommender(graph).For(["a.pdf"], MediaKind.Pdf, WheelMode.Convert)
+            .Should().Equal("png", "jpg", "txt");
+    }
+
+    [Fact]
     public void Video_offers_other_containers_then_audio_and_gif()
     {
         var graph = Graph("mp4", "mkv", "mov", "webm", "avi", "mp3", "m4a", "wav", "gif");

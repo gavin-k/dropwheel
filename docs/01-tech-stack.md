@@ -91,9 +91,10 @@ Windows **没有**「全局拖拽开始」事件。Microsoft Q&A 上的讨论给
 
 | 任务 | 库 | 许可证 |
 |---|---|---|
-| 渲染 / 转图 / 页操作 | **PDFium**（`PDFtoImage` 或 `PDFiumCore` 封装，bblanchon 二进制） | BSD-3 / MIT |
-| 文本与版式提取 | **PdfPig** | Apache-2.0 |
-| 生成 PDF（图片→PDF、PDF/A） | PDFsharp 6（MIT）或 QuestPDF（社区许可） | — |
+| 渲染 / 转图 | **PDFium** 152（bblanchon 二进制，`PDFtoImage` 5.4 封装，经 SkiaSharp 出图） | BSD-3 / Apache-2.0；封装 MIT |
+| 文本与版式提取 | **PdfPig** 0.1.16 | Apache-2.0 |
+| 生成 PDF（图片→PDF） | SkiaSharp 的 PDF 后端（`SKDocument`），JPG 不重新压缩、原样嵌入 | MIT |
+| 页操作（合并、拆分）、PDF/A | 待定。PDFsharp 6.5 起改为 AGPL，不再考虑 | — |
 | PDF → DOCX | 两条路：① PdfPig 提取 + Open XML SDK 重建（质量「中」）；② **LibreOffice headless** sidecar（质量更稳，但 ~300 MB，作可选下载模块） | — |
 
 「预期质量」规则初版：扫描页占比、是否含表格、是否多栏、字体是否嵌入 → 高 / 中 / 低 + 原因文案。
@@ -134,13 +135,13 @@ Windows **没有**「全局拖拽开始」事件。Microsoft Q&A 上的讨论给
 
 - `winapp` CLI（`winget install Microsoft.winappcli`）覆盖创建、带标识运行、打包、签名、多架构 bundle 全流程，可在 CI 使用。
 - 单文件 EXE 仅支持「非打包 + 自包含」，与右键菜单（需包标识）冲突 → 不采用。
-- ARM64：WinUI 3 原生支持；需逐一确认 Magick.NET、PDFium、FFmpeg LGPL 的 ARM64 二进制。
+- ARM64：WinUI 3 原生支持；Magick.NET、PDFium、FFmpeg LGPL 的 ARM64 二进制都已随 App 在 ARM64 上跑通。
 
 ## 6. 许可证边界（MIT 主程序）
 
 ```
 DropWheel.exe (MIT)
- ├─ 进程内：Magick.NET (Apache-2.0) · PdfPig (Apache-2.0) · PDFium (BSD) · Open XML SDK (MIT) · SharpCompress (MIT) · PDFsharp (MIT)
+ ├─ 进程内：Magick.NET (Apache-2.0) · PdfPig (Apache-2.0) · PDFium (BSD-3 / Apache-2.0) · SkiaSharp (MIT) · Open XML SDK (MIT) · SharpCompress (MIT)
  └─ 子进程：ffmpeg.exe (LGPL-2.1+) · soffice.exe (MPL-2.0，可选下载)
 ```
 
@@ -153,7 +154,7 @@ LGPL 组件以独立可执行文件随包分发并附带许可证文本与源码
 - [ ] 透明分层窗口 `RegisterDragDrop` 在多显示器 / 不同 DPI 下的坐标映射
 - [x] `Win` 键在拖拽中被吞掉后，开始菜单是否仍会弹出——不会（22H2 ARM64、Win10 21H2 x64）
 - [x] `SystemBackdropElement` 在透明窗口上的亚克力效果与 150 ms 弹出预算（含 x64 真机 GPU 开销）
-- [ ] Magick.NET / PDFium / FFmpeg LGPL 的 ARM64 包可用性（FFmpeg 已在 ARM64 上随 App 跑通，见 [路线图](04-roadmap.md) 的音视频引擎一条）
+- [x] Magick.NET / PDFium / FFmpeg LGPL 的 ARM64 包可用性——三者都已在 ARM64 上随 App 跑通，见 [路线图](04-roadmap.md) 的音视频引擎和 PDF 引擎两条
 
 > 2026-10-24：用 [`spikes/DragSpike`](../spikes/DragSpike/README.md) 在 Win11 22H2 ARM64 上做了真实 Explorer 拖拽自测（6/6）：
 > 第 1 项通过；第 2 项验证了 22H2 上 `SysDragImage` 会出现、关掉四项拖拽相关视觉效果后仍出现，24H2 未测，另外 `EVENT_SYSTEM_DRAGDROPSTART` 在该机上从不触发

@@ -10,14 +10,10 @@
     <ProjectReference Include="../DropWheel.Core/DropWheel.Core.csproj" />
   </ItemGroup>
 
-  <!--
-    M0 只需要 Image 引擎。其余包在对应里程碑再打开，避免首次 restore 拉下数百 MB 原生二进制。
-  -->
   <ItemGroup>
     <PackageReference Include="Magick.NET-Q16-AnyCPU" />
-    <!-- <PackageReference Include="PDFtoImage" /> -->
-    <!-- <PackageReference Include="PdfPig" /> -->
-    <!-- <PackageReference Include="PDFsharp" /> -->
+    <PackageReference Include="PDFtoImage" />
+    <PackageReference Include="PdfPig" />
     <!-- <PackageReference Include="DocumentFormat.OpenXml" /> -->
     <PackageReference Include="SharpCompress" />
   </ItemGroup>

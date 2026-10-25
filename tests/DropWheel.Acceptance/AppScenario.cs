@@ -21,7 +21,8 @@ namespace DropWheel.Acceptance;
 /// drag released off the wheel must convert nothing, and near the top edge, where the wheel opens shifted
 /// with a sector under the pointer, an immediate release must convert nothing either. Last, an SRT dropped
 /// on the VTT sector must come out as UTF-8 WebVTT, a zip dropped on the 7z sector as a 7z, and a WAV dropped
-/// on the MP3 sector as an MP3 made by the bundled ffmpeg. The app is
+/// on the MP3 sector as an MP3 made by the bundled ffmpeg, and a JPG dropped on the PDF sector as a PDF whose
+/// page, dropped on the PNG sector, comes back as a PNG. The app is
 /// started by path and observed only through its log file and UI Automation, so this project never
 /// references DropWheel.App.
 /// </summary>
@@ -86,6 +87,7 @@ internal static partial class AppScenario
                 Attempt(checks, "convert a subtitle", () => ConvertSubtitle(checks, log, dir, explorer));
                 Attempt(checks, "repack an archive", () => RepackArchive(checks, log, dir, explorer));
                 Attempt(checks, "encode audio", () => EncodeAudio(checks, log, dir, explorer));
+                Attempt(checks, "image to pdf and back", () => RoundTripPdf(checks, log, dir, explorer));
             }
         }
         finally
@@ -317,6 +319,36 @@ internal static partial class AppScenario
         var bytes = File.ReadAllBytes(output);
         checks.Check("MP3 lands next to the WAV", SameDir(output, wav) && bytes is [(byte)'I', (byte)'D', (byte)'3', ..] or [0xFF, 0xFB or 0xFA or 0xF3 or 0xF2, ..],
             $"{output}: {bytes.Length} bytes, starts {Convert.ToHexString(bytes.AsSpan(0, Math.Min(4, bytes.Length)))}");
+    }
+
+    /// <summary>JPG → PDF → PNG through the wheel: proves Skia and PDFium load from the package.</summary>
+    private static void RoundTripPdf(Checks checks, AppLog log, string dir, bool explorer)
+    {
+        var jpg = Path.Combine(dir, $"m1p-{DateTime.Now:HHmmss}.jpg");
+        WriteJpeg(jpg, 320, 200);
+        var pdf = ConvertThroughWheel(checks, log, jpg, "pdf", explorer);
+        if (pdf is null)
+        {
+            return;
+        }
+
+        var bytes = File.ReadAllBytes(pdf);
+        checks.Check("PDF lands next to the JPG", SameDir(pdf, jpg) && bytes is [(byte)'%', (byte)'P', (byte)'D', (byte)'F', (byte)'-', ..],
+            $"{pdf}: {bytes.Length} bytes");
+
+        // Its own stem: with extensions hidden Explorer would show the JPG and the PDF under the same name.
+        var copy = Path.Combine(dir, $"m1q-{DateTime.Now:HHmmss}.pdf");
+        File.Copy(pdf, copy);
+        var png = ConvertThroughWheel(checks, log, copy, "png", explorer);
+        if (png is null)
+        {
+            return;
+        }
+
+        // 320 × 200 px at 96 DPI is a 240 × 150 pt page, rendered at 150 DPI.
+        using var page = new Bitmap(png);
+        checks.Check("PNG of the page lands next to the PDF", SameDir(png, copy) && page.Width == 500 && page.Height == 313,
+            $"{png}: {page.Width} × {page.Height}");
     }
 
     /// <summary>Drags <paramref name="source"/>, drops it on the <paramref name="target"/> sector and waits for the queue.</summary>
@@ -588,6 +620,7 @@ internal static partial class AppScenario
     private static void WriteJpeg(string path, int width, int height)
     {
         using var bitmap = new Bitmap(width, height);
+        bitmap.SetResolution(96, 96); // not the screen's, so the page size of the PDF made from it is known
         using (var g = Graphics.FromImage(bitmap))
         using (var brush = new LinearGradientBrush(new Rectangle(0, 0, width, height), Color.SteelBlue, Color.Orange, 30f))
         {
