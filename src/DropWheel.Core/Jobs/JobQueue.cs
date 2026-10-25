@@ -210,10 +210,4 @@ public sealed class JobQueue : IAsyncDisposable
     }
 
     private void Raise(Job job) => JobChanged?.Invoke(job);
-
-    /// <summary>Reports synchronously on the engine's thread; <see cref="Progress{T}"/> would post to a captured context.</summary>
-    private sealed class InlineProgress(Action<double> report) : IProgress<double>
-    {
-        public void Report(double value) => report(value);
-    }
 }

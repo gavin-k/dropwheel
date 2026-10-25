@@ -177,9 +177,4 @@ public sealed class MagickImageConverterTests : IDisposable
             .And.Contain(new ConversionEdge("png", "jpg"))
             .And.NotContain(e => e.FromFormatId == "heic" || e.ToFormatId == "ico" || e.FromFormatId == e.ToFormatId);
     }
-
-    private sealed class InlineProgress(Action<double> report) : IProgress<double>
-    {
-        public void Report(double value) => report(value);
-    }
 }

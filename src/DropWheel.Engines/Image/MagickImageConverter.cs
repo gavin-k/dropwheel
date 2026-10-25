@@ -52,10 +52,7 @@ public sealed class MagickImageConverter(TimeProvider? time = null) : IConverter
         };
     }
 
-    /// <summary>
-    /// All or nothing: if one source fails or the job is canceled, outputs already written by this run
-    /// are deleted (they did not exist before it) and nothing is reported.
-    /// </summary>
+    /// <summary>All or nothing, see <see cref="OutputFiles.ForEachSourceAsync"/>.</summary>
     public async Task<ConversionResult> RunAsync(ConversionRequest request, IProgress<double> progress, CancellationToken cancellationToken)
     {
         if (!Formats.TryGetValue(request.TargetFormatId, out var format))
@@ -63,99 +60,31 @@ public sealed class MagickImageConverter(TimeProvider? time = null) : IConverter
             return new(false, [], $"不支持输出 {request.TargetFormatId}");
         }
 
-        var written = new List<string>();
         try
         {
-            for (var i = 0; i < request.SourcePaths.Count; i++)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                var source = request.SourcePaths[i];
-                var output = await Task.Run(() => Convert(request, source, i, format), cancellationToken).ConfigureAwait(false);
-                if (output is not null)
-                {
-                    written.Add(output);
-                }
-
-                progress.Report((i + 1.0) / request.SourcePaths.Count);
-            }
-
+            var written = await OutputFiles.ForEachSourceAsync(request, progress,
+                (source, i, _) => Task.Run(() => Convert(request, source, i, format), cancellationToken), cancellationToken).ConfigureAwait(false);
             return new(true, written);
         }
-        catch (Exception ex)
+        catch (MagickException ex)
         {
-            foreach (var path in written)
-            {
-                TryDelete(path);
-            }
-
-            if (ex is MagickException)
-            {
-                return new(false, [], $"{Path.GetFileName(ex.Data["source"] as string)} 无法转换：{ex.Message}");
-            }
-
-            throw;
+            return new(false, [], $"{Path.GetFileName(ex.Data["source"] as string)} 无法转换：{ex.Message}");
         }
     }
 
     /// <returns>The written path, or <c>null</c> when the conflict policy skipped this source.</returns>
     private string? Convert(ConversionRequest request, string source, int index, MagickFormat format)
     {
-        var sequence = request.SourcePaths.Count > 1 ? index + 1 : (int?)null;
         try
         {
             using var image = new MagickImage(source);
             image.AutoOrient();
-            var (width, height) = ((int)image.Width, (int)image.Height);
-            string? Plan() => OutputPlanner.PathFor(request, source, _time.GetLocalNow(), File.Exists, sequence, width, height);
-
-            var target = Plan();
-            if (target is null)
-            {
-                return null;
-            }
-
-            var temp = Path.Combine(Path.GetDirectoryName(target)!, $".{Path.GetFileName(target)}.{Guid.NewGuid():N}.dropwheel-tmp");
-            try
-            {
-                image.Write(temp, format);
-                // Never overwrite: a file that appeared after planning gets a new number (AutoNumber),
-                // any other policy fails rather than clobber it.
-                for (var attempt = 0; ; attempt++)
-                {
-                    try
-                    {
-                        File.Move(temp, target, overwrite: false);
-                        return target;
-                    }
-                    catch (IOException) when (File.Exists(target) && request.Conflict == ConflictPolicy.AutoNumber && attempt < 5)
-                    {
-                        target = Plan() ?? throw new IOException($"{Path.GetFileName(target)} 已存在");
-                    }
-                }
-            }
-            finally
-            {
-                TryDelete(temp);
-            }
+            return OutputFiles.Write(request, source, index, _time.GetLocalNow(), temp => image.Write(temp, format), (int)image.Width, (int)image.Height);
         }
         catch (MagickException ex)
         {
             ex.Data["source"] = source;
             throw;
-        }
-    }
-
-    private static void TryDelete(string path)
-    {
-        try
-        {
-            File.Delete(path);
-        }
-        catch (IOException)
-        {
-        }
-        catch (UnauthorizedAccessException)
-        {
         }
     }
 }
