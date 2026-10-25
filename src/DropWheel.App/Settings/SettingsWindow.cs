@@ -9,6 +9,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.Windows.Storage.Pickers;
+using Windows.ApplicationModel;
 using Windows.Graphics;
 using Windows.Win32;
 using Windows.Win32.Foundation;
@@ -17,8 +18,9 @@ namespace DropWheel.App.Settings;
 
 /// <summary>
 /// The settings that change what the app does today: the keys that open the Convert wheel and how quick a
-/// tap must be, where results go, what they are called and what happens when the name is taken. Each
-/// change is saved as it is made, the file name a moment after typing stops. Keys that
+/// tap must be, where results go, what they are called and what happens when the name is taken, and
+/// whether Windows starts it at sign-in. Each change is saved as it is made, the file name a moment after
+/// typing stops. Keys that
 /// <see cref="ConflictChecker"/> calls an error are shown with the reason and not saved, so the wheel is
 /// never left without a way to open it. Closing only hides the window.
 /// </summary>
@@ -29,6 +31,7 @@ namespace DropWheel.App.Settings;
 /// </remarks>
 internal sealed class SettingsWindow
 {
+    private const string StartupTaskId = "DropWheelStartup"; // the TaskId in Package.appxmanifest
     private static readonly Modifiers[] KeyOrder = [Modifiers.Shift, Modifiers.Ctrl, Modifiers.Alt, Modifiers.Win];
     private readonly Window _window;
     private readonly SettingsStore _settings;
@@ -52,7 +55,11 @@ internal sealed class SettingsWindow
     private readonly TextBlock _preview = new() { TextWrapping = TextWrapping.Wrap, Opacity = 0.75 };
     private readonly ComboBox _conflict = new() { Header = "同名文件已经存在时", Items = { "自动编号，例如 photo (1).png", "跳过，不转换这个文件" } };
     private readonly InfoBar _saveProblem = new() { Severity = InfoBarSeverity.Error, Title = "设置没有保存" };
+    private readonly ToggleSwitch _startup = new() { Header = "登录 Windows 时启动", OnContent = "开", OffContent = "关" };
+    private readonly TextBlock _startupNote = new() { TextWrapping = TextWrapping.Wrap, Opacity = 0.75 };
+    private readonly StackPanel _startupSection;
     private readonly DispatcherQueueTimer _namingPause;
+    private StartupTask? _startupTask;
     private bool _placed;
 
     public SettingsWindow(SettingsStore settings, DispatcherQueue ui)
@@ -111,6 +118,7 @@ internal sealed class SettingsWindow
             _namingPause.Start();
         };
         _conflict.SelectionChanged += (_, _) => ConflictChanged();
+        _startup.Toggled += async (_, _) => await StartupToggledAsync().ConfigureAwait(true);
 
         var page = new StackPanel { Spacing = 24, Padding = new Thickness(20, 16, 20, 24) };
         page.Children.Add(new TextBlock { Text = "设置", FontSize = 20, FontWeight = FontWeights.SemiBold });
@@ -130,6 +138,11 @@ internal sealed class SettingsWindow
             },
             _preview,
             _conflict));
+
+        // Unpackaged builds (development, the acceptance run) have no startup task to show.
+        _startupSection = Section("启动", null, _startup, _startupNote);
+        _startupSection.Visibility = HasPackageIdentity() ? Visibility.Visible : Visibility.Collapsed;
+        page.Children.Add(_startupSection);
         _window.Content = new ScrollViewer { Content = page };
     }
 
@@ -142,6 +155,7 @@ internal sealed class SettingsWindow
     public void Show()
     {
         Load();
+        _ = LoadStartupAsync();
         if (!_placed)
         {
             var area = DisplayArea.Primary.WorkArea;
@@ -158,6 +172,12 @@ internal sealed class SettingsWindow
     {
         Quitting = true;
         _window.Close();
+    }
+
+    private static unsafe bool HasPackageIdentity()
+    {
+        uint length = 0;
+        return PInvoke.GetCurrentPackageFullName(&length, default) != WIN32_ERROR.APPMODEL_ERROR_NO_PACKAGE;
     }
 
     private static string Preview(string template)
@@ -306,6 +326,70 @@ internal sealed class SettingsWindow
         {
             Save($"naming {naming}", s => s with { Output = s.Output with { Naming = naming } });
         }
+    }
+
+    private async Task LoadStartupAsync()
+    {
+        if (_startupSection.Visibility == Visibility.Collapsed)
+        {
+            return;
+        }
+
+        try
+        {
+            _startupTask ??= await StartupTask.GetAsync(StartupTaskId).AsTask().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            FileLog.Error("settings: could not read the startup task", ex);
+            _startupSection.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        ShowStartup(_startupTask.State);
+    }
+
+    private void ShowStartup(StartupTaskState state)
+    {
+        _startup.IsOn = IsOn(state);
+        _startup.IsEnabled = state is StartupTaskState.Enabled or StartupTaskState.Disabled;
+        _startupNote.Text = state switch
+        {
+            StartupTaskState.DisabledByUser => "已在任务管理器的「启动应用」或「设置 › 应用 › 启动」里关闭，只能在那里重新打开。",
+            StartupTaskState.DisabledByPolicy => "已被组织的策略关闭。",
+            StartupTaskState.EnabledByPolicy => "已由组织的策略打开。",
+            _ => "开机后只在托盘里待命，不打开窗口。",
+        };
+    }
+
+    private static bool IsOn(StartupTaskState state) => state is StartupTaskState.Enabled or StartupTaskState.EnabledByPolicy;
+
+    private async Task StartupToggledAsync()
+    {
+        if (_startupTask is not { } task || _startup.IsOn == IsOn(task.State))
+        {
+            return;
+        }
+
+        try
+        {
+            if (_startup.IsOn)
+            {
+                // A packaged desktop app gets no consent dialog; the state says whether the user had turned it off.
+                FileLog.Info($"settings: startup task {await task.RequestEnableAsync().AsTask().ConfigureAwait(true)}");
+            }
+            else
+            {
+                task.Disable();
+                FileLog.Info("settings: startup task Disabled");
+            }
+        }
+        catch (Exception ex)
+        {
+            FileLog.Error("settings: could not change the startup task", ex);
+        }
+
+        ShowStartup(task.State);
     }
 
     private void ConflictChanged()

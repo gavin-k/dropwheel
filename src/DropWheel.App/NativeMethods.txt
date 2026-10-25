@@ -54,3 +54,7 @@ WM_NULL
 WM_CONTEXTMENU
 AllowSetForegroundWindow
 ASFW_ANY
+
+// Settings: the startup task needs package identity
+GetCurrentPackageFullName
+WIN32_ERROR

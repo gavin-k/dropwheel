@@ -49,6 +49,14 @@
         </uap5:Extension>
 
         <!--
+          登录 Windows 时启动，只进托盘。Enabled：用户启动过一次之后生效；用户在任务管理器或系统设置里关掉后，
+          只能由用户在那里重新打开。Executable / EntryPoint 沿用 Application 的。
+        -->
+        <uap5:Extension Category="windows.startupTask">
+          <uap5:StartupTask TaskId="DropWheelStartup" Enabled="true" DisplayName="DropWheel" />
+        </uap5:Extension>
+
+        <!--
           Win11 新式右键菜单「用 DropWheel 转换」。
           M2 启用：取消注释并把 DropWheel.ContextMenu.dll 放入包。
         <com:Extension Category="windows.comServer">

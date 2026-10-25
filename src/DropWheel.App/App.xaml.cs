@@ -17,6 +17,7 @@ using DropWheel.Engines.Subtitle;
 using DropWheel.Shell;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using Microsoft.Windows.AppLifecycle;
 
 namespace DropWheel.App;
 
@@ -131,8 +132,14 @@ public partial class App : Application
             _tray.Selected += () => queueWindow.Show();
             _instance.Listen(show: () => ui.TryEnqueue(() => queueWindow.Show()), quit: () => ui.TryEnqueue(Shutdown));
 
-            // Until there is a first-run guide, a new user gets the task window and its how-to line.
-            if (!settings.Current.OnboardingDone)
+            // Until there is a first-run guide, a new user gets the task window and its how-to line, unless
+            // Windows started the app at sign-in (the startup task in Package.appxmanifest): then only the tray.
+            var atSignIn = AppInstance.GetCurrent().GetActivatedEventArgs().Kind == ExtendedActivationKind.StartupTask;
+            if (atSignIn)
+            {
+                FileLog.Info("started by Windows at sign-in");
+            }
+            else if (!settings.Current.OnboardingDone)
             {
                 queueWindow.Show();
             }
