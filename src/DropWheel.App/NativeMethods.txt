@@ -55,6 +55,11 @@ WM_CONTEXTMENU
 AllowSetForegroundWindow
 ASFW_ANY
 
+// Task window: 打开位置
+ILCreateFromPath
+ILFree
+SHOpenFolderAndSelectItems
+
 // Settings: the startup task needs package identity
 GetCurrentPackageFullName
 WIN32_ERROR

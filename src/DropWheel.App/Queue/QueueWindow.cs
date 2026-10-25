@@ -14,9 +14,10 @@ using Windows.Win32.Foundation;
 namespace DropWheel.App.Queue;
 
 /// <summary>
-/// Task list: one row per job with its state and an Undo button once it is done, and the way into
-/// Settings. Closing the window only hides it; the app keeps running in the tray. Job events arrive on
-/// the queue's worker thread and are marshalled to the UI thread here.
+/// Task list: one row per job with its state, progress and what can be done with it (cancel, retry, show
+/// the output in its folder, undo), and the way into Settings. Closing the window only hides it; the app
+/// keeps running in the tray. Job events arrive on the queue's worker thread and are marshalled to the UI
+/// thread here.
 /// </summary>
 internal sealed class QueueWindow
 {
@@ -121,6 +122,9 @@ internal sealed class QueueWindow
             case JobState.Skipped:
                 FileLog.Info($"queue: {job.Label} skipped: {job.Detail}");
                 break;
+            case JobState.Canceled:
+                FileLog.Info($"queue: {job.Label} canceled{took}");
+                break;
         }
     }
 
@@ -134,7 +138,7 @@ internal sealed class QueueWindow
     {
         if (!_byJob.TryGetValue(job.Id, out var row))
         {
-            row = new Row(job, UndoAsync);
+            row = new Row(job, this);
             _byJob[job.Id] = row;
             _rows.Children.Remove(_empty);
             _rows.Children.Insert(0, row.Element);
@@ -145,6 +149,60 @@ internal sealed class QueueWindow
         }
 
         row.Refresh();
+    }
+
+    private void Cancel(Job job) => FileLog.Info(_queue.Cancel(job.Id)
+        ? $"queue: canceling {job.Label}"
+        : $"queue: cancel of {job.Label} refused in state {job.State}");
+
+    private void Retry(Job job, Row row)
+    {
+        if (_queue.Retry(job.Id) is null)
+        {
+            FileLog.Info($"queue: retry of {job.Label} refused in state {job.State}");
+            return;
+        }
+
+        // The new job's row takes this one's place at the top.
+        FileLog.Info($"queue: retrying {job.Label}");
+        _byJob.Remove(job.Id);
+        _rows.Children.Remove(row.Element);
+    }
+
+    /// <summary>Opens the folder in Explorer with the first output selected, reusing a window already showing it.</summary>
+    private static unsafe void Reveal(Job job, Row row)
+    {
+        var path = job.Outputs.FirstOrDefault(p => File.Exists(p) || Directory.Exists(p));
+        if (path is null)
+        {
+            FileLog.Info($"queue: outputs of {job.Label} are gone");
+            row.Fail("输出文件已经不在原处了");
+            row.Refresh();
+            return;
+        }
+
+        var item = PInvoke.ILCreateFromPath(path);
+        if (item is null)
+        {
+            FileLog.Info($"queue: could not show {path} in Explorer: no item ID for it");
+            return;
+        }
+
+        try
+        {
+            var result = PInvoke.SHOpenFolderAndSelectItems(item, 0, null, 0);
+            if (result.Failed)
+            {
+                FileLog.Info($"queue: could not show {path} in Explorer: 0x{result.Value:X8}");
+                return;
+            }
+
+            FileLog.Info($"queue: showed {path} in its folder");
+        }
+        finally
+        {
+            PInvoke.ILFree(item);
+        }
     }
 
     private async Task UndoAsync(Job job, Row row)
@@ -173,28 +231,44 @@ internal sealed class QueueWindow
         }
     }
 
+    /// <summary>
+    /// A job's name, state and progress, and the buttons that apply to its state: 取消 while it waits or runs,
+    /// 重试 once it failed or was canceled, 打开位置 and 撤销 once it is done. Each button's automation name
+    /// carries the job's label so the rows can be told apart.
+    /// </summary>
     private sealed class Row
     {
         private readonly Job _job;
         private readonly TextBlock _state = new() { FontSize = 12, Opacity = 0.75, TextWrapping = TextWrapping.Wrap };
-        private readonly Button _undo = new() { Content = "撤销" };
+        private readonly ProgressBar _progress = new() { Maximum = 1 };
+        private readonly Button _cancel;
+        private readonly Button _retry;
+        private readonly Button _reveal;
+        private readonly Button _undo;
         private string? _failure;
 
-        public Row(Job job, Func<Job, Row, Task> undo)
+        public Row(Job job, QueueWindow owner)
         {
             _job = job;
-            AutomationProperties.SetName(_undo, $"撤销 {job.Label}");
-            _undo.Click += async (_, _) => await undo(_job, this).ConfigureAwait(true);
+            _cancel = Command("取消", () => owner.Cancel(job));
+            _retry = Command("重试", () => owner.Retry(job, this));
+            _reveal = Command("打开位置", () => Reveal(job, this));
+            _undo = Command("撤销", async () => await owner.UndoAsync(job, this).ConfigureAwait(true));
             var text = new StackPanel { Spacing = 2 };
             text.Children.Add(new TextBlock { Text = job.Label, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
             text.Children.Add(_state);
-            Grid.SetColumn(_undo, 1);
-            _undo.VerticalAlignment = VerticalAlignment.Center;
+            text.Children.Add(_progress);
+            var commands = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, VerticalAlignment = VerticalAlignment.Center };
+            commands.Children.Add(_cancel);
+            commands.Children.Add(_retry);
+            commands.Children.Add(_reveal);
+            commands.Children.Add(_undo);
+            Grid.SetColumn(commands, 1);
             Element = new Grid
             {
                 ColumnSpacing = 12,
                 ColumnDefinitions = { new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }, new ColumnDefinition { Width = GridLength.Auto } },
-                Children = { text, _undo },
+                Children = { text, commands },
             };
         }
 
@@ -206,18 +280,37 @@ internal sealed class QueueWindow
 
         public void Refresh()
         {
-            _state.Text = _failure ?? _job.State switch
+            var state = _job.State;
+            _state.Text = _failure ?? state switch
             {
                 JobState.Pending => "等待中",
-                JobState.Running => $"转换中 {_job.Progress:P0}",
+                JobState.Running => _job.Progress > 0 ? $"转换中 {_job.Progress:P0}" : "转换中",
                 JobState.Done => $"完成 → {string.Join("、", _job.Outputs.Select(Path.GetFileName))}",
                 JobState.Failed => $"失败：{_job.Error}",
                 JobState.Canceled => "已取消",
                 JobState.Undone => "已撤销，输出已移到回收站",
                 JobState.Skipped => _job.Detail ?? "已跳过",
-                _ => _job.State.ToString(),
+                _ => state.ToString(),
             };
-            _undo.Visibility = _job.State == JobState.Done ? Visibility.Visible : Visibility.Collapsed;
+
+            // Engines that cannot tell how far they are report nothing until they finish.
+            _progress.Visibility = Shown(state == JobState.Running);
+            _progress.IsIndeterminate = _job.Progress <= 0;
+            _progress.Value = _job.Progress;
+            _cancel.Visibility = Shown(state is JobState.Pending or JobState.Running);
+            _retry.Visibility = Shown(state is JobState.Failed or JobState.Canceled);
+            _reveal.Visibility = Shown(state == JobState.Done && _failure is null);
+            _undo.Visibility = Shown(state == JobState.Done);
+        }
+
+        private static Visibility Shown(bool shown) => shown ? Visibility.Visible : Visibility.Collapsed;
+
+        private Button Command(string text, Action click)
+        {
+            var button = new Button { Content = text };
+            AutomationProperties.SetName(button, $"{text} {_job.Label}");
+            button.Click += (_, _) => click();
+            return button;
         }
     }
 }
