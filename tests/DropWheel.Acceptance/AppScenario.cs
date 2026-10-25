@@ -20,7 +20,8 @@ namespace DropWheel.Acceptance;
 /// a PNG next to the JPG; press Undo in the task window, expect the PNG in the Recycle Bin. Then a second
 /// drag released off the wheel must convert nothing, and near the top edge, where the wheel opens shifted
 /// with a sector under the pointer, an immediate release must convert nothing either. Last, an SRT dropped
-/// on the VTT sector must come out as UTF-8 WebVTT, and a zip dropped on the 7z sector as a 7z. The app is
+/// on the VTT sector must come out as UTF-8 WebVTT, a zip dropped on the 7z sector as a 7z, and a WAV dropped
+/// on the MP3 sector as an MP3 made by the bundled ffmpeg. The app is
 /// started by path and observed only through its log file and UI Automation, so this project never
 /// references DropWheel.App.
 /// </summary>
@@ -84,6 +85,7 @@ internal static partial class AppScenario
                 Attempt(checks, "wheel shifted at the edge", () => EdgeShift(checks, log, jpg, explorer));
                 Attempt(checks, "convert a subtitle", () => ConvertSubtitle(checks, log, dir, explorer));
                 Attempt(checks, "repack an archive", () => RepackArchive(checks, log, dir, explorer));
+                Attempt(checks, "encode audio", () => EncodeAudio(checks, log, dir, explorer));
             }
         }
         finally
@@ -298,6 +300,23 @@ internal static partial class AppScenario
         var bytes = File.ReadAllBytes(output);
         checks.Check("7z lands next to the zip", SameDir(output, zip) && bytes is [(byte)'7', (byte)'z', 0xBC, 0xAF, 0x27, 0x1C, ..],
             $"{output}: {bytes.Length} bytes, starts {Convert.ToHexString(bytes.AsSpan(0, Math.Min(6, bytes.Length)))}");
+    }
+
+    /// <summary>WAV → MP3 through the wheel: proves the ffmpeg sidecar shipped next to the app and runs.</summary>
+    private static void EncodeAudio(Checks checks, AppLog log, string dir, bool explorer)
+    {
+        var wav = Path.Combine(dir, $"m1a-{DateTime.Now:HHmmss}.wav");
+        WriteWav(wav, 44100, 1);
+        var output = ConvertThroughWheel(checks, log, wav, "mp3", explorer);
+        if (output is null)
+        {
+            return;
+        }
+
+        // An ID3v2 tag, or straight into an MPEG-1 Layer III frame sync.
+        var bytes = File.ReadAllBytes(output);
+        checks.Check("MP3 lands next to the WAV", SameDir(output, wav) && bytes is [(byte)'I', (byte)'D', (byte)'3', ..] or [0xFF, 0xFB or 0xFA or 0xF3 or 0xF2, ..],
+            $"{output}: {bytes.Length} bytes, starts {Convert.ToHexString(bytes.AsSpan(0, Math.Min(4, bytes.Length)))}");
     }
 
     /// <summary>Drags <paramref name="source"/>, drops it on the <paramref name="target"/> sector and waits for the queue.</summary>
@@ -577,6 +596,29 @@ internal static partial class AppScenario
         }
 
         bitmap.Save(path, ImageFormat.Jpeg);
+    }
+
+    /// <summary>A 16-bit mono PCM WAV of a 440 Hz tone.</summary>
+    private static void WriteWav(string path, int rate, int seconds)
+    {
+        var samples = rate * seconds;
+        using var writer = new BinaryWriter(File.Create(path));
+        writer.Write("RIFF"u8);
+        writer.Write(36 + samples * 2);
+        writer.Write("WAVEfmt "u8);
+        writer.Write(16);
+        writer.Write((short)1);
+        writer.Write((short)1);
+        writer.Write(rate);
+        writer.Write(rate * 2);
+        writer.Write((short)2);
+        writer.Write((short)16);
+        writer.Write("data"u8);
+        writer.Write(samples * 2);
+        for (var i = 0; i < samples; i++)
+        {
+            writer.Write((short)(Math.Sin(2 * Math.PI * 440 * i / rate) * 12000));
+        }
     }
 
     private static bool IsPng(string path, int width, int height, out string what)

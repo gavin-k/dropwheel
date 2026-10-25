@@ -32,7 +32,7 @@
 - [ ] 任务队列窗口（进度 / 取消 / 撤销 / 打开位置 / 重试）
 - [ ] 设置页：键位与冲突检查、输出位置、命名规则、重名策略、文件动作、隐私与离线
 - [ ] 首次启动 20 秒引导
-- [ ] 引擎：Subtitle、Archive（已完成）、Media (ffmpeg LGPL)、Pdf (PDFium + PdfPig)
+- [ ] 引擎：Subtitle、Archive、Media（已完成）、Pdf (PDFium + PdfPig)
 - [ ] 预期质量：PDF→DOCX / TXT、有损→无损图片
 - [ ] 边缘停靠托盘、触屏长按
 
@@ -43,6 +43,8 @@
 - 2026-10-25 贴边修复：轮盘因贴边被挪开、指针不在圆心区时，扇区要等指针进过圆心区才响应，此前松手一律取消。证据：Mac 上 Core 测试 86 个通过（新增 3 个）；VM 上 `app --explorer` 验收 PASS，新增两项：指针在工作区顶边下 60 DIP 处轻点，轮盘中心被下移 102 DIP，指针正落在可用的 PNG 扇区上，原地松手记为取消且没有新文件；同样位置先移到圆心再到 PNG 扇区，正常转换。
 - 2026-10-25 字幕引擎：SRT、VTT、ASS、SSA、LRC 两两互转，进程内自写解析器。读入依次认 BOM、严格 UTF-8、GB18030（覆盖无 BOM 的 GBK 字幕），写出一律带 BOM 的 UTF-8 和 CRLF。只保留时间轴和文字，样式只留斜体、粗体、下划线；从 ASS/SSA 转出、从 LRC 转出、转成 LRC 时，轮盘给出「中」和原因。LRC 没有结束时间，取下一行的开始时间，最后一行显示 5 秒。各引擎共用的输出写法抽到 `OutputFiles`：先写临时文件再不覆盖地移入，一批要么全成要么全不成。证据：Mac 上 Core 测试 92 个、Engines 测试 33 个通过（字幕 17 个，含 GBK 输入、UTF-16 输入、经 ASS 往返、LRC 多时间标签与 offset）；VM 上 `app --explorer` 验收 PASS，新增三项：拖 .srt 时轮盘给出 vtt、ass、lrc、ssa，落到 VTT 扇区后 89 ms 完成，输出是带 BOM 的 WebVTT 且中文和斜体保留。
 - 2026-10-25 压缩包引擎：SharpCompress 0.50.5 进程内完成，读 ZIP、7z、TAR、TAR.GZ、RAR，写 ZIP、7z、TAR、TAR.GZ，16 条边。逐条目重新打包，保留路径、内容、修改时间和空目录；符号链接、Unix 权限、注释不保留（源是 tar / tgz 时轮盘给出原因），转成 tar 时提示文件会变大。写 zip 一律设 UTF-8 标志；读到没有标志的旧 zip，文件名先试 UTF-8，不行再按系统 OEM 代码页解码（中文系统即 GBK）。加密的包直接拒绝并说明原因；backup.tar.gz 转出 backup.zip，不是 backup.tar.zip。证据：Mac 上 Core 测试 93 个、Engines 测试 45 个通过（压缩包 12 个，含四种格式往返、GBK 文件名回退、加密拒绝、损坏包让整批回滚）；用 SharpCompress 仓库的样本手动验证 RAR4 solid、RAR5、RAR5 solid 都能转成 zip，加密的 RAR5 给出提示，样本不入库；VM 上 `app --explorer` 验收 PASS，新增一项：拖 .zip 时轮盘给出 7z、tgz、tar，落到 7Z 扇区后 163 ms 完成，输出在源文件旁且以 7z 签名开头。
+
+- 2026-10-25 音视频引擎：ffmpeg sidecar，用 BtbN 的 LGPL shared 构建 n8.1.2-50，版本和 SHA-256 钉在 `scripts/sidecars.lock`，`scripts/fetch-sidecars.ps1` / `.sh` 下载校验，App 构建时复制到输出的 `sidecars/ffmpeg/`。视频 MP4、MOV、MKV、WebM、AVI 互转，另读 RMVB；音频 MP3、AAC、M4A、WAV、FLAC、OGG、Opus、AIFF 互转，另读 AMR；视频还能转 GIF 和各音频格式，共 143 条边。先用 ffprobe 读流信息：编码能放进目标容器就只换容器，否则 H.264 走 `h264_mf`，WebM 编成 AV1 + Opus（arm64 构建没有 libvpx），AVI 用 MPEG-4 + MP3。奇数宽高缩成偶数，多声道转 MP3 / Opus 降为双声道，WAV / FLAC / AIFF 保留 24 位。进度读 `-progress pipe:1`；取消时结束整个进程树，不留临时文件。转 GIF、AVI 时轮盘给出「中」和原因，有损转无损、MKV 转出、转 WebM 附提示。找不到 sidecar 时音视频目标灰显并说明。CI 在 Windows 上用同一份 sidecar 跑测试，release 流程打包后检查每个 MSIX 里 ffmpeg.exe 的架构（该检查还没在 CI 上跑过）。证据：Mac 上 Core 测试 95 个、Engines 测试 88 个通过（音视频 43 个：31 个测参数生成，12 个调用真实 ffmpeg，含中文文件名、24 位、6 声道、奇数尺寸、损坏文件让整批回滚、中途取消不留文件）；VM（ARM64）与 Win10 x64 真机上 `app --explorer` 验收 PASS（各 36 项），新增一项：拖 .wav 时轮盘给出 mp3、m4a、flac、aac、ogg、opus，落到 MP3 扇区后分别 277 ms、256 ms 完成，输出以 ID3 开头；两台机器上用 sidecar 把 5 秒 720p 测试画面编成 H.264（`h264_mf`），分别 716 ms、609 ms；`fetch-sidecars.ps1` 在 Windows PowerShell 5.1 下首次 11 秒，再跑直接跳过。
 
 ## M2 · Beta 与分发
 

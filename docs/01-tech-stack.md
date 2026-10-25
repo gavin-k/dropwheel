@@ -82,8 +82,9 @@ Windows **没有**「全局拖拽开始」事件。Microsoft Q&A 上的讨论给
 ### 4.2 音视频
 
 - **FFmpeg**，以 **sidecar 子进程**调用（`ffmpeg.exe` / `ffprobe.exe`），不在进程内链接 → 崩溃隔离 + 许可证边界清晰。
-- 使用 **LGPL 构建**（无 libx264/x265/fdk-aac）。H.264 / HEVC 编码走 Windows **Media Foundation** 编码器（`h264_mf` / `hevc_mf`，硬件加速），AAC 走 `aac`（内置 LGPL）。
-- NuGet 有打包好的 LGPL 二进制（如 `DevEnvy.FFmpeg.Binaries.LGPL`），也可自行从 BtbN 构建下载；ARM64 Windows 构建需单独确认。
+- 使用 **LGPL 构建**（无 libx264/x265/fdk-aac）。H.264 编码走 Windows **Media Foundation** 编码器 `h264_mf`（硬件加速），AAC 走 `aac`（内置 LGPL）。不输出 HEVC。
+- 二进制用 BtbN 的 LGPL shared 构建，版本和 SHA-256 钉在 `scripts/sidecars.lock`，由 `scripts/fetch-sidecars.ps1` / `.sh` 下载校验到 `tools/sidecars/ffmpeg/<arch>/`（不入库），App 构建时复制到输出的 `sidecars/ffmpeg/`。
+- arm64 构建没有 libvpx 和 libaom，所以 WebM 一律编成 AV1（`libsvtav1`）+ Opus；AVI 用 `mpeg4`（xvid 标签）+ MP3。编码能直接放进目标容器时只换容器不重编码。
 - 若社区希望 GPL 全功能构建：作为**用户自行下载**的可选引擎，不随安装包分发。
 
 ### 4.3 PDF
@@ -152,7 +153,7 @@ LGPL 组件以独立可执行文件随包分发并附带许可证文本与源码
 - [ ] 透明分层窗口 `RegisterDragDrop` 在多显示器 / 不同 DPI 下的坐标映射
 - [x] `Win` 键在拖拽中被吞掉后，开始菜单是否仍会弹出——不会（22H2 ARM64、Win10 21H2 x64）
 - [x] `SystemBackdropElement` 在透明窗口上的亚克力效果与 150 ms 弹出预算（含 x64 真机 GPU 开销）
-- [ ] Magick.NET / PDFium / FFmpeg LGPL 的 ARM64 包可用性
+- [ ] Magick.NET / PDFium / FFmpeg LGPL 的 ARM64 包可用性（FFmpeg 已在 ARM64 上随 App 跑通，见 [路线图](04-roadmap.md) 的音视频引擎一条）
 
 > 2026-10-24：用 [`spikes/DragSpike`](../spikes/DragSpike/README.md) 在 Win11 22H2 ARM64 上做了真实 Explorer 拖拽自测（6/6）：
 > 第 1 项通过；第 2 项验证了 22H2 上 `SysDragImage` 会出现、关掉四项拖拽相关视觉效果后仍出现，24H2 未测，另外 `EVENT_SYSTEM_DRAGDROPSTART` 在该机上从不触发

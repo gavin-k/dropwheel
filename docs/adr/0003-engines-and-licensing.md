@@ -20,3 +20,5 @@
 
 - SharpCompress 0.50 已能写 7z（LZMA2，非 solid），压缩包引擎全部在进程内完成，不再分发 7za sidecar。sidecar 只剩 ffmpeg 和可选的 soffice。
 - RAR 仍然只读：RAR 格式只有 WinRAR 能创建，SharpCompress 只实现了解压。
+- ffmpeg 用 BtbN 的 LGPL shared 构建。它带 `--enable-version3`，许可证是 LGPL-3.0-or-later，不是 2.1。体积比估计的大：解包后 x64 137 MB、arm64 79 MB（下载 zip 67.6 MB / 44.8 MB），主要是 avcodec 里静态链入的外部编解码库。要缩小只能自己裁剪构建，暂不做。
+- 不用 `hevc_mf`：不输出 HEVC。H.264 只用 `h264_mf`。

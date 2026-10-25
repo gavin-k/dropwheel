@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-orange.svg)](LICENSE)
 ![Status: pre-alpha](https://img.shields.io/badge/status-pre--alpha-lightgrey)
 
-> **状态：规划 / 骨架阶段。** 目前仓库包含设计稿、技术选型调研、架构文档和项目骨架，尚无可运行的构建。产品名「DropWheel」为工作代号，随时可能更改。
+> **状态：pre-alpha，M1 开发中。** 已能在资源管理器里拖拽转换图片、字幕、压缩包和音视频；未签名的 x64 / ARM64 包由 `release.yml` 产出。设置窗口、首次引导、Tools / Actions 轮盘还没做。产品名「DropWheel」为工作代号，随时可能更改。
 
 ## 它是什么
 
@@ -33,7 +33,7 @@
 | 全局拖拽侦测 | Win32：`SetWindowsHookEx(WH_MOUSE_LL / WH_KEYBOARD_LL)` + UIA 侦测 `SysDragImage` + 透明 `RegisterDragDrop` 覆盖窗 | Windows 没有「全局拖拽事件」API，需要组合方案，见 [ADR-0002](docs/adr/0002-global-drag-detection.md) |
 | 资源管理器右键 | `IExplorerCommand`（C++ COM DLL）+ MSIX 清单 / 稀疏包 | Win11 新式右键菜单只接受 `IExplorerCommand` 且要求包标识 |
 | 图片 | Magick.NET (ImageMagick) 或 SkiaSharp + libheif/libavif | 许可证友好；HEIC 编码依赖系统 HEVC 扩展时需灰显说明 |
-| 音视频 | **FFmpeg LGPL 构建，独立进程（sidecar）** | MIT 主程序 + LGPL 进程边界；H.264/HEVC 编码走 `h264_mf` / `hevc_mf`（Media Foundation） |
+| 音视频 | **FFmpeg LGPL 构建，独立进程（sidecar）** | MIT 主程序 + LGPL 进程边界；H.264 编码走 `h264_mf`（Media Foundation），WebM 编成 AV1 + Opus |
 | PDF | PDFium（渲染 / 转图 / 拆分合并）+ PdfPig（文本提取） | PDF → DOCX 走「提取 + 重建」或 LibreOffice sidecar（可选模块） |
 | Office 文档 | Open XML SDK（原生读写）+ LibreOffice headless（可选下载模块） | 旧版 DOC / PPT / XLS 仅输入 |
 | OCR | `Windows.Media.Ocr`（系统内置，25 语种）→ Windows AI `TextRecognizer`（Copilot+ PC）→ RapidOCR / Tesseract 回退 | 全部离线 |
@@ -41,6 +41,16 @@
 | 打包分发 | MSIX（Store + winget）· 稀疏包 + WiX MSI（企业直装） | `winapp` CLI 产出 x64 / ARM64 msixbundle |
 
 完整调研与替代方案对比见 [`docs/01-tech-stack.md`](docs/01-tech-stack.md)。
+
+## 目前能转换
+
+| 类别 | 输入 | 输出 |
+|---|---|---|
+| 图片 | JPG、PNG、WebP、AVIF、GIF、BMP、TIFF | 同左，另有 HEIC（需系统 HEVC 扩展） |
+| 视频 | MP4、MOV、MKV、WebM、AVI、RMVB | MP4、MOV、MKV、WebM、AVI、GIF，以及下面的音频格式 |
+| 音频 | MP3、AAC、M4A、WAV、FLAC、OGG、Opus、AIFF、AMR | MP3、AAC、M4A、WAV、FLAC、OGG、Opus、AIFF |
+| 字幕 | SRT、VTT、ASS、SSA、LRC | 同左 |
+| 压缩包 | ZIP、7z、TAR、TAR.GZ、RAR | ZIP、7z、TAR、TAR.GZ |
 
 ## 仓库结构
 
@@ -65,7 +75,8 @@ dropwheel/
 ### macOS
 
 - .NET 10 SDK（`~/.dotnet`，`dotnet-install.sh --channel 10.0`），`.zshrc` 里加入 PATH 与 `DOTNET_CLI_TELEMETRY_OPTOUT=1`
-- 只能构建 `DropWheel.Core` 与 `DropWheel.Core.Tests`；Engines / Shell / App 依赖 Windows SDK
+- `./build.sh` 构建并测试 Core 与 Engines；Shell / App 依赖 Windows SDK
+- 音视频测试要 PATH 上有 ffmpeg 和 ffprobe：`brew install ffmpeg`
 
 ```bash
 git clone https://github.com/gavin-k/dropwheel.git
@@ -81,9 +92,11 @@ cd dropwheel
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\setup-windows.ps1       # 加 -SkipVisualStudio 只装 CLI 工具链
-.\scripts\build-windows.ps1                                                # build + test + 未签名 x64 .msix -> .\artifacts
+.\scripts\build-windows.ps1                                                # 下载 ffmpeg + build + test + 未签名 x64 .msix -> .\artifacts
 .\scripts\build-windows.ps1 -Arch arm64
 ```
+
+不经过脚本直接 `dotnet build` App 时，先运行一次 `.\scripts\fetch-sidecars.ps1`，否则输出里没有 ffmpeg，音视频目标会灰显。
 
 `build.sh` 在 Windows 的 Git Bash 下会改为构建整个 `DropWheel.slnx`（该分支尚未在 Windows 上实测，Windows 日常请用上面的 PowerShell 脚本）。CI 见 `.github/workflows/build.yml`（每次 push / PR）与 `release.yml`（`v*` 标签或手动触发，产出未签名 x64 + ARM64 `.msixbundle`）。
 

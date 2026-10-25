@@ -11,7 +11,7 @@
 | PDFsharp | MIT | 进程内 | |
 | Open XML SDK | MIT | 进程内 | |
 | SharpCompress 0.50.5 | MIT | 进程内 | 读 ZIP / 7z / TAR / TAR.GZ / RAR，写 ZIP / 7z / TAR / TAR.GZ。包内另含 Bouncy Castle 代码的 MIT 声明（见包内 README 的 LICENSE 段） |
-| FFmpeg (LGPL 构建) | LGPL-2.1-or-later | **子进程** | 附带源码地址与构建配置；不含 GPL 组件。ARM64 来源：BtbN/FFmpeg-Builds 的 `winarm64-lgpl` 资产（2026-10-24 核对，master 与 n8.1/n9.0 均有） |
+| FFmpeg n8.1.2-50-g1a748fe2cd（BtbN LGPL shared 构建） | LGPL-3.0-or-later（构建带 `--enable-version3`） | **子进程** | 来源与 SHA-256 钉在 `scripts/sidecars.lock`（`autobuild-2026-08-31-13-27` 的 `win64-lgpl-shared-8.1` 与 `winarm64-lgpl-shared-8.1`）。随包附 `LICENSE.txt` 和 `SOURCE.txt`（下载地址、SHA-256、FFmpeg 提交）。不含 GPL 组件（`--disable-libx264 --disable-libx265 --disable-libxvid`）；avcodec 里静态链入了 libopenh264、opencore-amr 等外部库，其中 H.264 / HEVC / AAC 的专利授权尚未评估。解包后 x64 137 MB、arm64 79 MB。没用 2026-09-30 的构建：它的 winarm64 版在 Win11 ARM64 上一启动就崩（0xC0000005） |
 | LibreOffice (可选模块) | MPL-2.0 | **子进程**，用户按需下载 | 不随安装包分发 |
 | RapidOCR 模型 (可选) | Apache-2.0 | 用户按需下载 | |
 | Inter 字体（官网） | OFL-1.1 | 网页 | 应用内使用系统 Segoe UI Variable |

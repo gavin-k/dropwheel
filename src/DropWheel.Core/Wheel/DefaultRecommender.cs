@@ -11,6 +11,8 @@ public sealed class DefaultRecommender(ConversionGraph graph) : IRecommender
     private static readonly Dictionary<MediaKind, string[]> Preferred = new()
     {
         [MediaKind.Image] = ["png", "jpg", "webp", "avif", "gif", "tiff", "bmp"],
+        [MediaKind.Video] = ["mp4", "mkv", "mov", "webm", "mp3", "gif", "m4a", "wav", "avi"],
+        [MediaKind.Audio] = ["mp3", "m4a", "wav", "flac", "aac", "ogg", "opus", "aiff"],
         [MediaKind.Subtitle] = ["srt", "vtt", "ass", "lrc", "ssa"],
         [MediaKind.Archive] = ["zip", "7z", "tgz", "tar"],
     };

@@ -31,6 +31,22 @@ public class DefaultRecommenderTests
     }
 
     [Fact]
+    public void Video_offers_other_containers_then_audio_and_gif()
+    {
+        var graph = Graph("mp4", "mkv", "mov", "webm", "avi", "mp3", "m4a", "wav", "gif");
+        new DefaultRecommender(graph).For(["a.mp4"], MediaKind.Video, WheelMode.Convert).Take(6)
+            .Should().Equal("mkv", "mov", "webm", "mp3", "gif", "m4a");
+    }
+
+    [Fact]
+    public void Audio_offers_mp3_first()
+    {
+        var graph = Graph("mp3", "m4a", "wav", "flac", "aac", "ogg", "opus", "aiff");
+        new DefaultRecommender(graph).For(["a.flac"], MediaKind.Audio, WheelMode.Convert).Take(6)
+            .Should().Equal("mp3", "m4a", "wav", "aac", "ogg", "opus");
+    }
+
+    [Fact]
     public void Unreachable_targets_are_dropped_and_extra_ones_follow()
     {
         var graph = new ConversionGraph();
