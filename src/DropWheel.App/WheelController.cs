@@ -81,6 +81,7 @@ internal sealed class WheelController : IDisposable
         _monitor.PhaseChanged += OnPhaseChanged;
         _host.Entered += OnEntered;
         _host.Hovered += OnHovered;
+        _host.HubReached += OnHubReached;
         _host.Dropped += OnDropped;
         _host.Canceled += OnCanceled;
     }
@@ -91,6 +92,7 @@ internal sealed class WheelController : IDisposable
         _monitor.PhaseChanged -= OnPhaseChanged;
         _host.Entered -= OnEntered;
         _host.Hovered -= OnHovered;
+        _host.HubReached -= OnHubReached;
         _host.Dropped -= OnDropped;
         _host.Canceled -= OnCanceled;
         _idleGrace.Stop();
@@ -148,6 +150,19 @@ internal sealed class WheelController : IDisposable
 
     private void OnHovered(int sector) => _ui.TryEnqueue(() => _wheel.SetHovered(sector));
 
+    private void OnHubReached()
+    {
+        var session = _session;
+        FileLog.Info("wheel: pointer reached the hub, sectors are live");
+        _ui.TryEnqueue(() =>
+        {
+            if (_session == session)
+            {
+                _wheel.SetHubHint(false);
+            }
+        });
+    }
+
     private void OnDropped(IReadOnlyList<string> paths, int sector)
     {
         var session = _session;
@@ -185,17 +200,21 @@ internal sealed class WheelController : IDisposable
             return;
         }
 
+        // Near an edge the wheel is shifted away from the pointer and may open with a sector under it.
+        // Then the sectors wait until the pointer has been on the hub, so an immediate release cancels.
         var (x, y, scale) = Place(point);
-        var placement = new WheelPlacement(x, y, scale, new bool[WheelModel.SlotCount]);
+        var onHub = WheelGeometry.OnHub((point.X - x) / scale, (point.Y - y) / scale);
+        var placement = new WheelPlacement(x, y, scale, new bool[WheelModel.SlotCount], onHub);
         _session = new Session(mode, placement, tappedAt, _settings.Current);
 
         // Order matters: the host has to end up above the wheel. If the wheel were on top, OLE would see
         // the drag leave the host and the host would report a cancel.
+        _wheel.SetHubHint(!onHub);
         _wheel.ShowAt(x, y, scale);
         _host.Show(placement);
         _buttonUpReadings = 0;
         _watchdog.Start();
-        FileLog.Info($"wheel: shown +{Stopwatch.GetElapsedTime(tappedAt).TotalMilliseconds:F1} ms after tap, centre {x},{y} scale {scale:0.##} (pointer {point.X},{point.Y})");
+        FileLog.Info($"wheel: shown +{Stopwatch.GetElapsedTime(tappedAt).TotalMilliseconds:F1} ms after tap, centre {x},{y} scale {scale:0.##} (pointer {point.X},{point.Y}{(onHub ? "" : ", off the hub: sectors wait for it")})");
     }
 
     private void Close(string why)

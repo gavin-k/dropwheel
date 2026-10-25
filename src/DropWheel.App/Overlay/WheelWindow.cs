@@ -45,6 +45,7 @@ internal sealed class WheelWindow
     private readonly TextBlock[] _subLabels = new TextBlock[WheelModel.SlotCount];
     private readonly TextBlock _title;
     private readonly TextBlock _subtitle;
+    private readonly TextBlock _hint;
     private WheelModel? _model;
     private int _hovered = -1;
     private long _shownAt;
@@ -108,16 +109,17 @@ internal sealed class WheelWindow
             MaxWidth = 2 * WheelGeometry.InnerRadius - 14,
         };
         _subtitle = new TextBlock { FontSize = 11, Foreground = new SolidColorBrush(Text3), TextAlignment = TextAlignment.Center };
-        var hint = new TextBlock { FontSize = 10, Text = "Esc 取消", Foreground = new SolidColorBrush(Text3), TextAlignment = TextAlignment.Center };
+        _hint = new TextBlock { FontSize = 10, Foreground = new SolidColorBrush(Text3), TextAlignment = TextAlignment.Center };
         var hub = new StackPanel { Width = 2 * WheelGeometry.InnerRadius, Spacing = 2 };
         hub.Children.Add(_title);
         hub.Children.Add(_subtitle);
-        hub.Children.Add(hint);
+        hub.Children.Add(_hint);
         Place(hub, Center - WheelGeometry.InnerRadius, Center - 26);
         canvas.Children.Add(hub);
 
         _window.Content = new Grid { Children = { disc, canvas } };
         SetModel(null);
+        SetHubHint(false);
     }
 
     /// <summary>Window width and height in DIPs.</summary>
@@ -183,6 +185,12 @@ internal sealed class WheelWindow
             Paint(i);
         }
     }
+
+    /// <summary>
+    /// True while the wheel opened off-centre and its sectors wait for the pointer to visit the hub
+    /// (see <see cref="SectorGate"/>); the hub then says so instead of the usual Esc hint.
+    /// </summary>
+    public void SetHubHint(bool needed) => _hint.Text = needed ? "先移到圆心" : "Esc 取消";
 
     public void SetHovered(int sector)
     {

@@ -13,12 +13,13 @@ namespace DropWheel.Shell;
 
 /// <summary>Where the wheel is on screen. Centre in physical pixels; <paramref name="Scale"/> is the monitor DPI / 96.</summary>
 /// <param name="EnabledSectors">Six flags, sector 0 at 12 o'clock, clockwise (see <see cref="WheelGeometry"/>).</param>
-public sealed record WheelPlacement(int CenterX, int CenterY, double Scale, IReadOnlyList<bool> EnabledSectors)
+/// <param name="StartsOnHub">False when the wheel was shifted away from the pointer; see <see cref="SectorGate"/>.</param>
+public sealed record WheelPlacement(int CenterX, int CenterY, double Scale, IReadOnlyList<bool> EnabledSectors, bool StartsOnHub = true)
 {
-    /// <summary>The enabled sector under a screen point, or -1.</summary>
-    public int SectorAt(int x, int y)
+    /// <summary>The enabled sector under a screen point, or -1; also -1 while <paramref name="gate"/> is shut.</summary>
+    public int SectorAt(int x, int y, SectorGate gate, out bool opened)
     {
-        var sector = WheelGeometry.SectorAt((x - CenterX) / Scale, (y - CenterY) / Scale);
+        var sector = gate.SectorAt((x - CenterX) / Scale, (y - CenterY) / Scale, out opened);
         return sector >= 0 && sector < EnabledSectors.Count && EnabledSectors[sector] ? sector : -1;
     }
 }
@@ -52,6 +53,9 @@ public sealed unsafe class DropTargetHost : IDisposable
 
     /// <summary>The hovered enabled sector changed; -1 means none.</summary>
     public event Action<int>? Hovered;
+
+    /// <summary>The pointer reached the hub of a wheel that opened off-centre, so sectors respond from now on.</summary>
+    public event Action? HubReached;
 
     /// <summary>Files were released on an enabled sector.</summary>
     public event Action<IReadOnlyList<string>, int>? Dropped;
@@ -247,12 +251,15 @@ public sealed unsafe class DropTargetHost : IDisposable
         private List<string> _paths = [];
         private int _hovered = -1;
         private bool _inside;
+        private SectorGate? _gate;
 
+        /// <summary>Forget the drag. Runs when the host hides, so the next showing gets a fresh gate.</summary>
         public void Reset()
         {
             _paths = [];
             _hovered = -1;
             _inside = false;
+            _gate = null;
         }
 
         public void DragEnter(IDataObject pDataObj, MODIFIERKEYS_FLAGS grfKeyState, POINTL pt, DROPEFFECT* pdwEffect)
@@ -299,7 +306,19 @@ public sealed unsafe class DropTargetHost : IDisposable
         /// </summary>
         private DROPEFFECT Effect(POINTL pt, DROPEFFECT allowed)
         {
-            var sector = host._placement?.SectorAt(pt.x, pt.y) ?? -1;
+            var sector = -1;
+            if (host._placement is { } placement)
+            {
+                // One gate per showing: Show is called again with the enabled sectors once the files are
+                // known, and that must not shut a gate the pointer already opened.
+                _gate ??= new SectorGate(placement.StartsOnHub);
+                sector = placement.SectorAt(pt.x, pt.y, _gate, out var opened);
+                if (opened)
+                {
+                    host.HubReached?.Invoke();
+                }
+            }
+
             if (sector != _hovered)
             {
                 _hovered = sector;

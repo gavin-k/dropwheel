@@ -16,8 +16,10 @@ namespace DropWheel.Acceptance;
 /// <summary>
 /// The M0 acceptance flow against the real app: drag a JPG, tap Shift, release on the PNG sector, expect
 /// a PNG next to the JPG; press Undo in the task window, expect the PNG in the Recycle Bin. Then a second
-/// drag released off the wheel must convert nothing. The app is started by path and observed only through
-/// its log file and UI Automation, so this project never references DropWheel.App.
+/// drag released off the wheel must convert nothing, and near the top edge, where the wheel opens shifted
+/// with a sector under the pointer, an immediate release must convert nothing either. The app is started
+/// by path and observed only through its log file and UI Automation, so this project never references
+/// DropWheel.App.
 /// </summary>
 internal static partial class AppScenario
 {
@@ -68,6 +70,7 @@ internal static partial class AppScenario
             {
                 Attempt(checks, "convert and undo", () => ConvertAndUndo(checks, log, app, jpg, jpgLength, explorer));
                 Attempt(checks, "release off the wheel", () => ReleaseOff(checks, log, jpg, explorer));
+                Attempt(checks, "wheel shifted at the edge", () => EdgeShift(checks, log, jpg, explorer));
             }
         }
         finally
@@ -176,6 +179,82 @@ internal static partial class AppScenario
             $"{closed ?? "wheel never closed"}; files {before.Length} -> {after.Length}");
     }
 
+    /// <summary>
+    /// Near the top of the screen the wheel is pulled down into the work area and opens with sector 0
+    /// under the pointer. Releasing there straight away must cancel; going via the hub must still work.
+    /// </summary>
+    private static void EdgeShift(Checks checks, AppLog log, string jpg, bool explorer)
+    {
+        var dir = Path.GetDirectoryName(jpg)!;
+        var before = Directory.GetFiles(dir);
+        using (var source = DragSource.Open(jpg, explorer))
+        {
+            var mid = source.PressAndDrag();
+            var edge = NearTopEdge(mid);
+            Input.MoveSmooth(mid, edge, 8, 30);
+            Thread.Sleep(250);
+            log.Mark();
+            if (TapShift(checks, log, edge) is not { } w)
+            {
+                return;
+            }
+
+            var shown = log.Find("wheel: shown");
+            var entered = log.WaitFor(2000, "file(s) entered");
+            var pointer = new Point(edge.X + 6, edge.Y + 6);
+            var under = WheelGeometry.SectorAt((pointer.X - w.X) / w.Scale, (pointer.Y - w.Y) / w.Scale);
+            var item = SlotItem(entered, under);
+            checks.Check("near the top edge the wheel opens shifted, an enabled sector under the pointer",
+                shown?.Contains("off the hub", StringComparison.Ordinal) == true && item is not null,
+                $"{shown ?? "no 'wheel: shown'"}; pointer {pointer.X},{pointer.Y} is over sector {under} ({item ?? "none or disabled"})");
+            Thread.Sleep(250);
+            Input.LeftUp();
+            var closed = log.WaitFor(2000, "wheel: closed");
+            Thread.Sleep(1000);
+            var after = Directory.GetFiles(dir);
+            checks.Check("releasing the shifted wheel without visiting the hub converts nothing",
+                closed is not null && !closed.Contains("dropped", StringComparison.Ordinal) && log.Find("wheel: enqueued") is null && after.Length == before.Length,
+                $"{closed ?? "wheel never closed"}; files {before.Length} -> {after.Length}");
+        }
+
+        using (var source = DragSource.Open(jpg, explorer))
+        {
+            var mid = source.PressAndDrag();
+            var edge = NearTopEdge(mid);
+            Input.MoveSmooth(mid, edge, 8, 30);
+            Thread.Sleep(250);
+            log.Mark();
+            if (TapShift(checks, log, edge) is not { } w)
+            {
+                return;
+            }
+
+            var png = SlotOf(log.WaitFor(2000, "file(s) entered"), "png");
+            var hub = new Point(w.X, w.Y);
+            Input.MoveSmooth(new Point(edge.X + 6, edge.Y + 6), hub, 8, 30);
+            var reached = log.WaitFor(1000, "pointer reached the hub");
+            var target = png >= 0 ? SectorPoint(w, png) : hub;
+            Input.MoveSmooth(hub, target, 6, 30);
+            Thread.Sleep(250);
+            Input.LeftUp();
+            var enqueued = log.WaitFor(3000, "wheel: enqueued ");
+            checks.Check("after visiting the hub the shifted wheel converts on the PNG sector", reached is not null && enqueued is not null,
+                $"{reached ?? "no 'pointer reached the hub'"}; {enqueued ?? "no 'wheel: enqueued'"}; {log.Find("wheel: closed") ?? "wheel never closed"}");
+            if (enqueued is not null)
+            {
+                var label = enqueued[(enqueued.IndexOf("wheel: enqueued ", StringComparison.Ordinal) + "wheel: enqueued ".Length)..];
+                log.WaitFor(30000, $"queue: {label} ");
+            }
+        }
+    }
+
+    /// <summary>60 DIP below the top of the work area: the wheel needs 162, so it is pulled down about 100.</summary>
+    private static Point NearTopEdge(Point from)
+    {
+        var area = Screen.FromPoint(from).WorkingArea;
+        return new Point(from.X, area.Top + (int)Math.Round(60 * DragSource.ScaleAt(from)));
+    }
+
     private readonly record struct Wheel(int X, int Y, double Scale);
 
     /// <summary>Taps Shift and returns where the app says it put the wheel.</summary>
@@ -223,6 +302,26 @@ internal static partial class AppScenario
         }
 
         return -1;
+    }
+
+    /// <summary>The item on <paramref name="sector"/> in a "slots 0=png,1=webp,2=gif(off)" log line, or null when it is off or absent.</summary>
+    private static string? SlotItem(string? entered, int sector)
+    {
+        if (entered is null || sector < 0)
+        {
+            return null;
+        }
+
+        foreach (var slot in SlotsRegex().Match(entered).Groups[1].Value.Split(','))
+        {
+            var parts = slot.Split('=');
+            if (parts.Length == 2 && parts[0] == sector.ToString(CultureInfo.InvariantCulture) && !parts[1].EndsWith("(off)", StringComparison.Ordinal))
+            {
+                return parts[1];
+            }
+        }
+
+        return null;
     }
 
     private static Point SectorPoint(Wheel w, int sector)

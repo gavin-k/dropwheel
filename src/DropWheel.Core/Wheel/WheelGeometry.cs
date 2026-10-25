@@ -28,6 +28,9 @@ public static class WheelGeometry
         return Math.Min((int)(deg / SectorSweep), WheelModel.SlotCount - 1);
     }
 
+    /// <summary>True when an offset from the wheel centre is on the hub, where <see cref="SectorAt"/> gives -1.</summary>
+    public static bool OnHub(double dx, double dy) => dx * dx + dy * dy < InnerRadius * InnerRadius;
+
     /// <summary>Offset of the middle of sector <paramref name="index"/>, halfway between hub and rim.</summary>
     public static (double X, double Y) SectorCenter(int index)
     {
