@@ -20,7 +20,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Ghostscript, user password "user": a box, no text. -->
+    <!-- encrypted.pdf: Ghostscript, user password "user": a box, no text.
+         rotated.heic: macOS sips from a 64×48 red-to-blue JPEG carrying EXIF orientation 6. -->
     <None Include="Fixtures/**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

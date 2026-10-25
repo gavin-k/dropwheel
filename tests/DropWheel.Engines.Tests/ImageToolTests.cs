@@ -215,6 +215,7 @@ public sealed class ImageToolTests : IDisposable
     [InlineData("pic.bmp", "*PNG 或 JPG*")]
     [InlineData("pic.gif", "*GIF*")]
     [InlineData("doc.pdf", "不支持 PDF")]
+    [InlineData("phone.heic", "压缩图片不改 HEIC 文件，先转成 PNG 或 JPG")]
     public void Compress_says_why_a_format_is_not_covered(string name, string reason)
     {
         var path = Path.Combine(_dir, name);
@@ -224,6 +225,22 @@ public sealed class ImageToolTests : IDisposable
 
         availability.IsAvailable.Should().BeFalse();
         availability.Reason.Should().Match(reason);
+    }
+
+    [Theory]
+    [InlineData("phone.heic", "HEIC")]
+    [InlineData("logo.svg", "SVG")]
+    [InlineData("art.psd", "PSD")]
+    [InlineData("app.ico", "ICO")]
+    public void Images_the_wheel_only_converts_say_what_to_convert_them_to(string name, string shown)
+    {
+        var path = Path.Combine(_dir, name);
+        File.WriteAllBytes(path, [0]);
+
+        var availability = new RotateRightTool().Check(new([path], "tool.rotate-right", ""));
+
+        availability.IsAvailable.Should().BeFalse();
+        availability.Reason.Should().Be($"右转不改 {shown} 文件，先转成 PNG 或 JPG");
     }
 
     [Theory]

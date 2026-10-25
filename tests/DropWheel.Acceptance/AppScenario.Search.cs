@@ -6,7 +6,7 @@ namespace DropWheel.Acceptance;
 internal static partial class AppScenario
 {
     private const string WheelTitle = "DropWheel 轮盘";
-    private const string HeicReason = "HEIC 编码需要系统已安装「HEVC 视频扩展」";
+    private const string HeicReason = "还不能写出 HEIC，体积差不多的可以选 AVIF";
 
     /// <summary>
     /// JPG → BMP, which a JPG's wheel does not offer until it is searched for: "bmx" matches nothing, then
@@ -38,8 +38,7 @@ internal static partial class AppScenario
     }
 
     /// <summary>
-    /// HEIC, whose encoder is the system's HEVC extension, which the app does not detect yet and so treats as
-    /// missing: searched for, it comes up off; with the pointer on it the hub says why, a screen reader hears
+    /// HEIC, which the app reads but cannot write: searched for, it comes up off; with the pointer on it the hub says why, a screen reader hears
     /// the same, and a release there converts nothing.
     /// </summary>
     private static void UnavailableFormat(Checks checks, AppLog log, string jpg, bool explorer)

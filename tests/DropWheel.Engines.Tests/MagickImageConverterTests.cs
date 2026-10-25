@@ -201,12 +201,13 @@ public sealed class MagickImageConverterTests : IDisposable
     }
 
     [Fact]
-    public void Heic_output_is_reported_as_missing_codec()
+    public void Heic_output_is_off_and_says_what_to_pick_instead()
     {
         var availability = _converter.Check(new(["x.jpg"], "heic", ""));
 
         availability.IsAvailable.Should().BeFalse();
-        availability.Cause.Should().Be(UnavailableCause.MissingSystemCodec);
+        availability.Cause.Should().Be(UnavailableCause.InputOnly);
+        availability.Reason.Should().Be("还不能写出 HEIC，体积差不多的可以选 AVIF");
     }
 
     [Theory]
@@ -218,6 +219,11 @@ public sealed class MagickImageConverterTests : IDisposable
     [InlineData("anim.gif", "jpg", QualityLevel.Medium, "只取第一帧")]
     [InlineData("photo.jpg", "webp", null, null)]
     [InlineData("shot.png", "gif", QualityLevel.Medium, "*256 色*")]
+    [InlineData("photo.heic", "png", QualityLevel.High, "*压缩痕迹*")]
+    [InlineData("art.psd", "png", QualityLevel.High, "*不保留图层*")]
+    [InlineData("logo.svg", "jpg", QualityLevel.Medium, "*标明的尺寸*")]
+    [InlineData("app.ico", "png", QualityLevel.High, "*最大的一张*")]
+    [InlineData("photo.jpg", "ico", QualityLevel.Medium, "*256×256*")]
     public void Estimates_say_what_the_target_format_loses(string source, string target, QualityLevel? level, string? reason)
     {
         var estimate = _converter.Estimate(new([source], target, ""));
@@ -234,10 +240,141 @@ public sealed class MagickImageConverterTests : IDisposable
     }
 
     [Fact]
-    public void Edges_cover_m0_formats_only()
+    public void Edges_read_more_formats_than_they_write()
     {
         _converter.Edges.Should().Contain(new ConversionEdge("jpg", "png"))
             .And.Contain(new ConversionEdge("png", "jpg"))
-            .And.NotContain(e => e.FromFormatId == "heic" || e.ToFormatId == "ico" || e.FromFormatId == e.ToFormatId);
+            .And.Contain(new ConversionEdge("heic", "jpg"))
+            .And.Contain(new ConversionEdge("psd", "png"))
+            .And.Contain(new ConversionEdge("svg", "ico"))
+            .And.Contain(new ConversionEdge("ico", "png"))
+            .And.NotContain(e => e.ToFormatId == "svg" || e.ToFormatId == "psd" || e.FromFormatId == e.ToFormatId);
+    }
+
+    [Fact]
+    public async Task Heic_comes_out_upright_and_turned_only_once()
+    {
+        // 64×48, stored with a quarter turn to the right, as a phone stores a portrait photo.
+        var source = Path.Combine(_dir, "rotated.heic");
+        File.Copy(Path.Combine(AppContext.BaseDirectory, "Fixtures", "rotated.heic"), source);
+
+        var result = await Run(new([source], "jpg", ""));
+
+        result.Succeeded.Should().BeTrue(result.Error);
+        using var output = new MagickImage(result.OutputPaths[0]);
+        (output.Width, output.Height).Should().Be((48u, 64u));
+        var orientation = output.GetExifProfile()?.GetValue(ExifTag.Orientation)?.Value;
+        (orientation ?? 1).Should().Be(1, "a viewer must not turn it a second time");
+    }
+
+    [Fact]
+    public async Task Psd_gives_its_merged_image_not_a_layer()
+    {
+        var source = Path.Combine(_dir, "art.psd");
+        using (var file = new MagickImageCollection())
+        {
+            // The first image in a PSD is the merged one, the rest are layers.
+            file.Add(new MagickImage(MagickColors.Red, 40, 20));
+            file.Add(new MagickImage(MagickColors.Blue, 10, 10));
+            file.Write(source, MagickFormat.Psd);
+        }
+
+        var result = await Run(new([source], "png", ""));
+
+        result.Succeeded.Should().BeTrue(result.Error);
+        using var output = new MagickImage(result.OutputPaths[0]);
+        (output.Width, output.Height).Should().Be((40u, 20u));
+        var pixel = output.GetPixels().GetPixel(5, 5).ToColor()!;
+        (pixel.R > 0xF000, pixel.B < 0x1000).Should().Be((true, true));
+    }
+
+    [Fact]
+    public async Task Svg_is_drawn_at_its_size_and_keeps_transparency()
+    {
+        var source = Path.Combine(_dir, "logo.svg");
+        await File.WriteAllTextAsync(source, """
+            <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="40" height="20">
+              <defs><linearGradient id="red"><stop offset="0" stop-color="red"/><stop offset="1" stop-color="red"/></linearGradient></defs>
+              <rect id="box" width="20" height="20" fill="url(#red)"/>
+              <a href="https://example.com/"><use xlink:href="#box" x="40"/></a>
+              <rect x="40" width="9" height="9" style="fill: url( '#red' )"/>
+            </svg>
+            """);
+
+        var result = await Run(new([source], "png", ""));
+
+        result.Succeeded.Should().BeTrue(result.Error);
+        using var output = new MagickImage(result.OutputPaths[0]);
+        (output.Width, output.Height).Should().Be((40u, 20u));
+        output.GetPixels().GetPixel(10, 10).ToColor()!.R.Should().BeGreaterThan(0xF000);
+        output.GetPixels().GetPixel(30, 10).ToColor()!.A.Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData("""<image href="file:///C:/Windows/win.ini" width="9" height="9"/>""", "file:///C:/Windows/win.ini")]
+    [InlineData("""<image xlink:href = 'https://example.com/a.png' width="9" height="9"/>""", "https://example.com/a.png")]
+    [InlineData("""<image href="secret.png" width="9" height="9"/>""", "secret.png")]
+    [InlineData("""<rect width="9" height="9" style="fill: url( 'https://example.com/p.svg#x' )"/>""", "https://example.com/p.svg#x")]
+    [InlineData("""<style>@import "https://example.com/a.css";</style>""", "@import \"https://example.com/a.css\"")]
+    public async Task Svg_pointing_outside_itself_is_refused_before_it_is_drawn(string inside, string named)
+    {
+        var source = Path.Combine(_dir, "trap.svg");
+        await File.WriteAllTextAsync(source, $"""<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="9" height="9">{inside}</svg>""");
+
+        var result = await Run(new([source], "png", ""));
+
+        result.Succeeded.Should().BeFalse();
+        result.Error.Should().Be($"trap.svg 无法转换：SVG 引用了它以外的内容（{named}），为了安全不转换");
+        Directory.GetFiles(_dir).Should().HaveCount(1);
+    }
+
+    [Fact]
+    public async Task Svg_declaring_an_entity_is_refused()
+    {
+        var source = Path.Combine(_dir, "trap.svg");
+        await File.WriteAllTextAsync(source, """
+            <!DOCTYPE svg [<!ENTITY secret SYSTEM "file:///C:/Windows/win.ini">]>
+            <svg xmlns="http://www.w3.org/2000/svg" width="9" height="9"><text>&secret;</text></svg>
+            """);
+
+        var result = await Run(new([source], "png", ""));
+
+        result.Error.Should().Contain("<!ENTITY secret SYSTEM");
+    }
+
+    [Theory]
+    [InlineData(64u, 48u, 64u)]
+    [InlineData(600u, 300u, 256u)]
+    public async Task Icons_are_square_and_hold_every_standard_size_up_to_256(uint width, uint height, uint side)
+    {
+        var source = Sample(width: width, height: height);
+
+        var result = await Run(new([source], "ico", ""));
+
+        result.Succeeded.Should().BeTrue(result.Error);
+        result.OutputPaths.Should().Equal(Path.Combine(_dir, "photo.ico"));
+        using var icon = new MagickImageCollection(result.OutputPaths[0]);
+        uint[] sizes = [256, 128, 64, 48, 32, 16];
+        icon.Select(i => (i.Width, i.Height)).Should().BeEquivalentTo(sizes.Where(s => s <= side).Select(s => (s, s)));
+        var largest = icon.MaxBy(i => i.Width)!;
+        largest.GetPixels().GetPixel(0, 0).ToColor()!.A.Should().Be(0, "the wide picture is padded with transparency");
+        largest.GetPixels().GetPixel((int)side / 2, (int)side / 2).ToColor()!.A.Should().Be(ushort.MaxValue);
+    }
+
+    [Fact]
+    public async Task An_icon_gives_its_largest_picture()
+    {
+        var source = Path.Combine(_dir, "app.ico");
+        using (var image = new MagickImage("gradient:red-blue", 48, 48))
+        {
+            image.Settings.SetDefine("icon:auto-resize", "16,48,32");
+            image.Write(source, MagickFormat.Ico);
+        }
+
+        var result = await Run(new([source], "png", ""));
+
+        result.Succeeded.Should().BeTrue(result.Error);
+        var info = new MagickImageInfo(result.OutputPaths[0]);
+        (info.Width, info.Height).Should().Be((48u, 48u));
     }
 }

@@ -17,9 +17,9 @@ public sealed record Availability(bool IsAvailable, string? Reason = null)
 public enum UnavailableCause
 {
     None = 0,
-    /// <summary>Format can only be read, never written (RAW, RAR, DOC…).</summary>
+    /// <summary>Format can only be read, never written (HEIC, RAW, RAR, DOC…).</summary>
     InputOnly,
-    /// <summary>A system codec is missing (e.g. HEVC extension for HEIC encode).</summary>
+    /// <summary>A system codec is missing (none yet; HEVC Video Extensions once HEIC is written through WIC).</summary>
     MissingSystemCodec,
     /// <summary>An optional engine module (LibreOffice, RapidOCR model) is not installed.</summary>
     MissingOptionalModule,

@@ -52,7 +52,7 @@ Dragging ──(推到屏幕左右外缘)──▶ DockWindow 显示 ──(松�
 ## 领域模型（Core）
 
 - `FileSignature`：扩展名 + 魔数嗅探 → `MediaKind`（Image/Video/Audio/Pdf/Document/Slides/Sheet/Subtitle/Archive）。
-- `ConversionGraph`：`(sourceFormat, targetFormat) → IConverter + Availability`。`Availability` 为 `Available | Unavailable(reason)`，原因是用户可读文案（例：「HEIC 编码需要系统已安装 HEVC 视频扩展」）。
+- `ConversionGraph`：`(sourceFormat, targetFormat) → IConverter + Availability`。`Availability` 为 `Available | Unavailable(reason)`，原因是用户可读文案（例：「还不能写出 HEIC，体积差不多的可以选 AVIF」）。
 - `WheelModel.Build(files, mode)`：6 个槽位 = 3 个最近使用（按 MediaKind 分桶的 LRU）+ 3 个智能推荐（规则：体积、来源目录、同类文件历史）；不可用项保留并灰显。
 - `Job`：`Pending → Running(progress) → Done | Failed(reason) | Canceled | Undone`。每个 Job 记录 `UndoPlan`（删除输出到回收站 / 把移动的文件移回）。
 - `NamingTemplate`：`{name} {fmt} {ext} {date} {time} {n} {w}x{h}`；`ConflictPolicy = AutoNumber | Overwrite(ToRecycleBin) | Skip | Ask`。

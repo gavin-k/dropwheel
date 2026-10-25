@@ -103,8 +103,12 @@ public abstract class ImageTool(TimeProvider? time) : IWheelOperation
     /// <summary>The new file, or null when it would be no different from the source.</summary>
     protected abstract Rendered? Render(string source, string formatId);
 
-    /// <summary>Why a format is not covered, for a reason more useful than "不支持".</summary>
-    protected virtual string? Unsupported(FileFormat? format) => null;
+    /// <summary>
+    /// Why a format is not covered, for a reason more useful than "不支持": by default, for an image the wheel
+    /// converts but no tool writes back, what to convert it to first.
+    /// </summary>
+    protected virtual string? Unsupported(FileFormat? format) =>
+        format is not null && Image.MagickImageConverter.ConvertsOnly(format.Id) ? $"{Label}不改 {format.DisplayName} 文件，先转成 PNG 或 JPG" : null;
 
     /// <summary>One line for the task window about what was written.</summary>
     protected virtual string? Detail(long before, long after) => null;

@@ -28,7 +28,7 @@ public sealed class CompressImageTool(TimeProvider? time = null) : ImageTool(tim
         "bmp" => "BMP 本身不压缩，先转成 PNG 或 JPG",
         "gif" => "GIF 已是 256 色，再压缩会损坏动画",
         "avif" => "AVIF 已经压缩得很小",
-        _ => null,
+        _ => base.Unsupported(format),
     };
 
     protected override string? Detail(long before, long after) => $"{Size(before)} → {Size(after)}";
