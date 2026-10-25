@@ -6,8 +6,8 @@ using SkiaSharp;
 namespace DropWheel.Engines.Pdf;
 
 /// <summary>
-/// One image to one PDF through Skia's PDF writer, one page per image (per frame for a TIFF, the first frame of
-/// a GIF). The page is as large as the image at its own DPI, 96 when it has none, so nothing is resampled. A
+/// Images to a PDF through Skia's PDF writer, one page per image (per frame for a TIFF, the first frame of a
+/// GIF). The page is as large as the image at its own DPI, 96 when it has none, so nothing is resampled. A
 /// JPEG's compressed data goes in unchanged, see <see cref="WithoutExif"/>. Other formats are decoded by Magick
 /// and stored losslessly, except WebP and AVIF: PDF has no codec for them, and storing a photo losslessly would
 /// make the PDF many times larger, so an opaque one is stored as JPEG.
@@ -23,36 +23,60 @@ public static class ImagePdf
 
     private const int LossyQuality = 92;
 
-    internal static async Task<string?> WriteAsync(
+    /// <summary>One image to one PDF.</summary>
+    internal static Task<string?> WriteAsync(
         ConversionRequest request,
         string source,
         int index,
         DateTimeOffset now,
         IProgress<double> progress,
+        CancellationToken cancellationToken) =>
+        WriteAsync(request, [source], index, now, progress, cancellationToken);
+
+    /// <summary>
+    /// <paramref name="sources"/> to one PDF in that order, named after the first. Each image is loaded, drawn and
+    /// let go before the next, so a long batch of photos does not have to fit in memory at once.
+    /// </summary>
+    /// <exception cref="InvalidDataException">An image cannot be read; the message names it.</exception>
+    internal static async Task<string?> WriteAsync(
+        ConversionRequest request,
+        IReadOnlyList<string> sources,
+        int index,
+        DateTimeOffset now,
+        IProgress<double> progress,
         CancellationToken cancellationToken)
     {
-        var from = FormatRegistry.FromPath(source)?.Id;
-        var metadata = SKDocumentPdfMetadata.Default with
-        {
-            Title = FormatRegistry.StemOf(source),
-            Creator = "DropWheel",
-            EncodingQuality = from is "webp" or "avif" ? LossyQuality : SKDocumentPdfMetadata.Default.EncodingQuality,
-        };
+        var metadata = SKDocumentPdfMetadata.Default with { Title = FormatRegistry.StemOf(sources[0]), Creator = "DropWheel" };
 
-        var pages = from == "jpg" && Jpeg(source) is { } jpeg ? [jpeg] : Decode(source, from == "tiff");
+        // The first image is loaded up front: its size can be part of the name.
+        var first = Load(sources[0]);
         try
         {
-            var (width, height) = pages[0].OrientedSize;
-            return await OutputFiles.WriteAsync(request, source, index, now, temp =>
+            var (width, height) = first[0].OrientedSize;
+            return await OutputFiles.WriteAsync(request, sources[0], index, now, temp =>
             {
                 using (var output = File.Create(temp))
                 using (var document = SKDocument.CreatePdf(output, metadata))
                 {
-                    for (var i = 0; i < pages.Count; i++)
+                    for (var i = 0; i < sources.Count; i++)
                     {
-                        cancellationToken.ThrowIfCancellationRequested();
-                        pages[i].Draw(document);
-                        progress.Report((i + 1.0) / pages.Count);
+                        var pages = i == 0 ? first : Load(sources[i]);
+                        try
+                        {
+                            for (var j = 0; j < pages.Count; j++)
+                            {
+                                cancellationToken.ThrowIfCancellationRequested();
+                                pages[j].Draw(document);
+                                progress.Report((i + ((j + 1.0) / pages.Count)) / sources.Count);
+                            }
+                        }
+                        finally
+                        {
+                            if (i > 0)
+                            {
+                                Dispose(pages);
+                            }
+                        }
                     }
 
                     document.Close();
@@ -63,10 +87,28 @@ public static class ImagePdf
         }
         finally
         {
-            foreach (var page in pages)
-            {
-                page.Image.Dispose();
-            }
+            Dispose(first);
+        }
+    }
+
+    private static List<Page> Load(string source)
+    {
+        var from = FormatRegistry.FromPath(source)?.Id;
+        try
+        {
+            return from == "jpg" && Jpeg(source) is { } jpeg ? [jpeg] : Decode(source, from == "tiff", lossy: from is "webp" or "avif");
+        }
+        catch (MagickException ex)
+        {
+            throw new InvalidDataException($"{Path.GetFileName(source)} 无法读取：{ex.Message}", ex);
+        }
+    }
+
+    private static void Dispose(List<Page> pages)
+    {
+        foreach (var page in pages)
+        {
+            page.Image.Dispose();
         }
     }
 
@@ -138,7 +180,8 @@ public static class ImagePdf
         return jpeg;
     }
 
-    private static List<Page> Decode(string source, bool allFrames)
+    /// <param name="lossy">Store an opaque frame as JPEG.</param>
+    private static List<Page> Decode(string source, bool allFrames, bool lossy)
     {
         using var frames = new MagickImageCollection();
         frames.Read(source, new MagickReadSettings { FrameCount = allFrames ? null : 1 });
@@ -150,7 +193,16 @@ public static class ImagePdf
             using var pixels = frame.GetPixelsUnsafe();
             var rgba = pixels.ToByteArray(PixelMapping.RGBA) ?? throw new InvalidDataException($"无法读取 {Path.GetFileName(source)} 的像素");
             var info = new SKImageInfo((int)frame.Width, (int)frame.Height, SKColorType.Rgba8888, opaque ? SKAlphaType.Opaque : SKAlphaType.Unpremul);
-            pages.Add(new(SKImage.FromPixelCopy(info, rgba), SKEncodedOrigin.TopLeft, DpiOf(frame.Density)));
+            var image = SKImage.FromPixelCopy(info, rgba);
+            if (lossy && opaque)
+            {
+                // Skia's writer passes encoded JPEG data through, so the quality is chosen here, per image.
+                using var decoded = image;
+                using var data = decoded.Encode(SKEncodedImageFormat.Jpeg, LossyQuality);
+                image = SKImage.FromEncodedData(data);
+            }
+
+            pages.Add(new(image, SKEncodedOrigin.TopLeft, DpiOf(frame.Density)));
         }
 
         return pages;
