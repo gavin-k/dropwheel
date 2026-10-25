@@ -112,7 +112,8 @@ public partial class App : Application
             var tapper = new ModifierTapper(settings.Current.Keys, TimeProvider.System);
             var winKey = new WinKeyGate(settings.Current.Keys);
             var typeAhead = new TypeAhead();
-            _monitor = new DragMonitor(tapper, winKey, typeAhead);
+            var longPress = new LongPress(settings.Current.Keys);
+            _monitor = new DragMonitor(tapper, winKey, typeAhead, longPress);
             _monitor.Faulted += ex => FileLog.Error("hook thread handler failed", ex);
             _host = new DropTargetHost();
 
@@ -123,11 +124,12 @@ public partial class App : Application
             {
                 tapper.Rebind(changed.Keys);
                 winKey.Rebind(changed.Keys);
+                longPress.Rebind(changed.Keys);
                 queueWindow.ShowKeys(changed.Keys.KeysFor(WheelMode.Convert));
             };
             var onboarding = _onboarding = new OnboardingWindow(settings, _queue, ui, settingsWindow.Show);
             _wheel = new WheelWindow();
-            _controller = new WheelController(ui, _monitor, _host, _wheel, builder, _queue, recent, settings, tapper, typeAhead);
+            _controller = new WheelController(ui, _monitor, _host, _wheel, builder, _queue, recent, settings, tapper, longPress, typeAhead);
 
             _host.Start();
             _monitor.Start();

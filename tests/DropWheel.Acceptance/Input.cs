@@ -7,7 +7,13 @@ namespace DropWheel.Acceptance;
 /// <summary>SendInput helpers.  Coordinates are physical pixels on the virtual desktop (PerMonitorV2 process).</summary>
 internal static class Input
 {
-    public static void MoveTo(int x, int y)
+    /// <summary>
+    /// The extra info Windows gives the mouse messages a finger makes (MI_WP_SIGNATURE with the touch bit);
+    /// the app's long press only counts moves that carry it.
+    /// </summary>
+    public const nuint Touch = 0xFF515780;
+
+    public static void MoveTo(int x, int y, nuint extraInfo = 0)
     {
         var vs = SystemInformation.VirtualScreen;
         var nx = (int)Math.Round((x - vs.X) * 65535.0 / (vs.Width - 1));
@@ -22,16 +28,17 @@ internal static class Input
                     dx = nx,
                     dy = ny,
                     dwFlags = MOUSE_EVENT_FLAGS.MOUSEEVENTF_MOVE | MOUSE_EVENT_FLAGS.MOUSEEVENTF_ABSOLUTE | MOUSE_EVENT_FLAGS.MOUSEEVENTF_VIRTUALDESK,
+                    dwExtraInfo = extraInfo,
                 },
             },
         });
     }
 
-    public static void MoveSmooth(Point from, Point to, int steps, int stepDelayMs)
+    public static void MoveSmooth(Point from, Point to, int steps, int stepDelayMs, nuint extraInfo = 0)
     {
         for (var i = 1; i <= steps; i++)
         {
-            MoveTo(from.X + (to.X - from.X) * i / steps, from.Y + (to.Y - from.Y) * i / steps);
+            MoveTo(from.X + (to.X - from.X) * i / steps, from.Y + (to.Y - from.Y) * i / steps, extraInfo);
             Thread.Sleep(stepDelayMs);
         }
     }

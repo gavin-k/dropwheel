@@ -17,7 +17,7 @@ using Windows.Win32.UI.WindowsAndMessaging;
 namespace DropWheel.App;
 
 /// <summary>
-/// One drag's worth of wheel: a modifier tap opens it at the pointer, DragEnter on the drop target host
+/// One drag's worth of wheel: a modifier tap, or a finger or pen held still, opens it at the pointer, DragEnter on the drop target host
 /// says which files are being dragged, a drop on a sector enqueues the conversion or the file action.
 /// The wheels are Convert, Tools and Actions; see <see cref="Modes"/>. Letters and digits typed on the
 /// Convert wheel search every target the files can become, and the sectors show the best matches.
@@ -26,7 +26,7 @@ namespace DropWheel.App;
 /// grace period, because the hook sees the button-up before OLE delivers the drop), and on a watchdog
 /// that polls the physical button, so a lost hook cannot leave the wheel on screen.
 ///
-/// Threads: Invoked, Typed and PhaseChanged come from the hook thread, Entered / Hovered / Dropped /
+/// Threads: the Invoked events, Typed and PhaseChanged come from the hook thread, Entered / Hovered / Dropped /
 /// Canceled from the host thread. Everything that touches a window is queued to the UI thread; the session
 /// is only replaced on the UI thread. The model is rebuilt on the host thread when the files arrive and on
 /// the UI thread when the search changes, under the session's lock.
@@ -45,6 +45,7 @@ internal sealed class WheelController : IDisposable
     private readonly IRecentItems _recent;
     private readonly SettingsStore _settings;
     private readonly ModifierTapper _tapper;
+    private readonly LongPress _longPress;
     private readonly TypeAhead _typeAhead;
     private readonly DispatcherQueueTimer _idleGrace;
     private readonly DispatcherQueueTimer _watchdog;
@@ -61,6 +62,7 @@ internal sealed class WheelController : IDisposable
         IRecentItems recent,
         SettingsStore settings,
         ModifierTapper tapper,
+        LongPress longPress,
         TypeAhead typeAhead)
     {
         _ui = ui;
@@ -72,6 +74,7 @@ internal sealed class WheelController : IDisposable
         _recent = recent;
         _settings = settings;
         _tapper = tapper;
+        _longPress = longPress;
         _typeAhead = typeAhead;
 
         _idleGrace = ui.CreateTimer();
@@ -82,7 +85,8 @@ internal sealed class WheelController : IDisposable
         _watchdog.Interval = WatchdogPeriod;
         _watchdog.Tick += (_, _) => CheckButton();
 
-        _tapper.Invoked += OnInvoked;
+        _tapper.Invoked += OnTapped;
+        _longPress.Invoked += OnHeld;
         _typeAhead.Typed += OnTyped;
         _monitor.PhaseChanged += OnPhaseChanged;
         _host.Entered += OnEntered;
@@ -97,7 +101,8 @@ internal sealed class WheelController : IDisposable
 
     public void Dispose()
     {
-        _tapper.Invoked -= OnInvoked;
+        _tapper.Invoked -= OnTapped;
+        _longPress.Invoked -= OnHeld;
         _typeAhead.Typed -= OnTyped;
         _monitor.PhaseChanged -= OnPhaseChanged;
         _host.Entered -= OnEntered;
@@ -111,11 +116,15 @@ internal sealed class WheelController : IDisposable
 
     // ---- hook thread ------------------------------------------------------------------------------
 
-    private void OnInvoked(WheelMode mode)
+    private void OnTapped(WheelMode mode) => OpenFromHook(mode, "tap");
+
+    private void OnHeld(WheelMode mode) => OpenFromHook(mode, "long press");
+
+    private void OpenFromHook(WheelMode mode, string by)
     {
         var tappedAt = Stopwatch.GetTimestamp();
         var point = _monitor.LastPoint;
-        _ui.TryEnqueue(() => Open(mode, point, tappedAt));
+        _ui.TryEnqueue(() => Open(mode, point, tappedAt, by));
     }
 
     private void OnTyped(char c) => _ui.TryEnqueue(() => Type(c));
@@ -148,7 +157,7 @@ internal sealed class WheelController : IDisposable
         // hit-tests against the real enabled sectors. Anything typed since the tap is searched already.
         session.Paths = paths;
         var model = Rebuild(session)!;
-        FileLog.Info($"wheel: {paths.Count} file(s) entered +{Stopwatch.GetElapsedTime(session.TappedAt).TotalMilliseconds:F0} ms after tap, slots {Slots(model)}");
+        FileLog.Info($"wheel: {paths.Count} file(s) entered +{Stopwatch.GetElapsedTime(session.TappedAt).TotalMilliseconds:F0} ms after {session.By}, slots {Slots(model)}");
         _ui.TryEnqueue(() =>
         {
             // A search typed meanwhile has already shown a newer model.
@@ -204,7 +213,8 @@ internal sealed class WheelController : IDisposable
 
     // ---- UI thread --------------------------------------------------------------------------------
 
-    private void Open(WheelMode mode, (int X, int Y) point, long tappedAt)
+    /// <param name="by">What opened it, for the log: "tap" or "long press".</param>
+    private void Open(WheelMode mode, (int X, int Y) point, long tappedAt, string by)
     {
         if (_session is not null || _monitor.Phase == DragPhase.Idle)
         {
@@ -216,7 +226,7 @@ internal sealed class WheelController : IDisposable
         var (x, y, scale) = Place(point);
         var onHub = WheelGeometry.OnHub((point.X - x) / scale, (point.Y - y) / scale);
         var placement = new WheelPlacement(x, y, scale, new bool[WheelModel.SlotCount], onHub);
-        _session = new Session(mode, placement, tappedAt, _settings.Current);
+        _session = new Session(mode, placement, tappedAt, by, _settings.Current);
         _typeAhead.Listening = mode == WheelMode.Convert;
 
         // Order matters: the host has to end up above the wheel. If the wheel were on top, OLE would see
@@ -226,7 +236,7 @@ internal sealed class WheelController : IDisposable
         _host.Show(placement);
         _buttonUpReadings = 0;
         _watchdog.Start();
-        FileLog.Info($"wheel: shown +{Stopwatch.GetElapsedTime(tappedAt).TotalMilliseconds:F1} ms after tap, centre {x},{y} scale {scale:0.##} (pointer {point.X},{point.Y}{(onHub ? "" : ", off the hub: sectors wait for it")})");
+        FileLog.Info($"wheel: shown +{Stopwatch.GetElapsedTime(tappedAt).TotalMilliseconds:F1} ms after {by}, centre {x},{y} scale {scale:0.##} (pointer {point.X},{point.Y}{(onHub ? "" : ", off the hub: sectors wait for it")})");
     }
 
     private void Close(string why)
@@ -332,12 +342,13 @@ internal sealed class WheelController : IDisposable
     }
 
     /// <param name="settings">The snapshot the wheel was built with; the drop uses the same one.</param>
-    private sealed class Session(WheelMode mode, WheelPlacement placement, long tappedAt, AppSettings settings)
+    private sealed class Session(WheelMode mode, WheelPlacement placement, long tappedAt, string by, AppSettings settings)
     {
         public AppSettings Settings { get; } = settings;
         public WheelMode Mode { get; } = mode;
         public WheelPlacement Placement { get; } = placement;
         public long TappedAt { get; } = tappedAt;
+        public string By { get; } = by;
         public volatile WheelModel? Model;
 
         /// <summary>The files, once DragEnter said which.</summary>

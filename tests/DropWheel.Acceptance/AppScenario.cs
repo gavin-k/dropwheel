@@ -25,7 +25,8 @@ namespace DropWheel.Acceptance;
 /// page, dropped on the PNG sector, comes back as a PNG, and a PDF with text dropped on the DOCX sector as
 /// a Word document with that text, and a JPG dropped on the BMP sector, which only typing "bmp" on the wheel
 /// brings up, as a bitmap; with the pointer on a sector the hub tells the expected quality, or why the
-/// sector is off. Then the task window's 重试, 打开位置 and 取消 buttons are pressed, the
+/// sector is off. Mouse moves signed the way Windows signs a finger's open the Convert wheel by resting
+/// mid-drag, which a resting mouse does not, and a JPG dropped through it comes out as a PNG. Then the task window's 重试, 打开位置 and 取消 buttons are pressed, the
 /// Actions wheel opened with a Win tap copies a path, zips a folder, deletes a file once Delete is ticked
 /// in settings and starts a rename in Explorer, the Tools wheel opened with a Ctrl+Alt tap halves an
 /// image, unpacks a zip, splits a PDF and compresses a video, and settings changed in the settings window take effect
@@ -107,6 +108,7 @@ internal static partial class AppScenario
                 Attempt(checks, "pdf to word", () => PdfToDocx(checks, log, dir, explorer));
                 Attempt(checks, "search a format", () => SearchFormat(checks, log, dir, explorer));
                 Attempt(checks, "an unavailable format says why", () => UnavailableFormat(checks, log, jpg, explorer));
+                Attempt(checks, "touch long press", () => TouchLongPress(checks, log, dir, explorer));
                 Attempt(checks, "task window buttons", () => QueueButtons(checks, log, exe, explorer));
                 Attempt(checks, "file actions", () => FileActions(checks, log, app.Id, explorer));
                 Attempt(checks, "tools", () => Tools(checks, log, exe, explorer));
@@ -405,16 +407,17 @@ internal static partial class AppScenario
     }
 
     /// <summary>
-    /// Drags <paramref name="source"/>, opens the wheel with <paramref name="key"/>, drops on the
+    /// Drags <paramref name="source"/>, opens the wheel with <paramref name="keys"/>, or with a resting finger
+    /// when <paramref name="touch"/>, which then also makes every later move, drops on the
     /// <paramref name="target"/> sector and waits for the queue. A <paramref name="quiet"/> key is tapped first
     /// and must not open the wheel; <paramref name="search"/> is typed on the open wheel, see <see cref="TypeSearch"/>;
     /// <paramref name="beforeRelease"/> runs with the pointer on the sector.
     /// </summary>
     /// <returns>The output path, or null after a failed check.</returns>
     private static string? ConvertThroughWheel(Checks checks, AppLog log, string source, string target, bool explorer,
-        VIRTUAL_KEY[]? keys = null, VIRTUAL_KEY? quiet = null, string? search = null, Action? beforeRelease = null)
+        VIRTUAL_KEY[]? keys = null, VIRTUAL_KEY? quiet = null, string? search = null, Action? beforeRelease = null, bool touch = false)
     {
-        if (DropOnWheel(checks, log, source, target, explorer, keys, quiet, beforeRelease, search: search) is not { } label)
+        if (DropOnWheel(checks, log, source, target, explorer, keys, quiet, beforeRelease, search: search, touch: touch) is not { } label)
         {
             return null;
         }
@@ -432,7 +435,8 @@ internal static partial class AppScenario
     /// </summary>
     /// <returns>The job's label, or null after a failed check.</returns>
     private static string? DropOnWheel(Checks checks, AppLog log, string source, string target, bool explorer,
-        VIRTUAL_KEY[]? keys = null, VIRTUAL_KEY? quiet = null, Action? beforeRelease = null, Action<string>? afterDrop = null, string? search = null)
+        VIRTUAL_KEY[]? keys = null, VIRTUAL_KEY? quiet = null, Action? beforeRelease = null, Action<string>? afterDrop = null, string? search = null,
+        bool touch = false)
     {
         using var drag = DragSource.Open(source, explorer);
         var mid = drag.PressAndDrag();
@@ -445,7 +449,7 @@ internal static partial class AppScenario
             log.Mark();
         }
 
-        if (Tap(checks, log, mid, keys) is not { } w)
+        if ((touch ? Hold(checks, log, mid) : Tap(checks, log, mid, keys)) is not { } w)
         {
             return null;
         }
@@ -466,7 +470,7 @@ internal static partial class AppScenario
             return null;
         }
 
-        Input.MoveSmooth(new Point(mid.X + 6, mid.Y + 6), SectorPoint(w, sector), 8, 30);
+        Input.MoveSmooth(new Point(mid.X + 6, mid.Y + 6), SectorPoint(w, sector), 8, 30, touch ? Input.Touch : 0);
         Thread.Sleep(250);
         beforeRelease?.Invoke();
         Input.LeftUp();
@@ -496,24 +500,34 @@ internal static partial class AppScenario
     {
         keys ??= [VIRTUAL_KEY.VK_LSHIFT];
         PressAndRelease(keys);
+        return Shown(checks, log, mid, "tap", $"{KeyName(keys)} tap mid-drag");
+    }
+
+    /// <summary>
+    /// Waits for the wheel the app says it opened after <paramref name="by"/>, checks it was in time and
+    /// returns where it is. <paramref name="what"/> names the gesture in the checks; <paramref name="extraInfo"/>
+    /// signs the move that follows.
+    /// </summary>
+    private static Wheel? Shown(Checks checks, AppLog log, Point mid, string by, string what, nuint extraInfo = 0)
+    {
         var shown = log.WaitFor(2000, "wheel: shown");
         var frame = log.WaitFor(1000, "overlay: first frame");
         var m = shown is null ? null : ShownRegex().Match(shown);
-        if (m is not { Success: true })
+        if (m is not { Success: true } || m.Groups["by"].Value != by)
         {
-            checks.Check($"{KeyName(keys)} tap mid-drag shows the wheel", false, shown ?? "no 'wheel: shown' within 2 s");
+            checks.Check($"{what} shows the wheel", false, shown ?? "no 'wheel: shown' within 2 s");
             return null;
         }
 
         var showMs = double.Parse(m.Groups["ms"].Value, CultureInfo.InvariantCulture);
         var frameMs = frame is not null && FrameRegex().Match(frame) is { Success: true } f ? double.Parse(f.Groups[1].Value, CultureInfo.InvariantCulture) : double.NaN;
-        checks.Check($"{KeyName(keys)} tap mid-drag shows the wheel within {BudgetMs} ms", showMs + frameMs <= BudgetMs,
-            $"shown {showMs:F1} ms after the hook saw the tap, first frame {frameMs:F0} ms later");
+        checks.Check($"{what} shows the wheel within {BudgetMs} ms", showMs + frameMs <= BudgetMs,
+            $"shown {showMs:F1} ms after the hook saw the {by}, first frame {frameMs:F0} ms later");
         var wheel = new Wheel(int.Parse(m.Groups["x"].Value, CultureInfo.InvariantCulture), int.Parse(m.Groups["y"].Value, CultureInfo.InvariantCulture),
             double.Parse(m.Groups["s"].Value, CultureInfo.InvariantCulture));
 
         // A small move so OLE delivers DragEnter to the drop target that just appeared under the pointer.
-        Input.MoveSmooth(mid, new Point(mid.X + 6, mid.Y + 6), 3, 30);
+        Input.MoveSmooth(mid, new Point(mid.X + 6, mid.Y + 6), 3, 30, extraInfo);
         return wheel;
     }
 
@@ -861,7 +875,7 @@ internal static partial class AppScenario
         }
     }
 
-    [GeneratedRegex(@"wheel: shown \+(?<ms>[\d.]+) ms after tap, centre (?<x>-?\d+),(?<y>-?\d+) scale (?<s>[\d.]+)")]
+    [GeneratedRegex(@"wheel: shown \+(?<ms>[\d.]+) ms after (?<by>tap|long press), centre (?<x>-?\d+),(?<y>-?\d+) scale (?<s>[\d.]+)")]
     private static partial Regex ShownRegex();
 
     [GeneratedRegex(@"first frame (\d+) ms")]

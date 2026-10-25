@@ -2,6 +2,8 @@ using DropWheel.Core.Input;
 using DropWheel.Core.Settings;
 using Windows.Win32;
 using Windows.Win32.Foundation;
+using Windows.Win32.Graphics.Gdi;
+using Windows.Win32.UI.HiDpi;
 using Windows.Win32.UI.Input.KeyboardAndMouse;
 using Windows.Win32.UI.WindowsAndMessaging;
 
@@ -18,13 +20,14 @@ public enum DragPhase { Idle, MaybeDragging, Dragging }
 /// Modifier keys go to <see cref="ModifierTapper"/> with "dragging" meaning any phase but Idle: a drag
 /// without a drag image (WinForms DoDragDrop, or a run where SysDragImage never showed) still has to
 /// open the wheel. Win key events go through <see cref="WinKeyGate"/>, other keys through
-/// <see cref="TypeAhead"/>, which takes them while the Convert wheel is open.
+/// <see cref="TypeAhead"/>, which takes them while the Convert wheel is open. The pointer moves of a
+/// drag go to <see cref="LongPress"/>, which says when to start its timer.
 ///
 /// Windows silently removes a low-level hook whose callback runs past LowLevelHooksTimeout, so the
-/// callbacks only update state, and <see cref="PhaseChanged"/> and the tapper's Invoked are raised
-/// inline on this thread: handlers must post to their own thread and return.
+/// callbacks only update state, and <see cref="PhaseChanged"/> and the Invoked events of the tapper and
+/// the long-press are raised inline on this thread: handlers must post to their own thread and return.
 /// </summary>
-public sealed unsafe class DragMonitor(ModifierTapper tapper, WinKeyGate winKeys, TypeAhead typeAhead) : IDisposable
+public sealed unsafe class DragMonitor(ModifierTapper tapper, WinKeyGate winKeys, TypeAhead typeAhead, LongPress? longPress = null) : IDisposable
 {
     private const int ThresholdPx = 8;
     private const uint PollMs = 25;
@@ -34,6 +37,8 @@ public sealed unsafe class DragMonitor(ModifierTapper tapper, WinKeyGate winKeys
     private HOOKPROC? _mouseProc;
     private HOOKPROC? _keyboardProc;
     private nuint _pollTimer;
+    private nuint _holdTimer;
+    private int _slop;
     private bool _buttonDown;
     private System.Drawing.Point _downAt;
     private long _pointer;
@@ -113,11 +118,18 @@ public sealed unsafe class DragMonitor(ModifierTapper tapper, WinKeyGate winKeys
                 continue;
             }
 
+            if (msg.message == PInvoke.WM_TIMER && _holdTimer != 0 && msg.wParam.Value == _holdTimer)
+            {
+                HoldElapsed();
+                continue;
+            }
+
             PInvoke.TranslateMessage(in msg);
             PInvoke.DispatchMessage(in msg);
         }
 
         StopPolling();
+        StopHold();
     }
 
     private LRESULT MouseProc(int code, WPARAM wParam, LPARAM lParam)
@@ -126,9 +138,11 @@ public sealed unsafe class DragMonitor(ModifierTapper tapper, WinKeyGate winKeys
         {
             try
             {
-                var pt = ((MSLLHOOKSTRUCT*)lParam.Value)->pt;
+                var info = (MSLLHOOKSTRUCT*)lParam.Value;
+                var pt = info->pt;
                 Volatile.Write(ref _pointer, ((long)pt.X << 32) | (uint)pt.Y);
-                switch ((uint)wParam.Value)
+                var message = (uint)wParam.Value;
+                switch (message)
                 {
                     case PInvoke.WM_LBUTTONDOWN:
                         _buttonDown = true;
@@ -138,13 +152,18 @@ public sealed unsafe class DragMonitor(ModifierTapper tapper, WinKeyGate winKeys
                         break;
                     case PInvoke.WM_MOUSEMOVE when _buttonDown && _phase == DragPhase.Idle
                         && (Math.Abs(pt.X - _downAt.X) > ThresholdPx || Math.Abs(pt.Y - _downAt.Y) > ThresholdPx):
+                        _slop = SlopAt(pt);
                         Transition(DragPhase.MaybeDragging);
                         break;
                     case PInvoke.WM_LBUTTONUP:
-                        _buttonDown = false;
-                        StopPolling();
-                        Transition(DragPhase.Idle);
+                        EndDrag();
                         break;
+                }
+
+                if (message == PInvoke.WM_MOUSEMOVE && _phase != DragPhase.Idle && longPress is not null
+                    && longPress.OnMove(pt.X, pt.Y, LongPress.FromTouchOrPen(info->dwExtraInfo), _slop) && longPress.Hold is { } hold)
+                {
+                    _holdTimer = PInvoke.SetTimer(default, _holdTimer, (uint)hold.TotalMilliseconds, null); // the same id restarts it
                 }
             }
             catch (Exception ex)
@@ -170,9 +189,7 @@ public sealed unsafe class DragMonitor(ModifierTapper tapper, WinKeyGate winKeys
                 // swallowed. The physical button settles it.
                 if (down && _phase != DragPhase.Idle && !ButtonIsDown())
                 {
-                    _buttonDown = false;
-                    StopPolling();
-                    Transition(DragPhase.Idle);
+                    EndDrag();
                 }
 
                 var dragging = _phase != DragPhase.Idle;
@@ -223,6 +240,41 @@ public sealed unsafe class DragMonitor(ModifierTapper tapper, WinKeyGate winKeys
         }
     }
 
+    private void HoldElapsed()
+    {
+        StopHold();
+        if (_phase == DragPhase.Idle)
+        {
+            return;
+        }
+
+        try
+        {
+            longPress?.Elapsed();
+        }
+        catch (Exception ex)
+        {
+            Faulted?.Invoke(ex);
+        }
+    }
+
+    private void EndDrag()
+    {
+        _buttonDown = false;
+        StopPolling();
+        StopHold();
+        longPress?.Reset();
+        Transition(DragPhase.Idle);
+    }
+
+    /// <summary><see cref="LongPress.SlopDip"/> in physical pixels on the monitor under <paramref name="pt"/>.</summary>
+    private static int SlopAt(System.Drawing.Point pt)
+    {
+        var monitor = PInvoke.MonitorFromPoint(pt, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST);
+        var dpi = PInvoke.GetDpiForMonitor(monitor, MONITOR_DPI_TYPE.MDT_EFFECTIVE_DPI, out var x, out _).Succeeded ? x : 96u;
+        return (int)Math.Round(LongPress.SlopDip * dpi / 96.0);
+    }
+
     /// <summary>The primary button, which is the right one with the buttons swapped; GetAsyncKeyState reads the physical one.</summary>
     private static bool ButtonIsDown()
     {
@@ -250,6 +302,15 @@ public sealed unsafe class DragMonitor(ModifierTapper tapper, WinKeyGate winKeys
         {
             PInvoke.KillTimer(default, _pollTimer);
             _pollTimer = 0;
+        }
+    }
+
+    private void StopHold()
+    {
+        if (_holdTimer != 0)
+        {
+            PInvoke.KillTimer(default, _holdTimer);
+            _holdTimer = 0;
         }
     }
 

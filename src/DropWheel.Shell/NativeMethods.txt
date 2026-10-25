@@ -31,6 +31,8 @@ KillTimer
 WM_TIMER
 VIRTUAL_KEY
 GetAsyncKeyState
+MonitorFromPoint
+GetDpiForMonitor
 
 // Drop target host
 OleInitialize

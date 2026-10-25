@@ -54,6 +54,13 @@ internal sealed class AppLog
         return null;
     }
 
+    /// <summary>How many lines since the last <see cref="Mark"/> contain every fragment.</summary>
+    public int Count(params string[] fragments)
+    {
+        Poll();
+        return _lines.Skip(_mark).Count(line => fragments.All(f => line.Contains(f, StringComparison.Ordinal)));
+    }
+
     /// <summary>First line since this object was created that contains every fragment, whatever <see cref="Mark"/> said.</summary>
     public string? FindSinceStart(params string[] fragments)
     {
