@@ -82,6 +82,11 @@ internal sealed class AppLog
             {
                 // ReadWrite sharing so the app's appends never fail while this reads.
                 using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                if (stream.Length < offset)
+                {
+                    offset = 0; // the app cleared its logs and started this one afresh
+                }
+
                 if (stream.Length <= offset)
                 {
                     continue;

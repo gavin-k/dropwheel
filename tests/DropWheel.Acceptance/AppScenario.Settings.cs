@@ -14,7 +14,8 @@ internal static partial class AppScenario
     /// <summary>
     /// Through the settings window, the way a screen reader would use it: unticking the only key is refused
     /// with the reason and nothing is saved; Ctrl instead of Shift, touch long press off, the output folder
-    /// preset in settings.json and a file-name template are saved; a resting finger then opens nothing, and the
+    /// preset in settings.json and a file-name template are saved; 隐私与离线 counts no network request, opens
+    /// the log folder and clears the logs; a resting finger then opens nothing, and the
     /// next drag opens the wheel on Ctrl, not Shift, and puts the PNG in that folder, which does not exist
     /// yet, under the new name.
     /// </summary>
@@ -54,6 +55,8 @@ internal static partial class AppScenario
             keys is not null && touch is not null && location is not null && naming is not null,
             $"{keys ?? "no keys line"}; {touch ?? "no long press line"}; {location ?? "no folder line"}; {naming ?? "no naming line"}");
 
+        Privacy(checks, log);
+
         PInvoke.PostMessage(window, PInvoke.WM_CLOSE, new WPARAM(0), new LPARAM(0));
         var hidden = Checks.Wait(() => !PInvoke.IsWindowVisible(window), 3000);
         using var json = JsonDocument.Parse(File.ReadAllText(file));
@@ -81,6 +84,30 @@ internal static partial class AppScenario
         var expected = Path.Combine(folder, $"{Path.GetFileNameWithoutExtension(jpg)}-dw.png");
         checks.Check("the PNG goes to the new output folder under the new name", png is not null && string.Equals(png, expected, StringComparison.OrdinalIgnoreCase),
             $"{png ?? "no output"}, expected {expected}");
+    }
+
+    /// <summary>
+    /// 隐私与离线: the count of network requests since start is 0, 打开日志文件夹 shows the folder in Explorer,
+    /// and 清除日志 leaves only the log the app goes on writing.
+    /// </summary>
+    private static void Privacy(Checks checks, AppLog log)
+    {
+        var none = Element(SettingsTitle, "这次启动以来的网络请求：0 次", out var how);
+        checks.Check("the settings window counts no network request since start", none is not null && log.FindSinceStart("network: ") is null,
+            $"{how}; {log.FindSinceStart("network: ") ?? "no 'network:' line"}");
+
+        var logs = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DropWheel", "logs");
+        var pressed = Invoke(SettingsTitle, "打开日志文件夹", out how);
+        var folder = pressed ? ExplorerSource.FolderWindow(logs, 5000) : default;
+        checks.Check("打开日志文件夹 shows the log folder in Explorer", !folder.IsNull, folder.IsNull ? $"{how}; no Explorer window on {logs}" : how);
+        ExplorerSource.CloseAndWait(folder);
+
+        var before = Directory.GetFiles(logs, "dropwheel-*.log").Length;
+        var cleared = Invoke(SettingsTitle, "清除日志", out how) ? log.WaitFor(3000, "settings: cleared ") : null;
+        var after = Directory.GetFiles(logs, "dropwheel-*.log").Select(Path.GetFileName).ToList();
+        checks.Check("清除日志 deletes the logs and the app starts today's afresh",
+            cleared is not null && after.Count == 1 && after[0] == $"dropwheel-{DateTime.Now:yyyyMMdd}.log" && new FileInfo(Path.Combine(logs, after[0])).Length < 4096,
+            $"{cleared ?? how}; {before} log(s) before, after: {string.Join(", ", after)}");
     }
 
     private static void Toggle(string name) => Pattern<IUIAutomationTogglePattern>(name, UIA_PATTERN_ID.UIA_TogglePatternId)?.Toggle();

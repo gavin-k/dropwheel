@@ -9,6 +9,7 @@ using DropWheel.Core.Actions;
 using DropWheel.Core.Conversion;
 using DropWheel.Core.Input;
 using DropWheel.Core.Jobs;
+using DropWheel.Core.Privacy;
 using DropWheel.Core.Settings;
 using DropWheel.Core.Wheel;
 using DropWheel.Engines.Archive;
@@ -46,6 +47,7 @@ public partial class App : Application
     private JobQueue? _queue;
     private WheelController? _controller;
     private WheelWindow? _wheel;
+    private NetworkWatch? _network;
 
     public App()
     {
@@ -80,7 +82,14 @@ public partial class App : Application
 
         try
         {
+            _network = new NetworkWatch();
+            _network.Seen += what => FileLog.Info($"network: {what}");
             FileLog.Info($"DropWheel {typeof(App).Assembly.GetName().Version} starting on {RuntimeInformation.OSDescription} {RuntimeInformation.OSArchitecture}, process {RuntimeInformation.ProcessArchitecture}");
+            if (FileLog.Prune() is > 0 and var pruned)
+            {
+                FileLog.Info($"log: deleted {pruned} daily log(s) older than {LogRetention.KeepDays} days");
+            }
+
             var ui = DispatcherQueue.GetForCurrentThread();
 
             var graph = new ConversionGraph();
@@ -117,7 +126,7 @@ public partial class App : Application
             _monitor.Faulted += ex => FileLog.Error("hook thread handler failed", ex);
             _host = new DropTargetHost();
 
-            var settingsWindow = _settingsWindow = new SettingsWindow(settings, operations, ui);
+            var settingsWindow = _settingsWindow = new SettingsWindow(settings, operations, _network, ui);
             var queueWindow = _queueWindow = new QueueWindow(_queue, ui, settingsWindow.Show);
             queueWindow.ShowKeys(settings.Current.Keys.KeysFor(WheelMode.Convert));
             settings.Changed += changed =>
@@ -228,6 +237,7 @@ public partial class App : Application
             FileLog.Info("a job was still running at exit");
         }
 
+        _network?.Dispose();
         FileLog.Flush(TimeSpan.FromSeconds(1));
         _instance?.Dispose();
         Exit();

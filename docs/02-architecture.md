@@ -76,9 +76,10 @@ sidecar 引擎（ffmpeg / soffice）通过 `SidecarProcess` 统一启动：低�
 
 ## 隐私与离线
 
-- 默认无网络请求，仅「检查更新」一项且可关。
-- `StrictOfflineMode`：全局 `HttpClient` 工厂返回拒绝一切请求的 handler；更新检查、许可证校验停用。
-- 网络请求计数显示在设置页与队列页脚，可导出日志。
+- 没有联网代码：不检查更新，不收集使用数据。许可证计划用离线密钥（M3），更新计划交给 Microsoft Store 和 winget（M2）。
+- `NetworkWatch`（`DropWheel.Core.Privacy`）是一个 `EventListener`，订阅运行时自带的 `System.Net.Sockets` 和 `System.Net.NameResolution` 事件，每次建立连接（ConnectStart）和每次解析域名（ResolutionStart）记一次，计的是本进程经 .NET 发出的请求。设置页「隐私与离线」显示次数，每次请求记一行 `network:` 日志。原生代码（PDFium、SkiaSharp、Windows 组件）自己开的套接字看不到；ffmpeg sidecar 是另一个进程，也不在内。
+- 日志在 `%LOCALAPPDATA%\DropWheel\logs`，每天一个文件，记着转换过的文件路径。启动时按 `LogRetention` 删掉 7 天前的；设置页能打开日志文件夹，也能全部清除。日志不会离开这台电脑。
+- `StrictOfflineMode` 等第一处联网功能（M2 的 LibreOffice 模块下载）出现时一起做：全局 `HttpClient` 工厂返回拒绝一切请求的 handler，下载入口灰显并说明原因。现在没有可阻断的请求，开关只会是摆设。
 
 ## 无障碍
 

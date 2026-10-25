@@ -1,5 +1,6 @@
 using DropWheel.App.Diagnostics;
 using DropWheel.Core.Jobs;
+using DropWheel.Core.Privacy;
 using DropWheel.Core.Settings;
 using DropWheel.Core.Wheel;
 using DropWheel.Shell;
@@ -20,7 +21,9 @@ namespace DropWheel.App.Settings;
 /// <summary>
 /// The settings that change what the app does today: the keys that open each wheel and how quick a tap
 /// must be, which items the Actions wheel offers, where results go, what they are called and what happens
-/// when the name is taken, and whether Windows starts it at sign-in. Each change is saved as it is made,
+/// when the name is taken, and whether Windows starts it at sign-in; and what this computer keeps or sends:
+/// the network requests counted since start, and the logs, which name the files converted, to open or
+/// clear. Each change is saved as it is made,
 /// the file name a moment after typing stops. Keys that <see cref="ConflictChecker"/> calls an error are
 /// shown with the reason and not saved, so the Convert wheel is never left without a way to open it.
 /// Closing only hides the window.
@@ -63,15 +66,21 @@ internal sealed class SettingsWindow
     private readonly ToggleSwitch _startup = new() { Header = "登录 Windows 时启动", OnContent = "开", OffContent = "关" };
     private readonly TextBlock _startupNote = new() { TextWrapping = TextWrapping.Wrap, Opacity = 0.75 };
     private readonly StackPanel _startupSection;
+    private readonly NetworkWatch _networkWatch;
+    private readonly TextBlock _network = new() { TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock _logNote = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = 0.75 };
     private readonly DispatcherQueueTimer _namingPause;
     private StartupTask? _startupTask;
     private bool _placed;
     private bool _loading;
 
     /// <param name="operations">The wheel items; those with a <see cref="IWheelOperation.Action"/> get a switch under 文件动作.</param>
-    public SettingsWindow(SettingsStore settings, IReadOnlyList<IWheelOperation> operations, DispatcherQueue ui)
+    /// <param name="network">What 隐私与离线 counts; its count is shown live.</param>
+    public SettingsWindow(SettingsStore settings, IReadOnlyList<IWheelOperation> operations, NetworkWatch network, DispatcherQueue ui)
     {
         _settings = settings;
+        _networkWatch = network;
+        network.Seen += _ => ui.TryEnqueue(ShowNetwork);
         _window = new Window { Title = "DropWheel 设置" };
         _window.AppWindow.SetIcon("Assets/DropWheel.ico");
         _window.AppWindow.Closing += (window, e) =>
@@ -153,6 +162,11 @@ internal sealed class SettingsWindow
         };
         _conflict.SelectionChanged += (_, _) => ConflictChanged();
         _startup.Toggled += async (_, _) => await StartupToggledAsync().ConfigureAwait(true);
+        var openLogs = new Button { Content = "打开日志文件夹" };
+        openLogs.Click += (_, _) => OpenLogs();
+        var clearLogs = new Button { Content = "清除日志" };
+        clearLogs.Click += async (_, _) => await ClearLogsAsync().ConfigureAwait(true);
+        var logButtons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { openLogs, clearLogs } };
 
         var page = new StackPanel { Spacing = 24, Padding = new Thickness(20, 16, 20, 24) };
         page.Children.Add(new TextBlock { Text = "设置", FontSize = 20, FontWeight = FontWeights.SemiBold });
@@ -173,6 +187,9 @@ internal sealed class SettingsWindow
             },
             _preview,
             _conflict));
+
+        page.Children.Add(Section("隐私与离线", "读取、转换和写入都在这台电脑上完成，文件不会上传。DropWheel 没有账号，不收集使用数据，也不自己联网检查更新。",
+            _network, _logNote, logButtons));
 
         // Unpackaged builds (development, the acceptance run) have no startup task to show.
         _startupSection = Section("启动", null, _startup, _startupNote);
@@ -282,6 +299,24 @@ internal sealed class SettingsWindow
             ConflictPolicy.Skip => 1,
             _ => -1, // a policy only a hand-edited file can hold; shown as unset
         };
+        ShowNetwork();
+        _logNote.Text = $"日志记下了转换过的文件路径，用来排查问题，只留最近 {LogRetention.KeepDays} 天，不会发给任何人。";
+    }
+
+    private void ShowNetwork() => _network.Text = $"这次启动以来的网络请求：{_networkWatch.Count} 次";
+
+    private void OpenLogs()
+    {
+        Directory.CreateDirectory(FileLog.Directory);
+        var problem = Explorer.Select(File.Exists(FileLog.CurrentFile) ? FileLog.CurrentFile : FileLog.Directory);
+        FileLog.Info(problem is null ? "settings: opened the log folder" : $"settings: could not open the log folder: {problem}");
+    }
+
+    private async Task ClearLogsAsync()
+    {
+        var deleted = await FileLog.ClearAsync().ConfigureAwait(true);
+        FileLog.Info($"settings: cleared {deleted} log file(s)");
+        _logNote.Text = $"已清除 {deleted} 个日志文件。";
     }
 
     private void KeysChanged(WheelMode mode)
