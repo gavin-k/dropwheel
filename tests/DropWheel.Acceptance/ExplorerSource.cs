@@ -108,7 +108,7 @@ internal static unsafe class ExplorerSource
         Log.Info($"explorer: attempt {attempt}, budget {budget.TotalSeconds:F0} s");
 
         // Explorer reuses an open window for the same folder instead of creating a new one.
-        foreach (var stale in Cabinets().Where(h => WindowText(h) == folderTitle).ToList())
+        foreach (var stale in Cabinets().Where(h => IsFolderWindow(h, folderTitle)).ToList())
         {
             Log.Info($"explorer: closing stale window 0x{(nint)stale.Value:X} '{folderTitle}'");
             CloseAndWait(stale);
@@ -123,7 +123,7 @@ internal static unsafe class ExplorerSource
         Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{file}\"") { UseShellExecute = true })?.Dispose();
         while (LastWindow.IsNull && DateTime.UtcNow < deadline)
         {
-            LastWindow = Cabinets().FirstOrDefault(h => WindowText(h) == folderTitle);
+            LastWindow = Cabinets().FirstOrDefault(h => IsFolderWindow(h, folderTitle));
             if (LastWindow.IsNull)
             {
                 Thread.Sleep(100);
@@ -309,6 +309,16 @@ internal static unsafe class ExplorerSource
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// The title is the folder name on some builds and "folder - File Explorer" (localized) on others; the
+    /// same 22H2 VM switched from one to the other after a cumulative update.
+    /// </summary>
+    private static bool IsFolderWindow(HWND h, string folder)
+    {
+        var text = WindowText(h);
+        return text == folder || text.StartsWith(folder + " - ", StringComparison.Ordinal);
     }
 
     private static string WindowText(HWND h)
