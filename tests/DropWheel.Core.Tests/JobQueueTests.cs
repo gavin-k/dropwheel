@@ -162,6 +162,54 @@ public class JobQueueTests
     }
 
     [Fact]
+    public async Task Retry_runs_a_failed_job_again_as_a_new_job()
+    {
+        var attempts = 0;
+        var (queue, _) = Create((_, _, _) => Task.FromResult(Interlocked.Increment(ref attempts) == 1
+            ? new ConversionResult(false, [], "文件被占用")
+            : new ConversionResult(true, ["/in/a.png"])));
+        await using var _q = queue;
+        var failed = queue.Enqueue(Jpg(), "a.jpg → PNG");
+        await queue.WhenIdleAsync();
+
+        var retry = queue.Retry(failed.Id);
+        await queue.WhenIdleAsync();
+
+        retry.Should().NotBeNull();
+        retry!.Id.Should().NotBe(failed.Id);
+        retry.Label.Should().Be("a.jpg → PNG");
+        retry.State.Should().Be(JobState.Done);
+        failed.State.Should().Be(JobState.Failed);
+        queue.Retry(retry.Id).Should().BeNull("a job that worked has nothing to retry");
+    }
+
+    [Fact]
+    public async Task Retry_runs_a_canceled_job_again()
+    {
+        var running = new TaskCompletionSource();
+        var (queue, _) = Create(async (_, _, ct) =>
+        {
+            if (running.TrySetResult())
+            {
+                await Task.Delay(Timeout.Infinite, ct);
+            }
+
+            return new ConversionResult(true, ["/in/a.png"]);
+        });
+        await using var _q = queue;
+        var canceled = queue.Enqueue(Jpg(), "x");
+        await running.Task;
+        queue.Cancel(canceled.Id);
+        await queue.WhenIdleAsync();
+
+        var retry = queue.Retry(canceled.Id);
+        await queue.WhenIdleAsync();
+
+        canceled.State.Should().Be(JobState.Canceled);
+        retry!.State.Should().Be(JobState.Done);
+    }
+
+    [Fact]
     public async Task Jobs_run_one_at_a_time_in_order()
     {
         var active = 0;

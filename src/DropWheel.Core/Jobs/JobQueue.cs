@@ -83,6 +83,11 @@ public sealed class JobQueue : IAsyncDisposable
         }
     }
 
+    /// <summary>Runs a failed or canceled job again, as a new job with the same request and label.</summary>
+    /// <returns>The new job, or null if the job is in any other state.</returns>
+    public Job? Retry(Guid id)
+        => Jobs.FirstOrDefault(j => j.Id == id) is { State: JobState.Failed or JobState.Canceled } job ? Enqueue(job.Request, job.Label) : null;
+
     /// <summary>Recycles a finished job's outputs. Returns false if the job is not in a state that can be undone.</summary>
     public async Task<bool> UndoAsync(Guid id, CancellationToken cancellationToken = default)
     {
