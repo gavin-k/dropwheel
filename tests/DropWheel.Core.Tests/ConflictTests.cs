@@ -17,7 +17,8 @@ public sealed class ConflictTests : IDisposable
 
     private string File(string relative, string text = "x")
     {
-        var path = Path.Combine(_dir, relative);
+        // Full, so "one/a.txt" comes back with the separators the code under test writes on Windows.
+        var path = Path.GetFullPath(Path.Combine(_dir, relative));
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         System.IO.File.WriteAllText(path, text);
         return path;
