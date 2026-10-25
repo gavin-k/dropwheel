@@ -76,7 +76,7 @@ public sealed class CombinePdfTool(TimeProvider? time = null) : IWheelOperation
                 var (runA, runB) = (Run(a, ref i), Run(b, ref j));
                 var order = char.IsAsciiDigit(runA[0]) && char.IsAsciiDigit(runB[0])
                     ? CompareNumbers(runA, runB)
-                    : string.Compare(runA, runB, CultureInfo.CurrentCulture, CompareOptions.IgnoreCase);
+                    : CultureInfo.CurrentCulture.CompareInfo.Compare(runA, runB, CompareOptions.IgnoreCase);
                 if (order != 0)
                 {
                     return order;

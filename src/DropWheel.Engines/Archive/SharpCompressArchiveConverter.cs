@@ -106,7 +106,7 @@ public sealed class SharpCompressArchiveConverter : IConverter
         IWriter? writer = null;
         try
         {
-            ReadEntries(source, progress, cancellationToken, large => writer = OpenWriter(output, to, large), (entry, path, open) => Copy(entry, path, open, writer!));
+            ReadEntries(source, progress, large => writer = OpenWriter(output, to, large), (entry, path, open) => Copy(entry, path, open, writer!), cancellationToken);
         }
         finally
         {
@@ -123,13 +123,13 @@ public sealed class SharpCompressArchiveConverter : IConverter
     internal void ReadEntries(
         string source,
         IProgress<double> progress,
-        CancellationToken cancellationToken,
         Action<bool> opened,
-        Action<IEntry, string, Func<Stream>> visit)
+        Action<IEntry, string, Func<Stream>> visit,
+        CancellationToken cancellationToken)
     {
         try
         {
-            Read(source, progress, cancellationToken, opened, visit);
+            Read(source, progress, opened, visit, cancellationToken);
         }
         catch (CryptographicException)
         {
@@ -141,7 +141,7 @@ public sealed class SharpCompressArchiveConverter : IConverter
         }
     }
 
-    private void Read(string source, IProgress<double> progress, CancellationToken cancellationToken, Action<bool> opened, Action<IEntry, string, Func<Stream>> visit)
+    private void Read(string source, IProgress<double> progress, Action<bool> opened, Action<IEntry, string, Func<Stream>> visit, CancellationToken cancellationToken)
     {
         void Visit(IEntry entry, Func<Stream> open, string? unnamed = null)
         {

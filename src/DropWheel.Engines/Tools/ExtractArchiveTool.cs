@@ -62,13 +62,13 @@ public sealed class ExtractArchiveTool(SharpCompressArchiveConverter archives, T
                 var plan = request with { TargetFormatId = FormatRegistry.FromPath(source)!.Id, Naming = NamingTemplate.Default };
                 return OutputFiles.WriteFolderAsync(plan, source, i, now, folder => Task.Run(() =>
                 {
-                    archives.ReadEntries(source, within, cancellationToken, _ => { }, (entry, path, open) =>
+                    archives.ReadEntries(source, within, _ => { }, (entry, path, open) =>
                     {
                         if (Unpack(folder, entry, path, open))
                         {
                             files++;
                         }
-                    });
+                    }, cancellationToken);
                     Flatten(folder, FormatRegistry.StemOf(source));
                 }, cancellationToken));
             }, cancellationToken).ConfigureAwait(false);
