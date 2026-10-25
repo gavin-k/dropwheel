@@ -24,8 +24,9 @@ namespace DropWheel.Acceptance;
 /// on the MP3 sector as an MP3 made by the bundled ffmpeg, a JPG dropped on the PDF sector as a PDF whose
 /// page, dropped on the PNG sector, comes back as a PNG, and a PDF with text dropped on the DOCX sector as
 /// a Word document with that text. Then the task window's 重试, 打开位置 and 取消 buttons are pressed, and
-/// last, settings changed in the settings window take effect on the next drag. The app is started by path and observed only through its log file and UI Automation, so this
-/// project never references DropWheel.App.
+/// settings changed in the settings window take effect on the next drag. Last, a second launch with no
+/// settings file walks through the first-run guide. The app is started by path and observed only through
+/// its log file and UI Automation, so this project never references DropWheel.App.
 /// </summary>
 internal static partial class AppScenario
 {
@@ -108,6 +109,7 @@ internal static partial class AppScenario
             Quit(checks, log, app, exe);
         }
 
+        Attempt(checks, "first run", () => FirstRun(checks, exe, explorer));
         return checks.Report($"DropWheel.App M0 ({(explorer ? "Explorer" : "WinForms")} source)");
     }
 
@@ -640,8 +642,8 @@ internal static partial class AppScenario
             app.Kill();
         }
 
-        log.Poll();
-        checks.Check("app logged no errors", log.Find(" ERROR ") is null, log.Find(" ERROR ") ?? "none");
+        var error = log.FindSinceStart(" ERROR ");
+        checks.Check("app logged no errors", error is null, error ?? "none");
     }
 
     /// <summary>Copies a screen rectangle (physical pixels), layered windows included.</summary>

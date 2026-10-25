@@ -54,6 +54,13 @@ internal sealed class AppLog
         return null;
     }
 
+    /// <summary>First line since this object was created that contains every fragment, whatever <see cref="Mark"/> said.</summary>
+    public string? FindSinceStart(params string[] fragments)
+    {
+        Poll();
+        return _lines.FirstOrDefault(line => fragments.All(f => line.Contains(f, StringComparison.Ordinal)));
+    }
+
     public void Poll()
     {
         if (!Directory.Exists(_directory))
