@@ -1,6 +1,7 @@
 // PDFtoImage marks its API with the platforms it ships PDFium for; these tests run on all of them.
 #pragma warning disable CA1416
 
+using System.Globalization;
 using System.Text;
 using DropWheel.Core.Conversion;
 using DropWheel.Core.Jobs;
@@ -20,26 +21,39 @@ public sealed class PdfConverterTests : IDisposable
 
     public void Dispose() => Directory.Delete(_dir, recursive: true);
 
-    /// <summary>One 200 × 100 pt page per text; an empty text gives a page with only a box on it.</summary>
+    /// <summary>
+    /// One 200 × 100 pt page per text, with a box below it; an empty text gives a page with only the box. Written by
+    /// hand in Helvetica, one of the standard fonts every PDF reader has: Skia on the Linux runner finds no font at all.
+    /// </summary>
     private string Pdf(string name, params string[] pages)
     {
-        var path = Path.Combine(_dir, name);
-        using (var output = File.Create(path))
-        using (var document = SKDocument.CreatePdf(output))
-        using (var font = new SKFont(SKTypeface.Default, 18))
-        using (var paint = new SKPaint { Color = SKColors.Black })
+        var objects = new List<string> { "<< /Type /Catalog /Pages 2 0 R >>", "" };
+        var kids = new List<string>();
+        foreach (var text in pages)
         {
-            foreach (var text in pages)
-            {
-                var canvas = document.BeginPage(200, 100);
-                canvas.DrawRect(10, 60, 50, 30, paint);
-                canvas.DrawText(text, 10, 40, SKTextAlign.Left, font, paint);
-                document.EndPage();
-            }
-
-            document.Close();
+            var content = $"0 g 10 10 50 30 re f BT /F1 18 Tf 10 60 Td ({text}) Tj ET";
+            objects.Add($"<< /Length {content.Length} >>\nstream\n{content}\nendstream");
+            objects.Add($"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Contents {objects.Count} 0 R "
+                + "/Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> >>");
+            kids.Add($"{objects.Count} 0 R");
         }
 
+        objects[1] = $"<< /Type /Pages /Kids [{string.Join(' ', kids)}] /Count {kids.Count} >>";
+        var pdf = new StringBuilder("%PDF-1.4\n");
+        var offsets = new List<int>();
+        foreach (var (body, number) in objects.Select((o, i) => (o, i + 1)))
+        {
+            offsets.Add(pdf.Length);
+            pdf.Append(CultureInfo.InvariantCulture, $"{number} 0 obj\n{body}\nendobj\n");
+        }
+
+        var xref = pdf.Length;
+        pdf.Append(CultureInfo.InvariantCulture, $"xref\n0 {objects.Count + 1}\n0000000000 65535 f \n");
+        offsets.ForEach(o => pdf.Append(CultureInfo.InvariantCulture, $"{o:D10} 00000 n \n"));
+        pdf.Append(CultureInfo.InvariantCulture, $"trailer\n<< /Size {objects.Count + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n");
+
+        var path = Path.Combine(_dir, name);
+        File.WriteAllText(path, pdf.ToString(), Encoding.ASCII);
         return path;
     }
 
