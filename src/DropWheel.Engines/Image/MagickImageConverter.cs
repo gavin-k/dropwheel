@@ -10,7 +10,7 @@ namespace DropWheel.Engines.Image;
 /// </summary>
 public sealed class MagickImageConverter(TimeProvider? time = null) : IConverter
 {
-    private static readonly Dictionary<string, MagickFormat> Formats = new(StringComparer.Ordinal)
+    internal static readonly Dictionary<string, MagickFormat> Formats = new(StringComparer.Ordinal)
     {
         ["jpg"] = MagickFormat.Jpeg,
         ["png"] = MagickFormat.Png,
