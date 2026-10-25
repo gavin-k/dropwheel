@@ -115,6 +115,7 @@ internal static partial class AppScenario
                 Attempt(checks, "tools", () => Tools(checks, log, exe, explorer));
                 Attempt(checks, "edge dock", () => EdgeDock(checks, log, dir, explorer));
                 Attempt(checks, "settings", () => ChangeSettings(checks, log, profile, folder, explorer));
+                Attempt(checks, "same name", () => SameName(checks, log, app.Id, folder, explorer));
                 Attempt(checks, "frame check", () => FrameChecked(checks, log));
             }
         }

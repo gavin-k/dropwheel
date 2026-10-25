@@ -16,6 +16,12 @@ public sealed record ConversionRequest(
     public string Naming { get; init; } = NamingTemplate.Default;
 
     public ConflictPolicy Conflict { get; init; } = ConflictPolicy.AutoNumber;
+
+    /// <summary>
+    /// Settles taken names under the replace and Ask policies. The job queue sets it for each run; a request
+    /// derived with <c>with</c> keeps it, so derive rather than build a new one.
+    /// </summary>
+    public JobConflicts? Conflicts { get; init; }
 }
 
 /// <param name="OutputPaths">What the job produced. The task window opens their folder, and undo recycles them unless <see cref="Undo"/> says otherwise.</param>

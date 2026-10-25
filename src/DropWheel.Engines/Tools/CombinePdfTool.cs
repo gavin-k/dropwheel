@@ -50,7 +50,7 @@ public sealed class CombinePdfTool(TimeProvider? time = null) : IWheelOperation
     public async Task<ConversionResult> RunAsync(ConversionRequest request, IProgress<double> progress, CancellationToken cancellationToken)
     {
         var sources = request.SourcePaths.Order(FileNameOrder.Instance).ToList();
-        var plan = new ConversionRequest([sources[0]], "pdf", request.OutputDirectory) { Naming = NamingTemplate.Default + "-合并", Conflict = request.Conflict };
+        var plan = request with { SourcePaths = [sources[0]], TargetFormatId = "pdf", Naming = NamingTemplate.Default + "-合并" };
         try
         {
             var written = await Task.Run(() => ImagePdf.WriteAsync(plan, sources, 0, _time.GetLocalNow(), progress, cancellationToken), cancellationToken).ConfigureAwait(false);

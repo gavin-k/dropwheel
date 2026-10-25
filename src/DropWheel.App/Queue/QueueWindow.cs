@@ -126,6 +126,12 @@ internal sealed class QueueWindow
                 FileLog.Info($"queue: {job.Label} canceled{took}");
                 break;
         }
+
+        // On a line of its own, so the done line keeps the shape that tools reading the log expect.
+        if (job.Replaced > 0)
+        {
+            FileLog.Info($"queue: {job.Label} replaced {job.Replaced}, the old ones are in the Recycle Bin");
+        }
     }
 
     private static ScrollViewer Rows(ScrollViewer viewer)
@@ -274,7 +280,7 @@ internal sealed class QueueWindow
                 JobState.Undone => _job.Undo is UndoPlan.MoveBack ? "已撤销，已移回原处" : "已撤销，输出已移到回收站",
                 JobState.Skipped => _job.Detail ?? "已跳过",
                 _ => state.ToString(),
-            };
+            } + (_failure is null && _job.Replaced > 0 ? $"；替换掉的 {_job.Replaced} 个旧项目在回收站" : "");
 
             // Engines that cannot tell how far they are report nothing until they finish.
             _progress.Visibility = Shown(state == JobState.Running);

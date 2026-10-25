@@ -36,6 +36,9 @@ public sealed class Job
     public string? Error { get; internal set; }
     public IReadOnlyList<string> Outputs { get; internal set; } = [];
     public UndoPlan Undo { get; internal set; } = new UndoPlan.None();
+
+    /// <summary>Items of the same name the job recycled to put its outputs in their place. Undo does not bring them back.</summary>
+    public int Replaced { get; internal set; }
     public DateTimeOffset CreatedAt { get; } = DateTimeOffset.Now;
     public DateTimeOffset? FinishedAt { get; internal set; }
 }

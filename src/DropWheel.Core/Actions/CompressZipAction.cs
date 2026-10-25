@@ -40,7 +40,7 @@ public sealed class CompressZipAction(TimeProvider? time = null) : IWheelOperati
 
         // The name goes in as a literal template. A folder name that happens to contain a token such as
         // {date} would be expanded; that is rare enough to accept.
-        var plan = new ConversionRequest([first], "zip", request.OutputDirectory) { Naming = NameOf(first), Conflict = request.Conflict };
+        var plan = request with { SourcePaths = [first], TargetFormatId = "zip", Naming = NameOf(first) };
         var written = await OutputFiles.WriteAsync(plan, first, 0, _time.GetLocalNow(),
             temp => Task.Run(() => Pack(request.SourcePaths, temp, progress, cancellationToken), cancellationToken)).ConfigureAwait(false);
         return ConversionResult.Written(written is null ? [] : [written]);

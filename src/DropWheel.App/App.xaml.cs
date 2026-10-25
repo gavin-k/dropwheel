@@ -108,8 +108,9 @@ public partial class App : Application
                 ffmpeg.Warmup();
             });
             var files = new ShellFileOperations();
-            _queue = new JobQueue(graph, new UndoLedger(files));
-            IReadOnlyList<IWheelOperation> operations = [.. FileActions.Create(files, new Desktop(ui)), .. EngineTools.Create(archives, ffmpeg)];
+            var desktop = new Desktop(ui);
+            _queue = new JobQueue(graph, new UndoLedger(files), prompt: desktop);
+            IReadOnlyList<IWheelOperation> operations = [.. FileActions.Create(files, desktop), .. EngineTools.Create(archives, ffmpeg)];
             var dataDir = ArgValue(commandLine, "--data-dir") ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DropWheel");
             var settings = new SettingsStore(Path.Combine(dataDir, "settings.json"));
             var recent = new RecentItems(path: Path.Combine(dataDir, "recent.json"));

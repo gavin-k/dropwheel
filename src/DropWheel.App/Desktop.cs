@@ -1,14 +1,18 @@
 using System.Runtime.InteropServices;
 using DropWheel.App.Diagnostics;
 using DropWheel.Core.Actions;
+using DropWheel.Core.Jobs;
 using DropWheel.Shell;
 using Microsoft.UI.Dispatching;
 using Windows.ApplicationModel.DataTransfer;
 
 namespace DropWheel.App;
 
-/// <summary>The clipboard on the UI thread; Explorer's rename box and the folder picker on STA threads of their own.</summary>
-internal sealed class Desktop(DispatcherQueue ui) : IDesktop
+/// <summary>
+/// The clipboard on the UI thread; Explorer's rename box, the folder picker and the same-name question on
+/// STA threads of their own.
+/// </summary>
+internal sealed class Desktop(DispatcherQueue ui) : IDesktop, IConflictPrompt
 {
     /// <summary>CLIPBRD_E_CANT_OPEN: another program has the clipboard open.</summary>
     private const int ClipboardBusy = unchecked((int)0x800401D0);
@@ -61,6 +65,14 @@ internal sealed class Desktop(DispatcherQueue ui) : IDesktop
         var folder = await FolderDialog.PickAsync(prompt, cancellationToken).ConfigureAwait(false);
         FileLog.Info(folder is null ? "actions: no folder picked" : $"actions: picked {folder}");
         return folder;
+    }
+
+    public async Task<ConflictAnswer> AskAsync(string target, bool more, CancellationToken cancellationToken)
+    {
+        FileLog.Info($"conflict: asking about {target}{(more ? ", more to come" : "")}");
+        var answer = await ConflictDialog.AskAsync(target, more, cancellationToken).ConfigureAwait(false);
+        FileLog.Info($"conflict: answered {answer.Policy}{(answer.ForTheRest ? " for the rest" : "")}");
+        return answer;
     }
 
     private Task OnUiAsync(Action action)

@@ -7,8 +7,9 @@ public static class OutputPlanner
 {
     /// <summary>
     /// Path for the output of <paramref name="sourcePath"/>, or <c>null</c> when the conflict policy says
-    /// not to write it (Skip, and Ask until there is a UI for it). Engines write to a temporary file and
-    /// move it here without overwriting, so a file that appears in between is never clobbered.
+    /// not to write it. The replace policy gives the taken name itself and Ask gives null: engines go through
+    /// <see cref="OutputFiles"/>, which settles both with the user's answer before planning. Engines write to
+    /// a temporary file and move it here without overwriting, so a file that appears in between is never clobbered.
     /// </summary>
     /// <param name="folder">The output is a folder of files (the pages of a PDF), named without an extension.</param>
     public static string? PathFor(

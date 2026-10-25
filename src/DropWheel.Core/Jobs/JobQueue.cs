@@ -14,6 +14,7 @@ public sealed class JobQueue : IAsyncDisposable
     private readonly ConversionGraph _graph;
     private readonly UndoLedger _undo;
     private readonly TimeProvider _time;
+    private readonly IConflictPrompt? _prompt;
     private readonly Channel<Job> _channel = Channel.CreateUnbounded<Job>(new UnboundedChannelOptions { SingleReader = true });
     private readonly ConcurrentDictionary<Guid, CancellationTokenSource> _cancels = new();
     private readonly List<Job> _jobs = [];
@@ -22,11 +23,13 @@ public sealed class JobQueue : IAsyncDisposable
     private TaskCompletionSource _idle = new();
     private int _outstanding;
 
-    public JobQueue(ConversionGraph graph, UndoLedger undo, TimeProvider? time = null)
+    /// <param name="prompt">Asks about taken names under <see cref="ConflictPolicy.Ask"/>; without one they are numbered.</param>
+    public JobQueue(ConversionGraph graph, UndoLedger undo, TimeProvider? time = null, IConflictPrompt? prompt = null)
     {
         _graph = graph;
         _undo = undo;
         _time = time ?? TimeProvider.System;
+        _prompt = prompt;
         _idle.SetResult();
         _worker = Task.Run(RunWorkerAsync);
     }
@@ -154,6 +157,7 @@ public sealed class JobQueue : IAsyncDisposable
     private async Task RunAsync(Job job)
     {
         var cts = _cancels[job.Id];
+        var conflicts = new JobConflicts(_undo.Files, _prompt, job.Request.SourcePaths, cts.Token);
         try
         {
             cts.Token.ThrowIfCancellationRequested();
@@ -175,7 +179,9 @@ public sealed class JobQueue : IAsyncDisposable
                 job.Progress = p;
                 Raise(job);
             });
-            var result = await runner.RunAsync(job.Request, progress, cts.Token).ConfigureAwait(false);
+            // The request the job keeps has no Conflicts, so a retry starts with fresh answers.
+            var result = await runner.RunAsync(job.Request with { Conflicts = conflicts }, progress, cts.Token).ConfigureAwait(false);
+            job.Replaced = conflicts.Replaced;
 
             if (!result.Succeeded)
             {
@@ -196,10 +202,12 @@ public sealed class JobQueue : IAsyncDisposable
         }
         catch (OperationCanceledException) when (cts.IsCancellationRequested)
         {
+            job.Replaced = conflicts.Replaced;
             Finish(job, JobState.Canceled);
         }
         catch (Exception ex)
         {
+            job.Replaced = conflicts.Replaced;
             Finish(job, JobState.Failed, error: ex.Message);
         }
         finally

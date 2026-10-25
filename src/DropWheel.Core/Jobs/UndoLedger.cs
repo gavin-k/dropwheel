@@ -7,6 +7,9 @@ namespace DropWheel.Core.Jobs;
 public sealed class UndoLedger(IFileOperations files)
 {
     private readonly List<Job> _entries = [];
+
+    /// <summary>What it reverses through; jobs recycle the items they replace through it too.</summary>
+    public IFileOperations Files => files;
     private readonly Lock _gate = new();
 
     /// <summary>The newest job that can still be undone.</summary>

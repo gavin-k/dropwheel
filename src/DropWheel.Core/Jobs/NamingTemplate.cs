@@ -51,7 +51,7 @@ public sealed partial class NamingTemplate(string template)
                 .First(p => !exists(p)),
             ConflictPolicy.OverwriteToRecycleBin => candidate,
             ConflictPolicy.Skip => null,
-            ConflictPolicy.Ask => null, // UI handles it
+            ConflictPolicy.Ask => null, // JobConflicts asks before planning
             _ => candidate,
         };
     }

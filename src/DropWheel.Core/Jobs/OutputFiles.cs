@@ -58,8 +58,10 @@ public static class OutputFiles
 
     /// <summary>
     /// Plans where the output of <paramref name="source"/> goes, has <paramref name="write"/> render it
-    /// into a temporary path, and moves it into place. A file that appeared at the target in the meantime
-    /// is never overwritten: AutoNumber picks the next free name, any other policy fails.
+    /// into a temporary path, and moves it into place. Under the replace and Ask policies a taken name is
+    /// first settled through <see cref="ConversionRequest.Conflicts"/>; a replaced item is recycled only
+    /// once the new output is written. A file that appeared at the target in the meantime is never
+    /// overwritten: AutoNumber picks the next free name, any other policy fails.
     /// </summary>
     /// <param name="index">Position of the source in the request; numbers the outputs of a multi-file request.</param>
     /// <param name="width">For the {w} placeholder, when the engine knows it before writing.</param>
@@ -94,7 +96,18 @@ public static class OutputFiles
         int? height)
     {
         var sequence = request.SourcePaths.Count > 1 ? index + 1 : (int?)null;
-        string? Plan() => OutputPlanner.PathFor(request, source, now, Exists, sequence, width, height, folder);
+        var policy = request.Conflict;
+        string? Plan() => OutputPlanner.PathFor(request with { Conflict = policy }, source, now, Exists, sequence, width, height, folder);
+
+        if (policy is ConflictPolicy.OverwriteToRecycleBin or ConflictPolicy.Ask)
+        {
+            // Planned for replacing, the name is the plain one whether or not it is taken.
+            var plain = OutputPlanner.PathFor(request with { Conflict = ConflictPolicy.OverwriteToRecycleBin }, source, now, Exists, sequence, width, height, folder)!;
+            var conflicts = request.Conflicts ?? throw new InvalidOperationException($"{policy} needs the request's Conflicts.");
+            policy = Exists(plain)
+                ? await conflicts.SettleAsync(plain, policy, more: index < request.SourcePaths.Count - 1).ConfigureAwait(false)
+                : ConflictPolicy.AutoNumber;
+        }
 
         var target = Plan();
         if (target is null)
@@ -113,6 +126,11 @@ public static class OutputFiles
             }
 
             await write(temp).ConfigureAwait(false);
+            if (policy == ConflictPolicy.OverwriteToRecycleBin && Exists(target))
+            {
+                await request.Conflicts!.ReplaceAsync(target).ConfigureAwait(false);
+            }
+
             for (var attempt = 0; ; attempt++)
             {
                 try
@@ -126,9 +144,10 @@ public static class OutputFiles
                         File.Move(temp, target, overwrite: false);
                     }
 
+                    request.Conflicts?.Wrote(target);
                     return target;
                 }
-                catch (IOException) when (Exists(target) && request.Conflict == ConflictPolicy.AutoNumber && attempt < 5)
+                catch (IOException) when (Exists(target) && policy == ConflictPolicy.AutoNumber && attempt < 5)
                 {
                     target = Plan() ?? throw new IOException($"{Path.GetFileName(target)} 已存在");
                 }

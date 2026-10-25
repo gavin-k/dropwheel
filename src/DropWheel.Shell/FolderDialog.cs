@@ -105,8 +105,8 @@ public static class FolderDialog
         }
     }
 
-    /// <summary>Closes the dialog the way its 取消 button does.</summary>
-    private static void Close(uint thread) => PInvoke.EnumThreadWindows(thread, (window, _) =>
+    /// <summary>Closes the dialogs <paramref name="thread"/> shows the way their 取消 button does.</summary>
+    internal static void Close(uint thread) => PInvoke.EnumThreadWindows(thread, (window, _) =>
     {
         if (ClassName(window) == "#32770")
         {

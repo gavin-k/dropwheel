@@ -28,6 +28,7 @@ BitBlt
 IUIAutomationTogglePattern
 IUIAutomationSelectionItemPattern
 IUIAutomationValuePattern
+IUIAutomationExpandCollapsePattern
 GetClassName
 SendMessage
 WM_GETTEXT

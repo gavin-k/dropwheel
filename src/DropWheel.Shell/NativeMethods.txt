@@ -86,6 +86,12 @@ EnumThreadWindows
 GetClassName
 WM_CLOSE
 
+// Same-name question for 每次询问; needs Common Controls 6 from the app manifest
+TaskDialogIndirect
+TASKDIALOGCONFIG
+TASKDIALOG_BUTTON
+TASKDIALOG_FLAGS
+
 // Settings: warn about Ctrl+Alt when a layout has AltGr
 GetKeyboardLayoutList
 VkKeyScanEx

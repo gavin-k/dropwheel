@@ -7,10 +7,10 @@ namespace DropWheel.Core.Actions;
 
 /// <summary>
 /// 移动到 / 复制到: asks for a folder, then moves or copies the items into it under their own names in
-/// one Shell operation. A name already there is numbered or skipped by the conflict policy; the policies
-/// the settings window does not offer are treated as numbering, so nothing is ever replaced. Undo moves
-/// the items back, or recycles the copies. Undo goes by the planned names: should the Shell still number
-/// one because a file of that name appeared in between, undo misses that item.
+/// one Shell operation. A name already there is numbered, skipped or replaced by the conflict policy,
+/// asking under Ask; a replaced item goes to the Recycle Bin before the transfer and undo does not bring it
+/// back. Undo moves the items back, or recycles the copies. Undo goes by the planned names: should the
+/// Shell still number one because a file of that name appeared in between, undo misses that item.
 /// </summary>
 public sealed class TransferAction(bool copy, IFileOperations files, IDesktop desktop) : IWheelOperation
 {
@@ -47,11 +47,16 @@ public sealed class TransferAction(bool copy, IFileOperations files, IDesktop de
             return new ConversionResult(false, [], $"不能把 {Path.GetFileName(Path.TrimEndingDirectorySeparator(inside))} {Verb}到它自己里面");
         }
 
-        var (plan, skipped) = Plan(items, folder, request.Conflict);
+        var (plan, replace, skipped) = await PlanAsync(items, folder, request).ConfigureAwait(false);
         var where = Path.GetFileName(Path.TrimEndingDirectorySeparator(folder)) is { Length: > 0 } name ? name : folder;
         if (plan.Count == 0)
         {
             return new ConversionResult(true, []) { Skipped = true, Detail = copy ? $"{where} 里已有同名项，按重名策略跳过" : $"已经在 {where} 里，或那里已有同名项" };
+        }
+
+        foreach (var taken in replace)
+        {
+            await request.Conflicts!.ReplaceAsync(taken).ConfigureAwait(false);
         }
 
         await (copy ? files.CopyAsync(plan, cancellationToken) : files.MoveAsync(plan, cancellationToken)).ConfigureAwait(false);
@@ -64,18 +69,19 @@ public sealed class TransferAction(bool copy, IFileOperations files, IDesktop de
     }
 
     /// <summary>
-    /// Where each item goes. A move within its own folder is skipped, as is a name already taken when the
-    /// policy says skip; otherwise a taken name gets the next free number.
+    /// Where each item goes, and the items already there to recycle first. A move within its own folder is
+    /// skipped. A name already taken is skipped, replaced or numbered as the policy says, asking under Ask;
+    /// a name an earlier item of this batch takes is skipped under Skip and numbered otherwise.
     /// </summary>
-    private (List<FileMove> Plan, int Skipped) Plan(IReadOnlyList<string> items, string folder, ConflictPolicy conflict)
+    private async Task<(List<FileMove> Plan, List<string> Replace, int Skipped)> PlanAsync(IReadOnlyList<string> items, string folder, ConversionRequest request)
     {
         var plan = new List<FileMove>();
+        var replace = new List<string>();
         var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var policy = conflict == ConflictPolicy.Skip ? ConflictPolicy.Skip : ConflictPolicy.AutoNumber;
         var skipped = 0;
-        foreach (var item in items)
+        for (var i = 0; i < items.Count; i++)
         {
-            var path = Path.TrimEndingDirectorySeparator(Path.GetFullPath(item));
+            var path = Path.TrimEndingDirectorySeparator(Path.GetFullPath(items[i]));
             if (!copy && SamePath(Path.GetDirectoryName(path), folder))
             {
                 skipped++;
@@ -84,10 +90,24 @@ public sealed class TransferAction(bool copy, IFileOperations files, IDesktop de
 
             var isFolder = Directory.Exists(path);
             var name = Path.GetFileName(path);
-            var target = NamingTemplate.ResolveConflict(folder,
+            var plain = Path.Combine(folder, name);
+            var policy = request.Conflict switch
+            {
+                ConflictPolicy.Skip => ConflictPolicy.Skip,
+                ConflictPolicy.OverwriteToRecycleBin or ConflictPolicy.Ask when !taken.Contains(plain) && Exists(plain) =>
+                    await (request.Conflicts ?? throw new InvalidOperationException($"{request.Conflict} needs the request's Conflicts."))
+                        .SettleAsync(plain, request.Conflict, more: i < items.Count - 1).ConfigureAwait(false),
+                _ => ConflictPolicy.AutoNumber,
+            };
+            if (policy == ConflictPolicy.OverwriteToRecycleBin)
+            {
+                replace.Add(plain);
+            }
+
+            var target = policy == ConflictPolicy.OverwriteToRecycleBin ? plain : NamingTemplate.ResolveConflict(folder,
                 isFolder ? name : Path.GetFileNameWithoutExtension(name),
                 isFolder ? "" : Path.GetExtension(name).TrimStart('.'),
-                policy, p => taken.Contains(p) || File.Exists(p) || Directory.Exists(p));
+                policy, p => taken.Contains(p) || Exists(p));
             if (target is null)
             {
                 skipped++;
@@ -98,8 +118,10 @@ public sealed class TransferAction(bool copy, IFileOperations files, IDesktop de
             plan.Add(new FileMove(path, target));
         }
 
-        return (plan, skipped);
+        return (plan, replace, skipped);
     }
+
+    private static bool Exists(string path) => File.Exists(path) || Directory.Exists(path);
 
     private static bool IsSameOrInside(string folder, string item)
     {

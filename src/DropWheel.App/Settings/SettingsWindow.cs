@@ -71,7 +71,7 @@ internal sealed class SettingsWindow
     private readonly TextBlock _folder = new() { TextWrapping = TextWrapping.Wrap, Opacity = 0.75, VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBox _naming = new() { Header = "文件名", PlaceholderText = NamingTemplate.Default };
     private readonly TextBlock _preview = new() { TextWrapping = TextWrapping.Wrap, Opacity = 0.75 };
-    private readonly ComboBox _conflict = new() { Header = "同名文件已经存在时", Items = { "自动编号，例如 photo (1).png", "跳过，不转换这个文件" } };
+    private readonly ComboBox _conflict = new() { Header = "同名文件已经存在时", Items = { "自动编号，例如 photo (1).png", "跳过，不转换这个文件", "替换，旧的移到回收站", "每次询问" } };
     private readonly InfoBar _saveProblem = new() { Severity = InfoBarSeverity.Error, Title = "设置没有保存" };
     private readonly ToggleSwitch _startup = new() { Header = "登录 Windows 时启动", OnContent = "开", OffContent = "关" };
     private readonly TextBlock _startupNote = new() { TextWrapping = TextWrapping.Wrap, Opacity = 0.75 };
@@ -178,6 +178,7 @@ internal sealed class SettingsWindow
         AutomationProperties.SetAutomationId(_longPress, "touch-long-press");
         AutomationProperties.SetAutomationId(_edgeDock, "edge-dock");
         AutomationProperties.SetAutomationId(_solidWheel, "solid-wheel");
+        AutomationProperties.SetAutomationId(_conflict, "conflict");
         _namingPause = ui.CreateTimer();
         _namingPause.Interval = TimeSpan.FromMilliseconds(600);
         _namingPause.IsRepeating = false;
@@ -215,7 +216,14 @@ internal sealed class SettingsWindow
                 Opacity = 0.75,
             },
             _preview,
-            _conflict));
+            _conflict,
+            new TextBlock
+            {
+                Text = "替换时旧的文件或文件夹移到回收站，撤销任务不会把它移回来。拖进来的文件本身和这次刚生成的文件不会被替换，照样编号。",
+                TextWrapping = TextWrapping.Wrap,
+                FontSize = 12,
+                Opacity = 0.75,
+            }));
 
         page.Children.Add(Section("隐私与离线", "读取、转换和写入都在这台电脑上完成，文件不会上传。DropWheel 没有账号，不收集使用数据，也不自己联网检查更新。",
             _network, _logNote, logButtons));
@@ -327,7 +335,9 @@ internal sealed class SettingsWindow
         {
             ConflictPolicy.AutoNumber => 0,
             ConflictPolicy.Skip => 1,
-            _ => -1, // a policy only a hand-edited file can hold; shown as unset
+            ConflictPolicy.OverwriteToRecycleBin => 2,
+            ConflictPolicy.Ask => 3,
+            _ => -1, // a number only a hand-edited file can hold; shown as unset
         };
         ShowEffects();
         ShowNetwork();
@@ -552,6 +562,8 @@ internal sealed class SettingsWindow
         {
             0 => ConflictPolicy.AutoNumber,
             1 => ConflictPolicy.Skip,
+            2 => ConflictPolicy.OverwriteToRecycleBin,
+            3 => ConflictPolicy.Ask,
             _ => (ConflictPolicy?)null,
         };
         if (policy is { } p && p != _settings.Current.Output.Conflict)

@@ -212,10 +212,11 @@ internal static partial class AppScenario
     }
 
     /// <summary>
-    /// The app's folder picker, a visible top-level dialog window of its process, waited for up to 5 s.
-    /// With <paramref name="checks"/>, checks that it has the foreground and the expected title.
+    /// The app's folder picker, or <paramref name="what"/> else, a visible top-level dialog window of its
+    /// process, waited for up to 5 s. With <paramref name="checks"/>, checks that it has the foreground and the
+    /// expected title.
     /// </summary>
-    private static HWND Picker(Checks? checks, int app, string title)
+    private static HWND Picker(Checks? checks, int app, string title, string what = "the folder picker")
     {
         var dialog = default(HWND);
         var watch = Stopwatch.StartNew();
@@ -234,8 +235,8 @@ internal static partial class AppScenario
         }, 5000);
         var appeared = watch.ElapsedMilliseconds;
         var front = !dialog.IsNull && Checks.Wait(() => PInvoke.GetForegroundWindow() == dialog, 2000);
-        checks?.Check($"the folder picker comes up in front, titled '{title}'", front && Title(dialog) == title,
-            dialog.IsNull ? "no folder picker from the app within 5 s" : $"'{Title(dialog)}' {appeared} ms after the drop; foreground {ForegroundOwner()}");
+        checks?.Check($"{what} comes up in front, titled '{title}'", front && Title(dialog) == title,
+            dialog.IsNull ? "no dialog from the app within 5 s" : $"'{Title(dialog)}' {appeared} ms after the drop; foreground {ForegroundOwner()}");
         return dialog;
     }
 
