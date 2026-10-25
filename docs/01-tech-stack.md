@@ -95,7 +95,7 @@ Windows **没有**「全局拖拽开始」事件。Microsoft Q&A 上的讨论给
 | 文本与版式提取 | **PdfPig** 0.1.16 | Apache-2.0 |
 | 生成 PDF（图片→PDF） | SkiaSharp 的 PDF 后端（`SKDocument`），JPG 不重新压缩、原样嵌入 | MIT |
 | 页操作（合并、拆分）、PDF/A | 待定。PDFsharp 6.5 起改为 AGPL，不再考虑 | — |
-| PDF → DOCX | 两条路：① PdfPig 提取 + Open XML SDK 重建（质量「中」）；② **LibreOffice headless** sidecar（质量更稳，但 ~300 MB，作可选下载模块） | — |
+| PDF → DOCX | 已选 ①：PdfPig 取词、分块、定阅读顺序，按段落手写 OOXML（字号、粗斜体、颜色、图片，质量「中」）。Open XML SDK 约 8.5 MB，只用来写这几个部件不值得，所以只在测试里用它校验输出。② **LibreOffice headless** sidecar 质量更稳，但 ~300 MB，留作以后的可选下载模块 | — |
 
 「预期质量」规则初版：扫描页占比、是否含表格、是否多栏、字体是否嵌入 → 高 / 中 / 低 + 原因文案。
 

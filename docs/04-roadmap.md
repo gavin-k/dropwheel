@@ -32,8 +32,8 @@
 - [ ] 任务队列窗口（进度 / 取消 / 撤销 / 打开位置 / 重试）
 - [ ] 设置页：键位与冲突检查、输出位置、命名规则、重名策略、文件动作、隐私与离线
 - [ ] 首次启动 20 秒引导
-- [ ] 引擎：Subtitle、Archive、Media（已完成）、Pdf (PDFium + PdfPig，转图、转文字、图片转 PDF 已完成，PDF→DOCX 未做)
-- [ ] 预期质量：PDF→DOCX / TXT、有损→无损图片
+- [x] 引擎：Subtitle、Archive、Media、Pdf (PDFium + PdfPig，转图、转文字、转 DOCX、图片转 PDF)
+- [ ] 预期质量：PDF→DOCX / TXT（已完成）、有损→无损图片
 - [ ] 边缘停靠托盘、触屏长按
 
 进展（每条注明证据）：
@@ -46,6 +46,7 @@
 
 - 2026-10-25 音视频引擎：ffmpeg sidecar，用 BtbN 的 LGPL shared 构建 n8.1.2-50，版本和 SHA-256 钉在 `scripts/sidecars.lock`，`scripts/fetch-sidecars.ps1` / `.sh` 下载校验，App 构建时复制到输出的 `sidecars/ffmpeg/`。视频 MP4、MOV、MKV、WebM、AVI 互转，另读 RMVB；音频 MP3、AAC、M4A、WAV、FLAC、OGG、Opus、AIFF 互转，另读 AMR；视频还能转 GIF 和各音频格式，共 143 条边。先用 ffprobe 读流信息：编码能放进目标容器就只换容器，否则 H.264 走 `h264_mf`，WebM 编成 AV1 + Opus（arm64 构建没有 libvpx），AVI 用 MPEG-4 + MP3。奇数宽高缩成偶数，多声道转 MP3 / Opus 降为双声道，WAV / FLAC / AIFF 保留 24 位。进度读 `-progress pipe:1`；取消时结束整个进程树，不留临时文件。转 GIF、AVI 时轮盘给出「中」和原因，有损转无损、MKV 转出、转 WebM 附提示。找不到 sidecar 时音视频目标灰显并说明。CI 在 Windows 上用同一份 sidecar 跑测试，release 流程打包后检查每个 MSIX 里 ffmpeg.exe 的架构，手动触发的一次运行里两个包都对得上（x64 MSIX 99.2 MB，arm64 76.7 MB，bundle 175.9 MB）。证据：Mac 上 Core 测试 95 个、Engines 测试 88 个通过（音视频 43 个：31 个测参数生成，12 个调用真实 ffmpeg，含中文文件名、24 位、6 声道、奇数尺寸、损坏文件让整批回滚、中途取消不留文件）；VM（ARM64）与 Win10 x64 真机上 `app --explorer` 验收 PASS（各 36 项），新增一项：拖 .wav 时轮盘给出 mp3、m4a、flac、aac、ogg、opus，落到 MP3 扇区后分别 277 ms、256 ms 完成，输出以 ID3 开头；两台机器上用 sidecar 把 5 秒 720p 测试画面编成 H.264（`h264_mf`），分别 716 ms、609 ms；`fetch-sidecars.ps1` 在 Windows PowerShell 5.1 下首次 11 秒，再跑直接跳过。
 - 2026-10-25 PDF 引擎：进程内完成。PDFium 152（PDFtoImage 5.4 封装）渲染页面，PdfPig 0.1.16 取文字，SkiaSharp 4.150.1 的 PDF 后端把图片写成 PDF；没用 PDFsharp，它 6.5 起改成了 AGPL。PDF 转 PNG / JPG：白底，带注释和表单，150 DPI；像素尺寸按页自己算并四舍五入（交给 PDFtoImage 按 DPI 算会截断，240 pt 得 499 px），最长边超过 10000 px 的页单独降低 DPI。一页的 PDF 输出放在它旁边，多页的放进同名文件夹（report/report-01.png 起），文件夹先在临时名下写满再改名，重名时同样自动编号。PDF 转 TXT：逐页取文字，写成带 BOM 的 UTF-8 和 CRLF；没有文字层就报错，提示可能是扫描件。图片转 PDF：JPG、PNG、WebP、AVIF、GIF、BMP、TIFF 都能转，一张图一页，页面大小按图片的 DPI 算，没有 DPI 就按 96；JPG 去掉 EXIF 段后原样嵌入、按 EXIF 方向自己旋转，不重新压缩；多页 TIFF 每页一页，GIF 只取第一帧。有密码的 PDF 直接拒绝并说明。轮盘上图片的推荐里 PDF 排第三，PDF 推荐 PNG、JPG、TXT；转图和图片转 PDF 给「高」加原因，转 TXT 给「中」。release 流程的架构检查加上 pdfium.dll 和 libSkiaSharp.dll。SkiaSharp 原生包自带的 libSkiaSharp.pdb（x64 89 MB）不再复制进输出。x64 发布目录因此多了 25.8 MB（libSkiaSharp 12.3、pdfium 7.2、PdfPig 5.7 MB），zip 压缩后 10.7 MB，MSIX 增量应与此相近（推断，未打包量）。证据：Mac 上 Core 测试 102 个、Engines 测试 108 个通过（PDF 20 个，含多页进文件夹、重名文件夹编号、超大页降 DPI、取整、加密拒绝、损坏 PDF 让整批回滚、JPG 带 EXIF 方向时原样嵌入且方向正确、多页 TIFF）；VM（ARM64）与 Win10 x64 真机上 `app --explorer` 验收 PASS（各 44 项），新增两组：拖 .jpg 时轮盘给出 pdf，落到 PDF 扇区后分别 85 ms、427 ms 完成，输出在源文件旁且以 `%PDF-` 开头；把它复制成另一个名字再拖，轮盘给出 png、jpg、txt，落到 PNG 扇区后分别 105 ms、174 ms 完成，得到 500 × 313 的 PNG。
+- 2026-10-25 PDF 转 DOCX：PdfPig 取词，Docstrum 分块，再按阅读顺序排好，每块写成段落；块内换行处字号变化超过 10% 就另起一段，标题因此不会和正文粘在一起。保留字号、粗体、斜体和颜色（黑色和接近白色的不写），跨行时英文补空格，中日韩文字和行尾连字符不补。短而居中的段落居中。每个 PDF 页从新页开始，纸张大小和方向取第一页。图片插在它下方的第一段之前；JPG 原样放入，其他 PdfPig 能解码的转成 PNG，JPEG 2000、JBIG2、CCITT 丢掉；有文字的页上盖住 80% 以上页面的图当作扫描底图，不放入。没有文字层就报错，提示可能是扫描件。DOCX 手写，没用 Open XML SDK（约 8.5 MB），SDK 只在测试里校验输出。分栏、表格、页眉页脚不还原，预期质量给「中」并写明。轮盘上 PDF 的推荐改成 DOCX、PNG、JPG、TXT。证据：Mac 上 Core 测试 102 个、Engines 测试 115 个通过（PDF 27 个，新增 DOCX 的段落与分页、字号粗体颜色、图片位置且 JPG 字节不变、中文换行不补空格和连字符换行，每个都过 Office 2019 架构校验；加密、损坏、无文字三种失败也覆盖 DOCX）；linux/amd64 容器里 PDF 27 个通过。Mac 上 200 页 Letter、1.0 MB、带 67 张图的 PDF 转 DOCX：首次 2.9 到 3.3 秒，同一进程第二次 1.6 秒，输出 2.4 MB，进程内存峰值约 125 MB；macOS 的 textutil 能读出全部 467 段。还没在 Windows 上验收，也没用 Word 打开过。
 
 ## M2 · Beta 与分发
 

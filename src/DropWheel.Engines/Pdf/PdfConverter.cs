@@ -8,13 +8,13 @@ using UglyToad.PdfPig.Exceptions;
 namespace DropWheel.Engines.Pdf;
 
 /// <summary>
-/// PDF in process: pages to PNG or JPG through PDFium (<see cref="PdfPages"/>), text through PdfPig
-/// (<see cref="PdfText"/>), and images to PDF through Skia's PDF writer (<see cref="ImagePdf"/>), one PDF per
-/// image. A password-protected PDF is refused rather than asking for the password.
+/// PDF in process: pages to PNG or JPG through PDFium (<see cref="PdfPages"/>), text and an editable DOCX
+/// through PdfPig (<see cref="PdfText"/>, <see cref="PdfDocx"/>), and images to PDF through Skia's PDF writer
+/// (<see cref="ImagePdf"/>), one PDF per image. A password-protected PDF is refused rather than asking for the password.
 /// </summary>
 public sealed class PdfConverter(TimeProvider? time = null) : IConverter
 {
-    private static readonly string[] PdfOutputs = ["png", "jpg", "txt"];
+    private static readonly string[] PdfOutputs = ["docx", "png", "jpg", "txt"];
 
     private readonly TimeProvider _time = time ?? TimeProvider.System;
 
@@ -35,6 +35,8 @@ public sealed class PdfConverter(TimeProvider? time = null) : IConverter
             ("pdf", "png") => new(QualityLevel.High, [pages]),
             ("pdf", "jpg") => new(QualityLevel.High, [pages, "JPG 有损压缩"]),
             ("pdf", "txt") => new(QualityLevel.Medium, ["只提取文字，图片、表格和版式不保留", "扫描件没有文字层，提取不出文字"]),
+            ("pdf", "docx") => new(QualityLevel.Medium,
+                ["按段落重建：分栏、表格、页眉页脚不保留，字体换成默认字体", "扫描件没有文字层，提取不出文字；带文字层的扫描件只保留文字", "JPEG 2000 等少数图片格式会丢失"]),
             ("webp" or "avif", "pdf") => new(QualityLevel.High, ["PDF 不支持 WebP / AVIF 压缩，不透明的图改用 JPG 压缩"]),
             ("gif", "pdf") => new(QualityLevel.High, ["只取第一帧"]),
             ("tiff", "pdf") => new(QualityLevel.High, ["多页 TIFF 每页一页"]),
@@ -73,6 +75,7 @@ public sealed class PdfConverter(TimeProvider? time = null) : IConverter
             {
                 "pdf" => await ImagePdf.WriteAsync(request, source, index, now, progress, cancellationToken).ConfigureAwait(false),
                 "txt" => await PdfText.WriteAsync(request, source, index, now, progress, cancellationToken).ConfigureAwait(false),
+                "docx" => await PdfDocx.WriteAsync(request, source, index, now, progress, cancellationToken).ConfigureAwait(false),
                 _ => await PdfPages.WriteAsync(request, source, index, now, progress, cancellationToken).ConfigureAwait(false),
             };
         }

@@ -39,12 +39,12 @@ public class DefaultRecommenderTests
     }
 
     [Fact]
-    public void A_pdf_is_offered_as_page_images_then_text()
+    public void A_pdf_is_offered_as_docx_then_page_images_then_text()
     {
         var graph = new ConversionGraph();
-        graph.Register(new TestConverter([new("pdf", "txt"), new("pdf", "jpg"), new("pdf", "png")]));
+        graph.Register(new TestConverter([new("pdf", "txt"), new("pdf", "jpg"), new("pdf", "png"), new("pdf", "docx")]));
         new DefaultRecommender(graph).For(["a.pdf"], MediaKind.Pdf, WheelMode.Convert)
-            .Should().Equal("png", "jpg", "txt");
+            .Should().Equal("docx", "png", "jpg", "txt");
     }
 
     [Fact]

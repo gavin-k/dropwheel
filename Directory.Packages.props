@@ -26,6 +26,7 @@
     <!-- PDFtoImage brings PDFium 152 and SkiaSharp 4.150.1; Skia also writes PDFs (PDFsharp is AGPL from 6.5.0). -->
     <PackageVersion Include="PDFtoImage" Version="5.4.0" />
     <PackageVersion Include="PdfPig" Version="0.1.16" />
+    <!-- Tests only: they validate the DOCX the PDF engine writes by hand. At about 8.5 MB the SDK is not worth shipping for that. -->
     <PackageVersion Include="DocumentFormat.OpenXml" Version="3.5.1" />
     <PackageVersion Include="SharpCompress" Version="0.50.5" />
 

@@ -34,7 +34,7 @@
 | 资源管理器右键 | `IExplorerCommand`（C++ COM DLL）+ MSIX 清单 / 稀疏包 | Win11 新式右键菜单只接受 `IExplorerCommand` 且要求包标识 |
 | 图片 | Magick.NET (ImageMagick) 或 SkiaSharp + libheif/libavif | 许可证友好；HEIC 编码依赖系统 HEVC 扩展时需灰显说明 |
 | 音视频 | **FFmpeg LGPL 构建，独立进程（sidecar）** | MIT 主程序 + LGPL 进程边界；H.264 编码走 `h264_mf`（Media Foundation），WebM 编成 AV1 + Opus |
-| PDF | PDFium（渲染 / 转图）+ PdfPig（文本提取）+ SkiaSharp（图片→PDF） | PDF → DOCX 走「提取 + 重建」或 LibreOffice sidecar（可选模块） |
+| PDF | PDFium（渲染 / 转图）+ PdfPig（文本提取）+ SkiaSharp（图片→PDF） | PDF → DOCX 用 PdfPig 提取后按段落重建；LibreOffice sidecar 留作以后的可选模块 |
 | Office 文档 | Open XML SDK（原生读写）+ LibreOffice headless（可选下载模块） | 旧版 DOC / PPT / XLS 仅输入 |
 | OCR | `Windows.Media.Ocr`（系统内置，25 语种）→ Windows AI `TextRecognizer`（Copilot+ PC）→ RapidOCR / Tesseract 回退 | 全部离线 |
 | 压缩包 | SharpCompress（读 ZIP / 7z / TAR / TAR.GZ / RAR，写 ZIP / 7z / TAR / TAR.GZ） | RAR 仅输入 |
@@ -47,7 +47,7 @@
 | 类别 | 输入 | 输出 |
 |---|---|---|
 | 图片 | JPG、PNG、WebP、AVIF、GIF、BMP、TIFF | 同左，另有 PDF（一张图一页，多页 TIFF 每页一页）和 HEIC（需系统 HEVC 扩展） |
-| PDF | PDF | PNG、JPG（150 DPI，每页一张，多页放进同名文件夹）、TXT（只取文字层） |
+| PDF | PDF | DOCX（按段落重建文字和图片，保留字号、粗斜体、颜色）、PNG、JPG（150 DPI，每页一张，多页放进同名文件夹）、TXT（只取文字层） |
 | 视频 | MP4、MOV、MKV、WebM、AVI、RMVB | MP4、MOV、MKV、WebM、AVI、GIF，以及下面的音频格式 |
 | 音频 | MP3、AAC、M4A、WAV、FLAC、OGG、Opus、AIFF、AMR | MP3、AAC、M4A、WAV、FLAC、OGG、Opus、AIFF |
 | 字幕 | SRT、VTT、ASS、SSA、LRC | 同左 |

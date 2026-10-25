@@ -6,7 +6,7 @@
 |---|---|---|---|
 | `Image/` | Magick.NET | M0 | 进程内 |
 | `Media/` | FFmpeg (LGPL 构建) · `h264_mf` | M1 | sidecar |
-| `Pdf/` | PDFium (PDFtoImage) + PdfPig + SkiaSharp PDF 后端 | M1 | 进程内 |
+| `Pdf/` | PDFium (PDFtoImage) + PdfPig + SkiaSharp PDF 后端；DOCX 手写 OOXML | M1 | 进程内 |
 | `Archive/` | SharpCompress | M1 | 进程内 |
 | `Subtitle/` | 自写解析器 | M1 | 进程内 |
 | `Document/` | Open XML SDK · LibreOffice headless（可选模块） | M2 | 进程内 + sidecar |
