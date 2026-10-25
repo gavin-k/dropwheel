@@ -34,9 +34,11 @@ public sealed partial class NamingTemplate(string template)
     }
 
     /// <summary>Returns the final path, applying the conflict policy against <paramref name="exists"/>.</summary>
+    /// <param name="extension">Without the dot; empty for a folder.</param>
     public static string? ResolveConflict(string directory, string baseName, string extension, ConflictPolicy policy, Func<string, bool> exists)
     {
-        var candidate = Path.Combine(directory, $"{baseName}.{extension}");
+        var suffix = extension.Length == 0 ? "" : $".{extension}";
+        var candidate = Path.Combine(directory, baseName + suffix);
         if (!exists(candidate))
         {
             return candidate;
@@ -45,7 +47,7 @@ public sealed partial class NamingTemplate(string template)
         return policy switch
         {
             ConflictPolicy.AutoNumber => Enumerable.Range(1, 9999)
-                .Select(i => Path.Combine(directory, $"{baseName} ({i}).{extension}"))
+                .Select(i => Path.Combine(directory, $"{baseName} ({i}){suffix}"))
                 .First(p => !exists(p)),
             ConflictPolicy.OverwriteToRecycleBin => candidate,
             ConflictPolicy.Skip => null,

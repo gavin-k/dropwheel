@@ -1,3 +1,4 @@
+using DropWheel.Core.Conversion;
 using DropWheel.Core.Jobs;
 using FluentAssertions;
 
@@ -17,7 +18,7 @@ public sealed class OutputFilesTests : IDisposable
         return path;
     }
 
-    private string[] Names() => Directory.GetFiles(_dir).Select(Path.GetFileName).Order(StringComparer.Ordinal).ToArray()!;
+    private string[] Names() => Directory.GetFileSystemEntries(_dir).Select(Path.GetFileName).Order(StringComparer.Ordinal).ToArray()!;
 
     [Fact]
     public async Task Writes_through_a_temporary_name_that_does_not_carry_the_extension()
@@ -96,6 +97,69 @@ public sealed class OutputFilesTests : IDisposable
         await act.Should().ThrowAsync<InvalidDataException>();
         Names().Should().Equal("a.srt", "b.srt", "c.srt");
         progress.Should().Equal(1 / 3.0, 2 / 3.0);
+    }
+
+    [Fact]
+    public async Task A_folder_is_filled_under_a_temporary_name_and_renamed_into_place()
+    {
+        var source = Source("report.pdf");
+        string? seen = null;
+
+        var output = await OutputFiles.WriteFolderAsync(new([source], "png", ""), source, 0, Now, temp =>
+        {
+            seen = temp;
+            Directory.GetFileSystemEntries(temp).Should().BeEmpty();
+            return File.WriteAllTextAsync(Path.Combine(temp, "report-1.png"), "page");
+        });
+
+        output.Should().Be(Path.Combine(_dir, "report"));
+        seen.Should().EndWith(OutputFiles.TempSuffix);
+        Names().Should().Equal("report", "report.pdf");
+        Directory.GetFiles(output!).Select(Path.GetFileName).Should().Equal("report-1.png");
+    }
+
+    [Fact]
+    public async Task A_folder_takes_the_next_free_name_when_a_file_or_folder_has_its_name()
+    {
+        var source = Source("report.pdf");
+        Directory.CreateDirectory(Path.Combine(_dir, "report"));
+        File.WriteAllText(Path.Combine(_dir, "report (1)"), "a file without an extension");
+
+        var output = await OutputFiles.WriteFolderAsync(new([source], "png", ""), source, 0, Now,
+            temp => File.WriteAllTextAsync(Path.Combine(temp, "p.png"), "page"));
+
+        output.Should().Be(Path.Combine(_dir, "report (2)"));
+    }
+
+    [Fact]
+    public async Task A_failing_source_also_deletes_folders_written_before_it()
+    {
+        var sources = new[] { Source("a.pdf"), Source("b.pdf") };
+        var request = new ConversionRequest(sources, "png", "");
+
+        var act = () => OutputFiles.ForEachSourceAsync(request, new InlineProgress(_ => { }), (source, i, _) =>
+            i == 1
+                ? throw new InvalidDataException("damaged")
+                : OutputFiles.WriteFolderAsync(request, source, i, Now, temp => File.WriteAllTextAsync(Path.Combine(temp, "a-1.png"), "page")),
+            CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidDataException>();
+        Names().Should().Equal("a.pdf", "b.pdf");
+    }
+
+    [Fact]
+    public async Task A_failing_folder_writer_leaves_nothing_behind()
+    {
+        var source = Source("report.pdf");
+
+        var act = () => OutputFiles.WriteFolderAsync(new([source], "png", ""), source, 0, Now, async temp =>
+        {
+            await File.WriteAllTextAsync(Path.Combine(temp, "report-1.png"), "page");
+            throw new InvalidDataException("page 2 is damaged");
+        });
+
+        await act.Should().ThrowAsync<InvalidDataException>();
+        Names().Should().Equal("report.pdf");
     }
 
     [Fact]

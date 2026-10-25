@@ -3,8 +3,8 @@ using DropWheel.Core.Conversion;
 namespace DropWheel.Core.Jobs;
 
 /// <summary>
-/// How every engine writes its outputs. Each output is rendered into a temporary file next to its target
-/// and moved into place without overwriting, and a batch is all or nothing.
+/// How every engine writes its outputs. Each output is rendered into a temporary file (or folder) next to its
+/// target and moved into place without overwriting, and a batch is all or nothing.
 ///
 /// The temporary name ends in ".dropwheel-tmp" rather than the real extension, so Explorer does not start
 /// a thumbnail handler on a half-written file and lock it before the move. Writers therefore have to name
@@ -65,17 +65,36 @@ public static class OutputFiles
     /// <param name="width">For the {w} placeholder, when the engine knows it before writing.</param>
     /// <param name="height">For the {h} placeholder.</param>
     /// <returns>The written path, or null when the conflict policy skipped this source.</returns>
-    public static async Task<string?> WriteAsync(
+    public static Task<string?> WriteAsync(
         ConversionRequest request,
         string source,
         int index,
         DateTimeOffset now,
         Func<string, Task> write,
         int? width = null,
-        int? height = null)
+        int? height = null) =>
+        PlaceAsync(request, source, index, now, write, folder: false, width, height);
+
+    /// <summary>
+    /// Same as <see cref="WriteAsync"/> for an output that is a folder of files, such as the pages of a PDF.
+    /// <paramref name="write"/> fills an empty temporary folder, which is then renamed into place, so the
+    /// folder never shows up half full and a failed write leaves nothing behind.
+    /// </summary>
+    public static Task<string?> WriteFolderAsync(ConversionRequest request, string source, int index, DateTimeOffset now, Func<string, Task> write) =>
+        PlaceAsync(request, source, index, now, write, folder: true, width: null, height: null);
+
+    private static async Task<string?> PlaceAsync(
+        ConversionRequest request,
+        string source,
+        int index,
+        DateTimeOffset now,
+        Func<string, Task> write,
+        bool folder,
+        int? width,
+        int? height)
     {
         var sequence = request.SourcePaths.Count > 1 ? index + 1 : (int?)null;
-        string? Plan() => OutputPlanner.PathFor(request, source, now, File.Exists, sequence, width, height);
+        string? Plan() => OutputPlanner.PathFor(request, source, now, Exists, sequence, width, height, folder);
 
         var target = Plan();
         if (target is null)
@@ -86,15 +105,28 @@ public static class OutputFiles
         var temp = Path.Combine(Path.GetDirectoryName(target)!, $".{Path.GetFileName(target)}.{Guid.NewGuid():N}{TempSuffix}");
         try
         {
+            if (folder)
+            {
+                Directory.CreateDirectory(temp);
+            }
+
             await write(temp).ConfigureAwait(false);
             for (var attempt = 0; ; attempt++)
             {
                 try
                 {
-                    File.Move(temp, target, overwrite: false);
+                    if (folder)
+                    {
+                        Directory.Move(temp, target);
+                    }
+                    else
+                    {
+                        File.Move(temp, target, overwrite: false);
+                    }
+
                     return target;
                 }
-                catch (IOException) when (File.Exists(target) && request.Conflict == ConflictPolicy.AutoNumber && attempt < 5)
+                catch (IOException) when (Exists(target) && request.Conflict == ConflictPolicy.AutoNumber && attempt < 5)
                 {
                     target = Plan() ?? throw new IOException($"{Path.GetFileName(target)} 已存在");
                 }
@@ -105,6 +137,9 @@ public static class OutputFiles
             TryDelete(temp);
         }
     }
+
+    /// <summary>A file and a folder cannot share a name, so either one takes it.</summary>
+    private static bool Exists(string path) => File.Exists(path) || Directory.Exists(path);
 
     /// <summary>Same as <see cref="WriteAsync"/> for a writer that is synchronous.</summary>
     public static string? Write(ConversionRequest request, string source, int index, DateTimeOffset now, Action<string> write, int? width = null, int? height = null) =>
@@ -118,7 +153,14 @@ public static class OutputFiles
     {
         try
         {
-            File.Delete(path);
+            if (Directory.Exists(path))
+            {
+                Directory.Delete(path, recursive: true);
+            }
+            else
+            {
+                File.Delete(path);
+            }
         }
         catch (IOException)
         {

@@ -33,6 +33,13 @@ public class NamingTemplateTests
     }
 
     [Fact]
+    public void An_empty_extension_names_a_folder()
+    {
+        var existing = new HashSet<string> { Path.Combine("/out", "a") };
+        NamingTemplate.ResolveConflict("/out", "a", "", ConflictPolicy.AutoNumber, existing.Contains).Should().Be(Path.Combine("/out", "a (1)"));
+    }
+
+    [Fact]
     public void Skip_returns_null_when_exists()
         => NamingTemplate.ResolveConflict("/out", "a", "png", ConflictPolicy.Skip, _ => true).Should().BeNull();
 }
