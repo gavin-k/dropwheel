@@ -88,6 +88,7 @@ internal sealed class WheelWindow
         for (var i = 0; i < WheelModel.SlotCount; i++)
         {
             _sectors[i] = new Path { Data = Wedge(i), StrokeThickness = 1, Stroke = new SolidColorBrush(SectorStroke) };
+            AutomationProperties.SetAutomationId(_sectors[i], $"Sector{i}");
             canvas.Children.Add(_sectors[i]);
 
             _labels[i] = new TextBlock { FontSize = 16, FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center };
@@ -109,14 +110,28 @@ internal sealed class WheelWindow
             TextAlignment = TextAlignment.Center,
             MaxWidth = 2 * WheelGeometry.InnerRadius - 14,
         };
-        _subtitle = new TextBlock { FontSize = 11, Foreground = new SolidColorBrush(Text3), TextAlignment = TextAlignment.Center };
+        _subtitle = new TextBlock
+        {
+            FontSize = 11,
+            Foreground = new SolidColorBrush(Text3),
+            TextAlignment = TextAlignment.Center,
+            TextWrapping = TextWrapping.Wrap,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            MaxLines = 3,
+            MaxWidth = 2 * WheelGeometry.InnerRadius - 18,
+        };
         _hint = new TextBlock { FontSize = 10, Foreground = new SolidColorBrush(Text3), TextAlignment = TextAlignment.Center };
-        var hub = new StackPanel { Width = 2 * WheelGeometry.InnerRadius, Spacing = 2 };
+        AutomationProperties.SetAutomationId(_title, "WheelTitle");
+        AutomationProperties.SetAutomationId(_subtitle, "WheelSubtitle");
+        var hub = new StackPanel { Width = 2 * WheelGeometry.InnerRadius, Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
         hub.Children.Add(_title);
         hub.Children.Add(_subtitle);
         hub.Children.Add(_hint);
-        Place(hub, Center - WheelGeometry.InnerRadius, Center - 26);
-        canvas.Children.Add(hub);
+
+        // Centred in the hole, so a reason that wraps grows both ways.
+        var hole = new Grid { Width = 2 * WheelGeometry.InnerRadius, Height = 2 * WheelGeometry.InnerRadius, IsHitTestVisible = false, Children = { hub } };
+        Place(hole, Center - WheelGeometry.InnerRadius, Center - WheelGeometry.InnerRadius);
+        canvas.Children.Add(hole);
 
         _window.Content = new Grid { Children = { disc, canvas } };
         SetModel(null);
@@ -181,16 +196,13 @@ internal sealed class WheelWindow
             _hovered = -1;
         }
 
-        _title.Text = model?.CenterTitle ?? "";
-        _subtitle.Text = model?.CenterSubtitle ?? "读取文件…";
-        ShowHint();
+        ShowHub();
         for (var i = 0; i < WheelModel.SlotCount; i++)
         {
-            var slot = model is not null && i < model.Slots.Count ? model.Slots[i] : null;
+            var slot = Slot(i);
             _labels[i].Text = slot?.Label ?? "";
             _subLabels[i].Text = slot?.SubLabel ?? "";
-            var name = slot is null ? $"扇区 {i + 1}（空）" : $"{slot.Label} {slot.SubLabel}";
-            AutomationProperties.SetName(_sectors[i], name);
+            AutomationProperties.SetName(_sectors[i], slot?.AccessibleName ?? $"扇区 {i + 1}（空）");
             Paint(i);
         }
     }
@@ -202,15 +214,18 @@ internal sealed class WheelWindow
     public void SetHubHint(bool needed)
     {
         _hubFirst = needed;
-        ShowHint();
+        ShowHub();
     }
 
-    private void ShowHint() => _hint.Text = _hubFirst ? "先移到圆心" : _model?.HasMore == true ? "打字搜索 · Esc 取消" : "Esc 取消";
-
+    /// <summary>
+    /// The pointer moved onto <paramref name="sector"/>, -1 for none. Only an enabled sector lights up, but
+    /// any sector with something to say (see <see cref="WheelSlot.Detail"/>) says it in the hub.
+    /// </summary>
     public void SetHovered(int sector)
     {
         var previous = _hovered;
         _hovered = sector;
+        ShowHub();
         if (previous >= 0)
         {
             Paint(previous);
@@ -222,9 +237,20 @@ internal sealed class WheelWindow
         }
     }
 
+    private WheelSlot? Slot(int i) => _model is not null && i >= 0 && i < _model.Slots.Count ? _model.Slots[i] : null;
+
+    private void ShowHub()
+    {
+        var detail = Slot(_hovered)?.Detail;
+        _title.Text = detail?.Head ?? _model?.CenterTitle ?? "";
+        _subtitle.Text = detail?.Body ?? _model?.CenterSubtitle ?? "读取文件…";
+        _hint.Text = _hubFirst ? "先移到圆心" : _model?.HasMore == true ? "打字搜索 · Esc 取消" : "Esc 取消";
+        _hint.Visibility = detail is null ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     private void Paint(int i)
     {
-        var slot = _model is not null && i < _model.Slots.Count ? _model.Slots[i] : null;
+        var slot = Slot(i);
         var enabled = slot?.Availability.IsAvailable == true;
         var hovered = enabled && i == _hovered;
         _sectors[i].Fill = new SolidColorBrush(hovered ? Accent : enabled ? SectorFill : Colors.Transparent);

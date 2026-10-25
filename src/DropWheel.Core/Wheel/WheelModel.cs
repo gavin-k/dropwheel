@@ -17,7 +17,61 @@ public sealed record WheelSlot(
     SlotSource Source,
     Availability Availability,
     QualityEstimate? Quality,
-    IWheelOperation? Operation = null);
+    IWheelOperation? Operation = null)
+{
+    /// <summary>
+    /// What the hub says while the pointer is on this sector, which has no room for it: why the item is off,
+    /// otherwise the expected quality and its first reason; null when there is nothing to add.
+    /// </summary>
+    public SlotDetail? Detail => !Availability.IsAvailable
+        ? new($"{Label} {SubLabel}", Availability.Reason ?? "")
+        : Quality is { } q ? new($"预期质量{LevelName(q.Level)}", q.Reasons.Count > 0 ? q.Reasons[0] : "") : null;
+
+    /// <summary>"PNG，推荐，预期质量高：…；…" or "HEIC，匹配，不可用：…": the sector's name for screen readers, every reason included.</summary>
+    public string AccessibleName
+    {
+        get
+        {
+            var said = Availability.IsAvailable ? SubLabel : SourceName(Source);
+            List<string> parts = [Label];
+            if (said.Length > 0)
+            {
+                parts.Add(said);
+            }
+
+            if (!Availability.IsAvailable)
+            {
+                parts.Add(Availability.Reason is { } reason ? $"{SubLabel}：{reason}" : SubLabel);
+            }
+            else if (Quality is { } q)
+            {
+                parts.Add(q.Reasons.Count > 0 ? $"预期质量{LevelName(q.Level)}：{string.Join("；", q.Reasons)}" : $"预期质量{LevelName(q.Level)}");
+            }
+
+            return string.Join("，", parts);
+        }
+    }
+
+    /// <summary>Why a Convert item is on the wheel; empty for a Tools or Actions item, which is always there.</summary>
+    public static string SourceName(SlotSource source) => source switch
+    {
+        SlotSource.Recent => "最近",
+        SlotSource.Recommended => "推荐",
+        SlotSource.Search => "匹配",
+        _ => "",
+    };
+
+    private static string LevelName(QualityLevel level) => level switch
+    {
+        QualityLevel.High => "高",
+        QualityLevel.Medium => "中",
+        _ => "低",
+    };
+}
+
+/// <param name="Head">One short line in place of the hub's title.</param>
+/// <param name="Body">The reason, in place of the subtitle; it may wrap.</param>
+public sealed record SlotDetail(string Head, string Body);
 
 /// <param name="HasMore">More items than the slots show: the Convert wheel's other targets, or more matches for a search.</param>
 public sealed record WheelModel(WheelMode Mode, string CenterTitle, string CenterSubtitle, IReadOnlyList<WheelSlot> Slots, bool HasMore = false)
@@ -79,7 +133,7 @@ public sealed class WheelBuilder(ConversionGraph graph, IRecentItems recent, IRe
                 i,
                 p.id,
                 target?.DisplayName ?? p.id.ToUpperInvariant(),
-                !availability.IsAvailable ? "不可用" : p.src switch { SlotSource.Recent => "最近", SlotSource.Search => "匹配", _ => "推荐" },
+                availability.IsAvailable ? WheelSlot.SourceName(p.src) : "不可用",
                 p.src,
                 availability,
                 quality);

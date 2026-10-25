@@ -16,12 +16,10 @@ namespace DropWheel.Shell;
 /// <param name="StartsOnHub">False when the wheel was shifted away from the pointer; see <see cref="SectorGate"/>.</param>
 public sealed record WheelPlacement(int CenterX, int CenterY, double Scale, IReadOnlyList<bool> EnabledSectors, bool StartsOnHub = true)
 {
-    /// <summary>The enabled sector under a screen point, or -1; also -1 while <paramref name="gate"/> is shut.</summary>
-    public int SectorAt(int x, int y, SectorGate gate, out bool opened)
-    {
-        var sector = gate.SectorAt((x - CenterX) / Scale, (y - CenterY) / Scale, out opened);
-        return sector >= 0 && sector < EnabledSectors.Count && EnabledSectors[sector] ? sector : -1;
-    }
+    /// <summary>The sector under a screen point, enabled or not, or -1; also -1 while <paramref name="gate"/> is shut.</summary>
+    public int SectorAt(int x, int y, SectorGate gate, out bool opened) => gate.SectorAt((x - CenterX) / Scale, (y - CenterY) / Scale, out opened);
+
+    public bool IsEnabled(int sector) => sector >= 0 && sector < EnabledSectors.Count && EnabledSectors[sector];
 }
 
 /// <summary>
@@ -51,7 +49,7 @@ public sealed unsafe class DropTargetHost : IDisposable
     /// <summary>A drag entered while the host was shown. Paths are empty when the data has no CF_HDROP.</summary>
     public event Action<IReadOnlyList<string>>? Entered;
 
-    /// <summary>The hovered enabled sector changed; -1 means none.</summary>
+    /// <summary>The sector under the pointer changed, enabled or not, so a disabled one can say why; -1 means none.</summary>
     public event Action<int>? Hovered;
 
     /// <summary>The pointer reached the hub of a wheel that opened off-centre, so sectors respond from now on.</summary>
@@ -307,12 +305,14 @@ public sealed unsafe class DropTargetHost : IDisposable
         private DROPEFFECT Effect(POINTL pt, DROPEFFECT allowed)
         {
             var sector = -1;
+            var enabled = false;
             if (host._placement is { } placement)
             {
                 // One gate per showing: Show is called again with the enabled sectors once the files are
                 // known, and that must not shut a gate the pointer already opened.
                 _gate ??= new SectorGate(placement.StartsOnHub);
                 sector = placement.SectorAt(pt.x, pt.y, _gate, out var opened);
+                enabled = placement.IsEnabled(sector);
                 if (opened)
                 {
                     host.HubReached?.Invoke();
@@ -325,7 +325,7 @@ public sealed unsafe class DropTargetHost : IDisposable
                 host.Hovered?.Invoke(sector);
             }
 
-            return sector >= 0 && _paths.Count > 0 && (allowed & DROPEFFECT.DROPEFFECT_COPY) != 0
+            return enabled && _paths.Count > 0 && (allowed & DROPEFFECT.DROPEFFECT_COPY) != 0
                 ? DROPEFFECT.DROPEFFECT_COPY
                 : DROPEFFECT.DROPEFFECT_NONE;
         }

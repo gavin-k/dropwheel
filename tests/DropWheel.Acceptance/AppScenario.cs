@@ -24,7 +24,8 @@ namespace DropWheel.Acceptance;
 /// on the MP3 sector as an MP3 made by the bundled ffmpeg, a JPG dropped on the PDF sector as a PDF whose
 /// page, dropped on the PNG sector, comes back as a PNG, and a PDF with text dropped on the DOCX sector as
 /// a Word document with that text, and a JPG dropped on the BMP sector, which only typing "bmp" on the wheel
-/// brings up, as a bitmap. Then the task window's 重试, 打开位置 and 取消 buttons are pressed, the
+/// brings up, as a bitmap; with the pointer on a sector the hub tells the expected quality, or why the
+/// sector is off. Then the task window's 重试, 打开位置 and 取消 buttons are pressed, the
 /// Actions wheel opened with a Win tap copies a path, zips a folder, deletes a file once Delete is ticked
 /// in settings and starts a rename in Explorer, the Tools wheel opened with a Ctrl+Alt tap halves an
 /// image, unpacks a zip, splits a PDF and compresses a video, and settings changed in the settings window take effect
@@ -105,6 +106,7 @@ internal static partial class AppScenario
                 Attempt(checks, "image to pdf and back", () => RoundTripPdf(checks, log, dir, explorer));
                 Attempt(checks, "pdf to word", () => PdfToDocx(checks, log, dir, explorer));
                 Attempt(checks, "search a format", () => SearchFormat(checks, log, dir, explorer));
+                Attempt(checks, "an unavailable format says why", () => UnavailableFormat(checks, log, jpg, explorer));
                 Attempt(checks, "task window buttons", () => QueueButtons(checks, log, exe, explorer));
                 Attempt(checks, "file actions", () => FileActions(checks, log, app.Id, explorer));
                 Attempt(checks, "tools", () => Tools(checks, log, exe, explorer));
@@ -405,13 +407,14 @@ internal static partial class AppScenario
     /// <summary>
     /// Drags <paramref name="source"/>, opens the wheel with <paramref name="key"/>, drops on the
     /// <paramref name="target"/> sector and waits for the queue. A <paramref name="quiet"/> key is tapped first
-    /// and must not open the wheel; <paramref name="search"/> is typed on the open wheel, see <see cref="TypeSearch"/>.
+    /// and must not open the wheel; <paramref name="search"/> is typed on the open wheel, see <see cref="TypeSearch"/>;
+    /// <paramref name="beforeRelease"/> runs with the pointer on the sector.
     /// </summary>
     /// <returns>The output path, or null after a failed check.</returns>
     private static string? ConvertThroughWheel(Checks checks, AppLog log, string source, string target, bool explorer,
-        VIRTUAL_KEY[]? keys = null, VIRTUAL_KEY? quiet = null, string? search = null)
+        VIRTUAL_KEY[]? keys = null, VIRTUAL_KEY? quiet = null, string? search = null, Action? beforeRelease = null)
     {
-        if (DropOnWheel(checks, log, source, target, explorer, keys, quiet, search: search) is not { } label)
+        if (DropOnWheel(checks, log, source, target, explorer, keys, quiet, beforeRelease, search: search) is not { } label)
         {
             return null;
         }
