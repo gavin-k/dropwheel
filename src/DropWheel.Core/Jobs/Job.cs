@@ -27,7 +27,6 @@ public sealed class Job
 
     /// <summary>What runs the request; null means the converter the graph resolves for its formats.</summary>
     public IJobRunner? Runner { get; init; }
-    public QualityEstimate? Quality { get; init; }
     public bool CountsTowardQuota { get; init; } = true;
 
     public JobState State { get; internal set; } = JobState.Pending;
