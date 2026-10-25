@@ -254,7 +254,7 @@ internal sealed class SettingsWindow
 
         _loading = false;
 
-        ShowConflicts(ConflictChecker.Check(WheelController.Active(current.Keys)));
+        ShowConflicts(ConflictChecker.Check(current.Keys));
         _tapWindow.Value = current.Keys.TapWindowMs;
         (current.Output.Location == OutputLocation.Folder ? _toFolder : _nextToSource).IsChecked = true;
         _folder.Text = current.Output.Folder.Length == 0 ? "还没有选择文件夹" : current.Output.Folder;
@@ -276,7 +276,7 @@ internal sealed class SettingsWindow
         }
 
         var keys = KeyOrder.Where(k => _keys[(mode, k)].IsChecked == true).Aggregate(Modifiers.None, (all, k) => all | k);
-        var conflicts = ConflictChecker.Check(WheelController.Active(_settings.Current.Keys.Rebound(mode, keys)));
+        var conflicts = ConflictChecker.Check(_settings.Current.Keys.Rebound(mode, keys));
         ShowConflicts(conflicts);
         if (keys == _settings.Current.Keys.KeysFor(mode))
         {

@@ -95,7 +95,7 @@ public sealed class WheelBuilder(ConversionGraph graph, IRecentItems recent, IRe
         }).ToList();
 
         var title = mode == WheelMode.Tools ? "工具" : "动作";
-        var subtitle = sourcePaths.Count > 1 ? $"{title} · {sourcePaths.Count} 项" : title;
+        var subtitle = slots.Count == 0 ? $"这类文件还没有{title}" : sourcePaths.Count > 1 ? $"{title} · {sourcePaths.Count} 项" : title;
         return new WheelModel(mode, Path.GetFileName(sourcePaths[0]), subtitle, slots);
     }
 }

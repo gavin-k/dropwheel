@@ -76,6 +76,17 @@ public sealed class FileActionsTests : IDisposable
     }
 
     [Fact]
+    public void A_wheel_with_nothing_for_the_file_says_so()
+    {
+        var builder = new WheelBuilder(new ConversionGraph(), new RecentItems(), new DefaultRecommender(new ConversionGraph()), Actions());
+
+        var wheel = builder.Build([File("clip.mp4")], WheelMode.Tools, AppSettings.Default);
+
+        wheel.Slots.Should().BeEmpty();
+        wheel.CenterSubtitle.Should().Be("这类文件还没有工具");
+    }
+
+    [Fact]
     public void An_item_that_is_gone_makes_the_file_actions_unavailable()
     {
         var gone = Path.Combine(_dir, "gone.jpg");

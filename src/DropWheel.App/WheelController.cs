@@ -19,7 +19,7 @@ namespace DropWheel.App;
 /// <summary>
 /// One drag's worth of wheel: a modifier tap opens it at the pointer, DragEnter on the drop target host
 /// says which files are being dragged, a drop on a sector enqueues the conversion or the file action.
-/// The wheels are Convert and Actions; see <see cref="Modes"/>.
+/// The wheels are Convert, Tools and Actions; see <see cref="Modes"/>.
 ///
 /// The wheel closes on Dropped / Canceled from the host, on the hook seeing the button go up (after a
 /// grace period, because the hook sees the button-up before OLE delivers the drop), and on a watchdog
@@ -86,11 +86,8 @@ internal sealed class WheelController : IDisposable
         _host.Canceled += OnCanceled;
     }
 
-    /// <summary>The wheels there are. Tools has no items yet, and binding its keys would only swallow them mid-drag.</summary>
-    public static IReadOnlyList<WheelMode> Modes { get; } = [WheelMode.Convert, WheelMode.Actions];
-
-    /// <summary>The bindings the hooks act on: those of <see cref="Modes"/>.</summary>
-    public static KeyBindings Active(KeyBindings keys) => keys with { Bindings = [.. keys.Bindings.Where(b => Modes.Contains(b.Mode))] };
+    /// <summary>The wheels, in the order Settings lists their keys.</summary>
+    public static IReadOnlyList<WheelMode> Modes { get; } = [WheelMode.Convert, WheelMode.Tools, WheelMode.Actions];
 
     public void Dispose()
     {
@@ -201,12 +198,6 @@ internal sealed class WheelController : IDisposable
 
     private void Open(WheelMode mode, (int X, int Y) point, long tappedAt)
     {
-        if (!Modes.Contains(mode))
-        {
-            FileLog.Info($"wheel: {mode} tap ignored, that wheel has no items yet");
-            return;
-        }
-
         if (_session is not null || _monitor.Phase == DragPhase.Idle)
         {
             return;

@@ -16,6 +16,7 @@ using DropWheel.Engines.Image;
 using DropWheel.Engines.Media;
 using DropWheel.Engines.Pdf;
 using DropWheel.Engines.Subtitle;
+using DropWheel.Engines.Tools;
 using DropWheel.Shell;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
@@ -85,7 +86,8 @@ public partial class App : Application
             var graph = new ConversionGraph();
             graph.Register(new MagickImageConverter());
             graph.Register(new SubtitleConverter());
-            graph.Register(new SharpCompressArchiveConverter());
+            var archives = new SharpCompressArchiveConverter();
+            graph.Register(archives);
             var ffmpeg = new FfmpegConverter();
             graph.Register(ffmpeg);
             graph.Register(new PdfConverter());
@@ -96,7 +98,7 @@ public partial class App : Application
             });
             var files = new ShellFileOperations();
             _queue = new JobQueue(graph, new UndoLedger(files));
-            var operations = FileActions.Create(files, new Desktop(ui));
+            IReadOnlyList<IWheelOperation> operations = [.. FileActions.Create(files, new Desktop(ui)), .. EngineTools.Create(archives)];
             var dataDir = ArgValue(commandLine, "--data-dir") ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DropWheel");
             var settings = new SettingsStore(Path.Combine(dataDir, "settings.json"));
             var recent = new RecentItems(path: Path.Combine(dataDir, "recent.json"));
@@ -107,9 +109,8 @@ public partial class App : Application
 
             var builder = new WheelBuilder(graph, recent, new DefaultRecommender(graph), operations);
 
-            var bindings = WheelController.Active(settings.Current.Keys);
-            var tapper = new ModifierTapper(bindings, TimeProvider.System);
-            var winKey = new WinKeyGate(bindings);
+            var tapper = new ModifierTapper(settings.Current.Keys, TimeProvider.System);
+            var winKey = new WinKeyGate(settings.Current.Keys);
             _monitor = new DragMonitor(tapper, winKey);
             _monitor.Faulted += ex => FileLog.Error("hook thread handler failed", ex);
             _host = new DropTargetHost();
@@ -119,9 +120,8 @@ public partial class App : Application
             queueWindow.ShowKeys(settings.Current.Keys.KeysFor(WheelMode.Convert));
             settings.Changed += changed =>
             {
-                var active = WheelController.Active(changed.Keys);
-                tapper.Rebind(active);
-                winKey.Rebind(active);
+                tapper.Rebind(changed.Keys);
+                winKey.Rebind(changed.Keys);
                 queueWindow.ShowKeys(changed.Keys.KeysFor(WheelMode.Convert));
             };
             var onboarding = _onboarding = new OnboardingWindow(settings, _queue, ui, settingsWindow.Show);
