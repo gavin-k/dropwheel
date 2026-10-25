@@ -197,7 +197,9 @@ internal sealed class QueueWindow
             }
             else
             {
-                FileLog.Info($"queue: undid {job.Label}, recycled {string.Join(", ", job.Outputs)}");
+                FileLog.Info(job.Undo is UndoPlan.MoveBack m
+                    ? $"queue: undid {job.Label}, moved back {string.Join(", ", m.Moves.Select(x => x.From))}"
+                    : $"queue: undid {job.Label}, recycled {string.Join(", ", job.Outputs)}");
             }
         }
         catch (Exception ex)
@@ -265,11 +267,11 @@ internal sealed class QueueWindow
             _state.Text = _failure ?? state switch
             {
                 JobState.Pending => "等待中",
-                JobState.Running => _job.Progress > 0 ? $"转换中 {_job.Progress:P0}" : "转换中",
-                JobState.Done => $"完成 → {string.Join("、", _job.Outputs.Select(Path.GetFileName))}",
+                JobState.Running => (_job.Runner is null ? "转换中" : "进行中") + (_job.Progress > 0 ? $" {_job.Progress:P0}" : ""),
+                JobState.Done => _job.Detail ?? $"完成 → {string.Join("、", _job.Outputs.Select(Path.GetFileName))}",
                 JobState.Failed => $"失败：{_job.Error}",
                 JobState.Canceled => "已取消",
-                JobState.Undone => "已撤销，输出已移到回收站",
+                JobState.Undone => _job.Undo is UndoPlan.MoveBack ? "已撤销，已移回原处" : "已撤销，输出已移到回收站",
                 JobState.Skipped => _job.Detail ?? "已跳过",
                 _ => state.ToString(),
             };
@@ -280,8 +282,8 @@ internal sealed class QueueWindow
             _progress.Value = _job.Progress;
             _cancel.Visibility = Shown(state is JobState.Pending or JobState.Running);
             _retry.Visibility = Shown(state is JobState.Failed or JobState.Canceled);
-            _reveal.Visibility = Shown(state == JobState.Done && _failure is null);
-            _undo.Visibility = Shown(state == JobState.Done);
+            _reveal.Visibility = Shown(state == JobState.Done && _failure is null && _job.Outputs.Count > 0);
+            _undo.Visibility = Shown(state == JobState.Done && _job.Undo is not UndoPlan.None);
         }
 
         private static Visibility Shown(bool shown) => shown ? Visibility.Visible : Visibility.Collapsed;
