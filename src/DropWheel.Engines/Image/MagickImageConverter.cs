@@ -44,12 +44,19 @@ public sealed class MagickImageConverter(TimeProvider? time = null) : IConverter
     public QualityEstimate? Estimate(ConversionRequest request)
     {
         var from = FormatRegistry.FromPath(request.SourcePaths[0])?.Id;
-        return (from, request.TargetFormatId) switch
+        var estimate = (from, request.TargetFormatId) switch
         {
-            ("jpg", "png") => new(QualityLevel.High, ["无损，文件会变大"]),
-            (_, "gif") => new(QualityLevel.Medium, ["GIF 仅 256 色"]),
+            (_, "gif") => new QualityEstimate(QualityLevel.Medium, ["GIF 仅 256 色"]),
+            ("jpg" or "heic" or "webp" or "avif", "png" or "bmp" or "tiff") =>
+                new(QualityLevel.High, ["无损保存，画质不会再降低", "原图若是有损压缩，已有的压缩痕迹不会消失", "文件会变大"]),
+            ("png" or "gif" or "bmp" or "tiff" or "webp" or "avif", "jpg") =>
+                new(QualityLevel.Medium, ["有损压缩，文字和线条边缘可能出现杂点", "透明部分变成白色"]),
+            ("png" or "gif" or "tiff" or "webp" or "avif", "bmp") => new(QualityLevel.High, ["透明部分变成白色", "文件会变大"]),
             _ => null,
         };
+
+        // Whether this GIF is animated is not read here, so every GIF gets the warning.
+        return from == "gif" ? new(estimate?.Level ?? QualityLevel.High, [.. estimate?.Reasons ?? [], "只取第一帧"]) : estimate;
     }
 
     /// <summary>All or nothing, see <see cref="OutputFiles.ForEachSourceAsync"/>.</summary>
@@ -79,6 +86,14 @@ public sealed class MagickImageConverter(TimeProvider? time = null) : IConverter
         {
             using var image = new MagickImage(source);
             image.AutoOrient();
+            if (format is MagickFormat.Jpeg or MagickFormat.Bmp && image.HasAlpha)
+            {
+                // JPEG has no alpha and most BMP readers ignore it: transparent pixels would show the colour under
+                // them, usually black.
+                image.BackgroundColor = MagickColors.White;
+                image.Alpha(AlphaOption.Remove);
+            }
+
             return OutputFiles.Write(request, source, index, _time.GetLocalNow(), temp => image.Write(temp, format), (int)image.Width, (int)image.Height);
         }
         catch (MagickException ex)

@@ -68,6 +68,45 @@ public sealed class MagickImageConverterTests : IDisposable
         new MagickImageInfo(result.OutputPaths[0]).Format.Should().Be(MagickFormat.Jpeg);
     }
 
+    [Theory]
+    [InlineData("jpg")]
+    [InlineData("bmp")]
+    public async Task Transparent_pixels_come_out_white_where_the_format_has_no_alpha(string target)
+    {
+        var source = Path.Combine(_dir, "logo.png");
+        using (var image = new MagickImage(MagickColors.Transparent, 40, 20))
+        {
+            image.Draw(new ImageMagick.Drawing.Drawables().FillColor(MagickColors.Red).Rectangle(0, 0, 19, 19));
+            image.Write(source, MagickFormat.Png);
+        }
+
+        var result = await Run(new([source], target, ""));
+
+        result.Succeeded.Should().BeTrue(result.Error);
+        using var output = new MagickImage(result.OutputPaths[0]);
+        var pixels = output.GetPixels();
+        output.HasAlpha.Should().BeFalse();
+        var (white, red) = (pixels.GetPixel(30, 10).ToColor()!, pixels.GetPixel(10, 10).ToColor()!);
+        new[] { white.R, white.G, white.B }.Should().OnlyContain(c => c > 0xF000, "the transparent half is white, not black");
+        (red.R > 0xF000, red.G < 0x1000, red.B < 0x1000).Should().Be((true, true, true));
+    }
+
+    [Fact]
+    public async Task Transparency_is_kept_where_the_format_has_it()
+    {
+        var source = Path.Combine(_dir, "logo.png");
+        using (var image = new MagickImage(MagickColors.Transparent, 40, 20))
+        {
+            image.Write(source, MagickFormat.Png);
+        }
+
+        var result = await Run(new([source], "webp", ""));
+
+        using var output = new MagickImage(result.OutputPaths[0]);
+        output.HasAlpha.Should().BeTrue();
+        output.GetPixels().GetPixel(5, 5).ToColor()!.A.Should().Be(0);
+    }
+
     [Fact]
     public async Task Exif_orientation_is_applied()
     {
@@ -168,6 +207,30 @@ public sealed class MagickImageConverterTests : IDisposable
 
         availability.IsAvailable.Should().BeFalse();
         availability.Cause.Should().Be(UnavailableCause.MissingSystemCodec);
+    }
+
+    [Theory]
+    [InlineData("photo.jpg", "png", QualityLevel.High, "*压缩痕迹*")]
+    [InlineData("photo.webp", "tiff", QualityLevel.High, "*压缩痕迹*")]
+    [InlineData("shot.png", "jpg", QualityLevel.Medium, "*透明部分变成白色*")]
+    [InlineData("shot.png", "bmp", QualityLevel.High, "*透明部分变成白色*")]
+    [InlineData("anim.gif", "png", QualityLevel.High, "只取第一帧")]
+    [InlineData("anim.gif", "jpg", QualityLevel.Medium, "只取第一帧")]
+    [InlineData("photo.jpg", "webp", null, null)]
+    [InlineData("shot.png", "gif", QualityLevel.Medium, "*256 色*")]
+    public void Estimates_say_what_the_target_format_loses(string source, string target, QualityLevel? level, string? reason)
+    {
+        var estimate = _converter.Estimate(new([source], target, ""));
+
+        estimate?.Level.Should().Be(level);
+        if (reason is null)
+        {
+            estimate.Should().BeNull();
+        }
+        else
+        {
+            estimate!.Reasons.Should().ContainMatch(reason);
+        }
     }
 
     [Fact]

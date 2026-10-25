@@ -46,7 +46,7 @@
 
 | 类别 | 输入 | 输出 |
 |---|---|---|
-| 图片 | JPG、PNG、WebP、AVIF、GIF、BMP、TIFF | 同左，另有 PDF（一张图一页，多页 TIFF 每页一页）和 HEIC（需系统 HEVC 扩展） |
+| 图片 | JPG、PNG、WebP、AVIF、GIF、BMP、TIFF | 同左（转 JPG、BMP 时透明部分填白），另有 PDF（一张图一页，多页 TIFF 每页一页）和 HEIC（需系统 HEVC 扩展） |
 | PDF | PDF | DOCX（按段落重建文字和图片，保留字号、粗斜体、颜色）、PNG、JPG（150 DPI，每页一张，多页放进同名文件夹）、TXT（只取文字层） |
 | 视频 | MP4、MOV、MKV、WebM、AVI、RMVB | MP4、MOV、MKV、WebM、AVI、GIF，以及下面的音频格式 |
 | 音频 | MP3、AAC、M4A、WAV、FLAC、OGG、Opus、AIFF、AMR | MP3、AAC、M4A、WAV、FLAC、OGG、Opus、AIFF |
