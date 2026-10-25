@@ -19,7 +19,7 @@ namespace DropWheel.Engines.Archive;
 /// </summary>
 public sealed class SharpCompressArchiveConverter : IConverter
 {
-    private static readonly string[] Inputs = ["zip", "7z", "tar", "tgz", "rar"];
+    internal static readonly string[] Inputs = ["zip", "7z", "tar", "tgz", "rar"];
     private static readonly string[] Outputs = ["zip", "7z", "tar", "tgz"];
 
     private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
@@ -97,12 +97,39 @@ public sealed class SharpCompressArchiveConverter : IConverter
         }
     }
 
-    private string? Convert(ConversionRequest request, string source, int index, IProgress<double> progress, CancellationToken cancellationToken)
+    private string? Convert(ConversionRequest request, string source, int index, IProgress<double> progress, CancellationToken cancellationToken) =>
+        OutputFiles.Write(request, source, index, _time.GetLocalNow(), temp => Repack(source, temp, request.TargetFormatId, progress, cancellationToken));
+
+    private void Repack(string source, string temp, string to, IProgress<double> progress, CancellationToken cancellationToken)
+    {
+        using var output = File.Create(temp);
+        IWriter? writer = null;
+        try
+        {
+            ReadEntries(source, progress, cancellationToken, large => writer = OpenWriter(output, to, large), (entry, path, open) => Copy(entry, path, open, writer!));
+        }
+        finally
+        {
+            writer?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Reads the archive front to back, handing <paramref name="visit"/> each file and folder with its path and a
+    /// way to open its data. Symbolic links and the root itself are left out. <paramref name="opened"/> is told,
+    /// before the first entry, whether the archive is big enough to need Zip64 when written again.
+    /// </summary>
+    /// <exception cref="InvalidDataException">The archive is damaged or has a password.</exception>
+    internal void ReadEntries(
+        string source,
+        IProgress<double> progress,
+        CancellationToken cancellationToken,
+        Action<bool> opened,
+        Action<IEntry, string, Func<Stream>> visit)
     {
         try
         {
-            return OutputFiles.Write(request, source, index, _time.GetLocalNow(),
-                temp => Repack(source, temp, request.TargetFormatId, progress, cancellationToken));
+            Read(source, progress, cancellationToken, opened, visit);
         }
         catch (CryptographicException)
         {
@@ -114,22 +141,29 @@ public sealed class SharpCompressArchiveConverter : IConverter
         }
     }
 
-    private void Repack(string source, string temp, string to, IProgress<double> progress, CancellationToken cancellationToken)
+    private void Read(string source, IProgress<double> progress, CancellationToken cancellationToken, Action<bool> opened, Action<IEntry, string, Func<Stream>> visit)
     {
-        using var output = File.Create(temp);
+        void Visit(IEntry entry, Func<Stream> open, string? unnamed = null)
+        {
+            if (string.IsNullOrEmpty(entry.LinkTarget) && EntryPath(entry, unnamed) is { } path)
+            {
+                visit(entry, path, open);
+            }
+        }
+
         if (FormatRegistry.FromPath(source)?.Id == "tgz")
         {
             // A compressed tar can only be read front to back, so progress follows the position in the file.
             using var file = File.OpenRead(source);
             using var input = new ObservedStream(file, _ => progress.Report((double)file.Position / Math.Max(1, file.Length)), cancellationToken);
             using var reader = ReaderFactory.OpenReader(input, ReaderOptions.ForExternalStream with { ArchiveEncoding = _names });
-            using var writer = OpenWriter(output, to, zip64: file.Length > Zip64Threshold / 16);
+            opened(file.Length > Zip64Threshold / 16);
 
             // A gzip of a single file need not record its name; "notes.txt.gz" then holds "notes.txt".
             var unnamed = reader.Type == ArchiveType.GZip ? FormatRegistry.StemOf(source) : null;
             while (reader.MoveToNextEntry())
             {
-                Copy(reader.Entry, () => new ObservedStream(reader.OpenEntryStream(), _ => { }, cancellationToken), writer, unnamed);
+                Visit(reader.Entry, () => new ObservedStream(reader.OpenEntryStream(), _ => { }, cancellationToken), unnamed);
             }
 
             return;
@@ -146,23 +180,21 @@ public sealed class SharpCompressArchiveConverter : IConverter
         var done = 0L;
         Stream Observe(Stream data) => new ObservedStream(data, n => progress.Report(total > 0 ? (double)(done += n) / total : 0), cancellationToken);
 
-        using (var writer = OpenWriter(output, to, zip64: total > Zip64Threshold || entries.Count >= ushort.MaxValue))
+        opened(total > Zip64Threshold || entries.Count >= ushort.MaxValue);
+        if (archive.IsSolid || archive.Type == ArchiveType.SevenZip)
         {
-            if (archive.IsSolid || archive.Type == ArchiveType.SevenZip)
+            // Solid data decodes in one pass; opening the entries one by one would restart it for each.
+            using var reader = archive.ExtractAllEntries();
+            while (reader.MoveToNextEntry())
             {
-                // Solid data decodes in one pass; opening the entries one by one would restart it for each.
-                using var reader = archive.ExtractAllEntries();
-                while (reader.MoveToNextEntry())
-                {
-                    Copy(reader.Entry, () => Observe(reader.OpenEntryStream()), writer);
-                }
+                Visit(reader.Entry, () => Observe(reader.OpenEntryStream()));
             }
-            else
+        }
+        else
+        {
+            foreach (var entry in entries)
             {
-                foreach (var entry in entries)
-                {
-                    Copy(entry, () => Observe(entry.OpenEntryStream()), writer);
-                }
+                Visit(entry, () => Observe(entry.OpenEntryStream()));
             }
         }
     }
@@ -176,13 +208,8 @@ public sealed class SharpCompressArchiveConverter : IConverter
         _ => throw new ArgumentOutOfRangeException(nameof(format), format, null),
     };
 
-    private static void Copy(IEntry entry, Func<Stream> open, IWriter writer, string? unnamed = null)
+    private static void Copy(IEntry entry, string path, Func<Stream> open, IWriter writer)
     {
-        if (!string.IsNullOrEmpty(entry.LinkTarget) || EntryPath(entry, unnamed) is not { } path)
-        {
-            return;
-        }
-
         if (entry.IsDirectory)
         {
             writer.WriteDirectory(path, entry.LastModifiedTime);
