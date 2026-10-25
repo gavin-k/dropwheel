@@ -1,4 +1,5 @@
 using DropWheel.Core.Conversion;
+using DropWheel.Core.Settings;
 using DropWheel.Core.Wheel;
 using FluentAssertions;
 
@@ -51,7 +52,7 @@ public class DefaultRecommenderTests
         var recent = new RecentItems();
         recent.Touch(MediaKind.Image, WheelMode.Convert, "webp");
 
-        var wheel = new WheelBuilder(graph, recent, new DefaultRecommender(graph)).Build(["/p/a.jpg"], WheelMode.Convert, "");
+        var wheel = new WheelBuilder(graph, recent, new DefaultRecommender(graph)).Build(["/p/a.jpg"], WheelMode.Convert, AppSettings.Default);
 
         wheel.Slots.Select(s => s.ItemId).Should().Equal("webp", "png", "avif", "gif", "tiff", "bmp");
         wheel.Slots[0].SubLabel.Should().Be("最近");

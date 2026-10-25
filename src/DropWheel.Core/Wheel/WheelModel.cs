@@ -1,4 +1,5 @@
 using DropWheel.Core.Conversion;
+using DropWheel.Core.Settings;
 
 namespace DropWheel.Core.Wheel;
 
@@ -24,7 +25,7 @@ public sealed record WheelModel(WheelMode Mode, string CenterTitle, string Cente
 /// <summary>Builds the 6-slot wheel: 3 most-recent + 3 recommended, deduplicated, unavailable kept but greyed.</summary>
 public sealed class WheelBuilder(ConversionGraph graph, IRecentItems recent, IRecommender recommender)
 {
-    public WheelModel Build(IReadOnlyList<string> sourcePaths, WheelMode mode, string outputDirectory)
+    public WheelModel Build(IReadOnlyList<string> sourcePaths, WheelMode mode, AppSettings settings)
     {
         ArgumentOutOfRangeException.ThrowIfZero(sourcePaths.Count);
         var format = FormatRegistry.FromPath(sourcePaths[0]);
@@ -51,7 +52,7 @@ public sealed class WheelBuilder(ConversionGraph graph, IRecentItems recent, IRe
 
         var slots = picked.Select((p, i) =>
         {
-            var request = new ConversionRequest(sourcePaths, p.id, outputDirectory);
+            var request = settings.Request(sourcePaths, p.id);
             var availability = mode == WheelMode.Convert ? graph.Check(request) : Availability.Available;
             var quality = mode == WheelMode.Convert && availability.IsAvailable && format is not null
                 ? graph.Resolve(format.Id, p.id)?.Estimate(request)

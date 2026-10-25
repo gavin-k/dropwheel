@@ -56,11 +56,19 @@ public partial class App : Application
             var graph = new ConversionGraph();
             graph.Register(new MagickImageConverter());
             _queue = new JobQueue(graph, new UndoLedger(new ShellFileOperations()));
-            var recent = new RecentItems();
+            var commandLine = Environment.GetCommandLineArgs();
+            var dataDir = ArgValue(commandLine, "--data-dir") ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DropWheel");
+            var settings = new SettingsStore(Path.Combine(dataDir, "settings.json"));
+            var recent = new RecentItems(path: Path.Combine(dataDir, "recent.json"));
+            foreach (var problem in new[] { settings.LoadProblem, recent.LoadProblem }.OfType<string>())
+            {
+                FileLog.Error(problem);
+            }
+
             var builder = new WheelBuilder(graph, recent, new DefaultRecommender(graph));
 
             // Convert only: binding Win or Ctrl+Alt to wheels M0 does not have would swallow the Win key mid-drag for nothing.
-            var bindings = KeyBindings.Default with { Bindings = [.. KeyBindings.Default.Bindings.Where(b => b.Mode == WheelMode.Convert)] };
+            var bindings = settings.Current.Keys with { Bindings = [.. settings.Current.Keys.Bindings.Where(b => b.Mode == WheelMode.Convert)] };
             var tapper = new ModifierTapper(bindings, TimeProvider.System);
             _monitor = new DragMonitor(tapper, new WinKeyGate(bindings));
             _monitor.Faulted += ex => FileLog.Error("hook thread handler failed", ex);
@@ -69,18 +77,17 @@ public partial class App : Application
             var queueWindow = new QueueWindow(_queue, ui);
             queueWindow.Closed += (_, _) => Shutdown();
             _wheel = new WheelWindow();
-            _controller = new WheelController(ui, _monitor, _host, _wheel, builder, _queue, recent, tapper);
+            _controller = new WheelController(ui, _monitor, _host, _wheel, builder, _queue, recent, settings, tapper);
 
             _host.Start();
             _monitor.Start();
             queueWindow.Show();
             await _wheel.PrewarmAsync().ConfigureAwait(true);
-            FileLog.Info($"ready: hooks and drop target up, log {FileLog.CurrentFile}");
+            FileLog.Info($"ready: hooks and drop target up, log {FileLog.CurrentFile}, settings {dataDir}");
 
-            var commandLine = Environment.GetCommandLineArgs();
             if (Array.IndexOf(commandLine, "--wheel-preview") is var preview and >= 0)
             {
-                await PreviewAsync(builder, withHost: commandLine.ElementAtOrDefault(preview + 1) == "host").ConfigureAwait(true);
+                await PreviewAsync(builder, settings.Current, withHost: commandLine.ElementAtOrDefault(preview + 1) == "host").ConfigureAwait(true);
             }
         }
         catch (Exception ex)
@@ -94,12 +101,12 @@ public partial class App : Application
     /// Diagnostic (<c>--wheel-preview [host]</c>): shows the wheel for a JPG at the centre of the primary
     /// screen with the first sector hovered, optionally under the drop target host, then quits.
     /// </summary>
-    private async Task PreviewAsync(WheelBuilder builder, bool withHost)
+    private async Task PreviewAsync(WheelBuilder builder, AppSettings settings, bool withHost)
     {
         var bounds = Microsoft.UI.Windowing.DisplayArea.Primary.OuterBounds;
         var (x, y, scale) = WheelController.Place((bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2));
         _wheel!.ShowAt(x, y, scale);
-        _wheel.SetModel(builder.Build(["preview.jpg"], WheelMode.Convert, outputDirectory: ""));
+        _wheel.SetModel(builder.Build(["preview.jpg"], WheelMode.Convert, settings));
         _wheel.SetHovered(0);
         if (withHost)
         {
@@ -110,6 +117,9 @@ public partial class App : Application
         await Task.Delay(TimeSpan.FromSeconds(4)).ConfigureAwait(true);
         Shutdown();
     }
+
+    private static string? ArgValue(string[] args, string name) =>
+        Array.IndexOf(args, name) is var i and >= 0 && i + 1 < args.Length ? args[i + 1] : null;
 
     private void Shutdown()
     {

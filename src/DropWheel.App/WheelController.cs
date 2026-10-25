@@ -4,6 +4,7 @@ using DropWheel.App.Overlay;
 using DropWheel.Core.Conversion;
 using DropWheel.Core.Input;
 using DropWheel.Core.Jobs;
+using DropWheel.Core.Settings;
 using DropWheel.Core.Wheel;
 using DropWheel.Shell;
 using Microsoft.UI.Dispatching;
@@ -40,6 +41,7 @@ internal sealed class WheelController : IDisposable
     private readonly WheelBuilder _builder;
     private readonly JobQueue _queue;
     private readonly IRecentItems _recent;
+    private readonly SettingsStore _settings;
     private readonly ModifierTapper _tapper;
     private readonly DispatcherQueueTimer _idleGrace;
     private readonly DispatcherQueueTimer _watchdog;
@@ -54,6 +56,7 @@ internal sealed class WheelController : IDisposable
         WheelBuilder builder,
         JobQueue queue,
         IRecentItems recent,
+        SettingsStore settings,
         ModifierTapper tapper)
     {
         _ui = ui;
@@ -63,6 +66,7 @@ internal sealed class WheelController : IDisposable
         _builder = builder;
         _queue = queue;
         _recent = recent;
+        _settings = settings;
         _tapper = tapper;
 
         _idleGrace = ui.CreateTimer();
@@ -128,7 +132,7 @@ internal sealed class WheelController : IDisposable
 
         // Built here, before DragEnter computes its first effect, so the very first DragOver already
         // hit-tests against the real enabled sectors.
-        var model = _builder.Build(paths, session.Mode, outputDirectory: "");
+        var model = _builder.Build(paths, session.Mode, session.Settings);
         session.Model = model;
         var enabled = Enumerable.Range(0, WheelModel.SlotCount).Select(i => i < model.Slots.Count && model.Slots[i].Availability.IsAvailable).ToArray();
         _host.Show(session.Placement with { EnabledSectors = enabled });
@@ -158,8 +162,8 @@ internal sealed class WheelController : IDisposable
             }
 
             var label = paths.Count == 1 ? $"{Path.GetFileName(paths[0])} → {slot.Label}" : $"{paths.Count} 个文件 → {slot.Label}";
-            _queue.Enqueue(new ConversionRequest(paths, slot.ItemId, OutputDirectory: ""), label);
-            _recent.Touch(FormatRegistry.FromPath(paths[0])?.Kind ?? MediaKind.Unknown, WheelMode.Convert, slot.ItemId);
+            _queue.Enqueue(session!.Settings.Request(paths, slot.ItemId), label);
+            _recent.Touch(FormatRegistry.FromPath(paths[0])?.Kind ?? MediaKind.Unknown, session.Mode, slot.ItemId);
             FileLog.Info($"wheel: enqueued {label}");
         });
     }
@@ -183,7 +187,7 @@ internal sealed class WheelController : IDisposable
 
         var (x, y, scale) = Place(point);
         var placement = new WheelPlacement(x, y, scale, new bool[WheelModel.SlotCount]);
-        _session = new Session(mode, placement, tappedAt);
+        _session = new Session(mode, placement, tappedAt, _settings.Current);
 
         // Order matters: the host has to end up above the wheel. If the wheel were on top, OLE would see
         // the drag leave the host and the host would report a cancel.
@@ -239,8 +243,10 @@ internal sealed class WheelController : IDisposable
             scale);
     }
 
-    private sealed class Session(WheelMode mode, WheelPlacement placement, long tappedAt)
+    /// <param name="settings">The snapshot the wheel was built with; the drop uses the same one.</param>
+    private sealed class Session(WheelMode mode, WheelPlacement placement, long tappedAt, AppSettings settings)
     {
+        public AppSettings Settings { get; } = settings;
         public WheelMode Mode { get; } = mode;
         public WheelPlacement Placement { get; } = placement;
         public long TappedAt { get; } = tappedAt;

@@ -44,9 +44,20 @@ internal static partial class AppScenario
             }
         }
 
+        // A fresh profile per run, so neither the developer's settings nor earlier runs' recent items
+        // decide where the output goes or which sector PNG is on.
+        var profile = Path.Combine(Path.GetTempPath(), "DropWheelAcceptance", "profile");
+        if (Directory.Exists(profile))
+        {
+            Directory.Delete(profile, recursive: true);
+        }
+
+        Directory.CreateDirectory(profile);
+        File.WriteAllText(Path.Combine(profile, "settings.json"), """{ "version": 1, "onboardingDone": true }""");
+
         var log = new AppLog();
         var started = Log.NowMs;
-        using var app = Process.Start(new ProcessStartInfo(exe) { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(exe)! })
+        using var app = Process.Start(new ProcessStartInfo(exe, ["--data-dir", profile]) { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(exe)! })
             ?? throw new InvalidOperationException($"could not start {exe}");
         try
         {

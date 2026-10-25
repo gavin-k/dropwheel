@@ -36,6 +36,10 @@
 - [ ] 预期质量：PDF→DOCX / TXT、有损→无损图片
 - [ ] 边缘停靠托盘、触屏长按
 
+进展（每条注明证据）：
+
+- 2026-10-25 设置与最近使用落盘：`%LOCALAPPDATA%\DropWheel\settings.json` 和 `recent.json`，先写临时文件再替换；读不了的文件改名为 `.bad` 并用默认值。转换请求的输出目录、命名模板、重名策略都取自设置。`--data-dir <目录>` 换一个配置目录，验收每次用全新的配置。证据：Mac 上 Core 测试 83 个通过；VM 上 `app --explorer` 验收 PASS。
+
 ## M2 · Beta 与分发
 
 - [ ] `IExplorerCommand` 右键菜单（C++），稀疏包
