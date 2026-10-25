@@ -114,7 +114,7 @@ public sealed class FfmpegConverter : IConverter
             var encoders = await EncodersAsync(tools).WaitAsync(cancellationToken).ConfigureAwait(false);
             var written = await OutputFiles.ForEachSourceAsync(request, progress,
                 (source, i, within) => Convert(tools, encoders, request, source, i, within, cancellationToken), cancellationToken).ConfigureAwait(false);
-            return new(true, written);
+            return ConversionResult.Written(written);
         }
         catch (InvalidDataException ex)
         {

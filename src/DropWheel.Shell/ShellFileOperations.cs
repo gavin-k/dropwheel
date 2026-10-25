@@ -34,17 +34,20 @@ public sealed class ShellFileOperations : IFileOperations
         }, $"recycle {existing.Count} item(s)", cancellationToken);
     }
 
-    public Task MoveAsync(string source, string destination, CancellationToken cancellationToken = default)
+    public Task MoveAsync(IReadOnlyList<FileMove> moves, CancellationToken cancellationToken = default)
     {
         // No FOF_NOCONFIRMATION here: it would answer "replace" for a file now sitting at the destination.
         const FILEOPERATION_FLAGS flags = FILEOPERATION_FLAGS.FOF_ALLOWUNDO | FILEOPERATION_FLAGS.FOF_NOCONFIRMMKDIR
             | FILEOPERATION_FLAGS.FOF_RENAMEONCOLLISION | FILEOPERATION_FLAGS.FOF_SILENT;
         return RunAsync(flags, op =>
         {
-            var folder = Path.GetDirectoryName(Path.GetFullPath(destination)) ?? throw new ArgumentException("No folder in destination.", nameof(destination));
-            Directory.CreateDirectory(folder);
-            op.MoveItem(Item(source), Item(folder), Path.GetFileName(destination), null);
-        }, $"move {source}", cancellationToken);
+            foreach (var move in moves)
+            {
+                var folder = Path.GetDirectoryName(Path.GetFullPath(move.To)) ?? throw new ArgumentException($"No folder in {move.To}.", nameof(moves));
+                Directory.CreateDirectory(folder);
+                op.MoveItem(Item(move.From), Item(folder), Path.GetFileName(move.To), null);
+            }
+        }, $"move {moves.Count} item(s)", cancellationToken);
     }
 
     private static Task RunAsync(FILEOPERATION_FLAGS flags, Action<IFileOperation> queue, string what, CancellationToken cancellationToken)

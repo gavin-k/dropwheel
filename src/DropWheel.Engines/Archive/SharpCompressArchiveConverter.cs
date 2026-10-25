@@ -89,7 +89,7 @@ public sealed class SharpCompressArchiveConverter : IConverter
         {
             var written = await OutputFiles.ForEachSourceAsync(request, progress,
                 (source, i, within) => Task.Run(() => Convert(request, source, i, within, cancellationToken), cancellationToken), cancellationToken).ConfigureAwait(false);
-            return new(true, written);
+            return ConversionResult.Written(written);
         }
         catch (InvalidDataException ex)
         {

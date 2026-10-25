@@ -45,9 +45,11 @@ public sealed class JobQueue : IAsyncDisposable
         }
     }
 
-    public Job Enqueue(ConversionRequest request, string label)
+    /// <param name="runner">Runs the request; null converts it with whatever the graph resolves for its formats.</param>
+    /// <param name="countsTowardQuota">False for file actions, which never count against the daily quota.</param>
+    public Job Enqueue(ConversionRequest request, string label, IJobRunner? runner = null, bool countsTowardQuota = true)
     {
-        var job = new Job { Request = request, Label = label };
+        var job = new Job { Request = request, Label = label, Runner = runner, CountsTowardQuota = countsTowardQuota };
         lock (_gate)
         {
             _jobs.Add(job);
@@ -83,12 +85,14 @@ public sealed class JobQueue : IAsyncDisposable
         }
     }
 
-    /// <summary>Runs a failed or canceled job again, as a new job with the same request and label.</summary>
+    /// <summary>Runs a failed or canceled job again, as a new job with the same request, label and runner.</summary>
     /// <returns>The new job, or null if the job is in any other state.</returns>
     public Job? Retry(Guid id)
-        => Jobs.FirstOrDefault(j => j.Id == id) is { State: JobState.Failed or JobState.Canceled } job ? Enqueue(job.Request, job.Label) : null;
+        => Jobs.FirstOrDefault(j => j.Id == id) is { State: JobState.Failed or JobState.Canceled } job
+            ? Enqueue(job.Request, job.Label, job.Runner, job.CountsTowardQuota)
+            : null;
 
-    /// <summary>Recycles a finished job's outputs. Returns false if the job is not in a state that can be undone.</summary>
+    /// <summary>Reverses a finished job by its <see cref="Job.Undo"/> plan. Returns false if the job is not in a state that can be undone.</summary>
     public async Task<bool> UndoAsync(Guid id, CancellationToken cancellationToken = default)
     {
         var job = Jobs.FirstOrDefault(j => j.Id == id);
@@ -153,16 +157,16 @@ public sealed class JobQueue : IAsyncDisposable
         try
         {
             cts.Token.ThrowIfCancellationRequested();
-            var availability = _graph.Check(job.Request);
+            var availability = job.Runner?.Check(job.Request) ?? _graph.Check(job.Request);
             if (!availability.IsAvailable)
             {
                 Finish(job, JobState.Failed, error: availability.Reason);
                 return;
             }
 
-            var from = FormatRegistry.FromPath(job.Request.SourcePaths[0])!;
-            var to = FormatRegistry.FromExtension(job.Request.TargetFormatId)!;
-            var converter = _graph.Resolve(from.Id, to.Id)!;
+            var runner = job.Runner ?? _graph.Resolve(
+                FormatRegistry.FromPath(job.Request.SourcePaths[0])!.Id,
+                FormatRegistry.FromExtension(job.Request.TargetFormatId)!.Id)!;
 
             job.State = JobState.Running;
             Raise(job);
@@ -171,23 +175,23 @@ public sealed class JobQueue : IAsyncDisposable
                 job.Progress = p;
                 Raise(job);
             });
-            var result = await converter.RunAsync(job.Request, progress, cts.Token).ConfigureAwait(false);
+            var result = await runner.RunAsync(job.Request, progress, cts.Token).ConfigureAwait(false);
 
             if (!result.Succeeded)
             {
                 Finish(job, JobState.Failed, error: result.Error ?? "转换失败。");
             }
-            else if (result.OutputPaths.Count == 0)
+            else if (result.Skipped)
             {
-                Finish(job, JobState.Skipped, detail: "目标文件已存在，按重名策略跳过。");
+                Finish(job, JobState.Skipped, detail: result.Detail ?? "目标文件已存在，按重名策略跳过。");
             }
             else
             {
                 job.Outputs = result.OutputPaths;
-                job.Undo = new UndoPlan.RecycleOutputs(result.OutputPaths);
+                job.Undo = result.Undo ?? (result.OutputPaths.Count > 0 ? new UndoPlan.RecycleOutputs(result.OutputPaths) : new UndoPlan.None());
                 job.Progress = 1;
                 _undo.Record(job);
-                Finish(job, JobState.Done);
+                Finish(job, JobState.Done, detail: result.Detail);
             }
         }
         catch (OperationCanceledException) when (cts.IsCancellationRequested)

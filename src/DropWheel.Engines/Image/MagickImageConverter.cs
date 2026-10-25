@@ -71,7 +71,7 @@ public sealed class MagickImageConverter(TimeProvider? time = null) : IConverter
         {
             var written = await OutputFiles.ForEachSourceAsync(request, progress,
                 (source, i, _) => Task.Run(() => Convert(request, source, i, format), cancellationToken), cancellationToken).ConfigureAwait(false);
-            return new(true, written);
+            return ConversionResult.Written(written);
         }
         catch (MagickException ex)
         {

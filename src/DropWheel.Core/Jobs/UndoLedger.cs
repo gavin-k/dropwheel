@@ -50,7 +50,7 @@ public sealed class UndoLedger(IFileOperations files)
             await (job.Undo switch
             {
                 UndoPlan.RecycleOutputs r => files.RecycleAsync(r.Paths, cancellationToken),
-                UndoPlan.MoveBack m => files.MoveAsync(m.From, m.To, cancellationToken),
+                UndoPlan.MoveBack m => files.MoveAsync([.. m.Moves.Select(x => new FileMove(x.To, x.From))], cancellationToken),
                 _ => throw new NotSupportedException($"Undo for {job.Undo.GetType().Name} is not implemented yet."),
             }).ConfigureAwait(false);
         }

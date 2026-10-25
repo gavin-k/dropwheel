@@ -102,14 +102,86 @@ public class JobQueueTests
     }
 
     [Fact]
-    public async Task No_outputs_means_skipped()
+    public async Task An_engine_that_wrote_nothing_is_skipped()
     {
-        var (queue, _) = Create((_, _, _) => Task.FromResult(new ConversionResult(true, [])));
+        var (queue, _) = Create((_, _, _) => Task.FromResult(ConversionResult.Written([])));
         await using var _q = queue;
         var job = queue.Enqueue(Jpg(), "x");
         await queue.WhenIdleAsync();
 
         job.State.Should().Be(JobState.Skipped);
+        job.Detail.Should().NotBeNullOrEmpty();
+    }
+
+    [Fact]
+    public async Task A_job_with_no_outputs_that_is_not_skipped_is_done_with_its_detail_and_no_undo()
+    {
+        var (queue, _) = Create((_, _, _) => Task.FromResult(new ConversionResult(true, []) { Detail = "已复制路径" }));
+        await using var _q = queue;
+        var job = queue.Enqueue(Jpg(), "x");
+        await queue.WhenIdleAsync();
+
+        job.State.Should().Be(JobState.Done);
+        job.Detail.Should().Be("已复制路径");
+        job.Undo.Should().BeOfType<UndoPlan.None>();
+        (await queue.UndoAsync(job.Id)).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task A_move_back_plan_is_kept_and_undo_moves_the_items_back()
+    {
+        var moves = new[] { new FileMove("/in/a.jpg", "/out/a.jpg"), new FileMove("/in/b", "/out/b") };
+        var (queue, _) = Create((_, _, _) => Task.FromResult(new ConversionResult(true, ["/out/a.jpg", "/out/b"]) { Undo = new UndoPlan.MoveBack(moves) }));
+        await using var _q = queue;
+        var job = queue.Enqueue(Jpg(), "x");
+        await queue.WhenIdleAsync();
+
+        job.Undo.Should().BeOfType<UndoPlan.MoveBack>();
+        (await queue.UndoAsync(job.Id)).Should().BeTrue();
+
+        _files.Recycled.Should().BeEmpty();
+        _files.Moved.Should().Equal(new FileMove("/out/a.jpg", "/in/a.jpg"), new FileMove("/out/b", "/in/b"));
+    }
+
+    [Fact]
+    public async Task A_job_runner_runs_instead_of_the_graph_and_retry_keeps_it()
+    {
+        var graphRan = false;
+        var (queue, _) = Create((_, _, _) =>
+        {
+            graphRan = true;
+            return Task.FromResult(new ConversionResult(true, []));
+        });
+        await using var _q = queue;
+        var runs = 0;
+        var runner = new TestRunner((_, _, _) => Task.FromResult(++runs == 1 ? new ConversionResult(false, [], "占用") : new ConversionResult(true, ["/in/a.zip"])));
+
+        // "action.x" is no format the graph knows, so only the runner can take it.
+        var job = queue.Enqueue(new(["/in/a.jpg"], "action.x", ""), "x", runner, countsTowardQuota: false);
+        await queue.WhenIdleAsync();
+        job.State.Should().Be(JobState.Failed);
+
+        var retry = queue.Retry(job.Id)!;
+        await queue.WhenIdleAsync();
+
+        retry.State.Should().Be(JobState.Done);
+        retry.Runner.Should().BeSameAs(runner);
+        retry.CountsTowardQuota.Should().BeFalse();
+        runs.Should().Be(2);
+        graphRan.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task An_unavailable_runner_fails_the_job_with_its_reason()
+    {
+        var (queue, _) = Create((_, _, _) => Task.FromResult(new ConversionResult(true, [])));
+        await using var _q = queue;
+        var runner = new TestRunner((_, _, _) => throw new InvalidOperationException("ran"), Availability.Unavailable("一次只能重命名一项"));
+        var job = queue.Enqueue(new(["/in/a.jpg", "/in/b.jpg"], "action.x", ""), "x", runner);
+        await queue.WhenIdleAsync();
+
+        job.State.Should().Be(JobState.Failed);
+        job.Error.Should().Be("一次只能重命名一项");
     }
 
     [Fact]
@@ -257,6 +329,13 @@ public class JobQueueTests
         }
     }
 
+    private sealed class TestRunner(Func<ConversionRequest, IProgress<double>, CancellationToken, Task<ConversionResult>> run, Availability? availability = null) : IJobRunner
+    {
+        public Availability Check(ConversionRequest request) => availability ?? Availability.Available;
+
+        public Task<ConversionResult> RunAsync(ConversionRequest request, IProgress<double> progress, CancellationToken cancellationToken) => run(request, progress, cancellationToken);
+    }
+
     private sealed class RecordingFiles : IFileOperations
     {
         public List<string> Recycled { get; } = [];
@@ -275,6 +354,12 @@ public class JobQueueTests
             return Task.CompletedTask;
         }
 
-        public Task MoveAsync(string source, string destination, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public List<FileMove> Moved { get; } = [];
+
+        public Task MoveAsync(IReadOnlyList<FileMove> moves, CancellationToken cancellationToken = default)
+        {
+            Moved.AddRange(moves);
+            return Task.CompletedTask;
+        }
     }
 }

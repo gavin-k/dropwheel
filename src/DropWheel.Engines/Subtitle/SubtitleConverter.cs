@@ -58,7 +58,7 @@ public sealed class SubtitleConverter(TimeProvider? time = null) : IConverter
         {
             var written = await OutputFiles.ForEachSourceAsync(request, progress,
                 (source, i, _) => Convert(request, source, i, cancellationToken), cancellationToken).ConfigureAwait(false);
-            return new(true, written);
+            return ConversionResult.Written(written);
         }
         catch (InvalidDataException ex)
         {

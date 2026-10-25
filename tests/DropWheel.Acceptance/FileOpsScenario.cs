@@ -1,3 +1,4 @@
+using DropWheel.Core.Jobs;
 using DropWheel.Shell;
 
 namespace DropWheel.Acceptance;
@@ -26,7 +27,7 @@ internal static class FileOpsScenario
 
             var source = Write(Path.Combine(dir, $"move-{stamp}.png"), 7);
             var dest = Write(Path.Combine(dir, "moved", $"move-{stamp}.png"), 3);
-            ops.MoveAsync(source, dest).GetAwaiter().GetResult();
+            ops.MoveAsync([new FileMove(source, dest)]).GetAwaiter().GetResult();
             var landed = Directory.GetFiles(Path.GetDirectoryName(dest)!, $"move-{stamp}*.png");
             checks.Check("move with a collision keeps both files", !File.Exists(source) && new FileInfo(dest).Length == 3 && landed.Length == 2,
                 string.Join(", ", landed.Select(f => $"{Path.GetFileName(f)} ({new FileInfo(f).Length} B)")));
