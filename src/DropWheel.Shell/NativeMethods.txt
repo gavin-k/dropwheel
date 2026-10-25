@@ -66,6 +66,17 @@ IShellItem
 SHCreateItemFromParsingName
 FILEOPERATION_FLAGS
 
+// Folder picker for 移动到 / 复制到, brought to the front by an empty input event
+FileOpenDialog
+IFileOpenDialog
+FILEOPENDIALOGOPTIONS
+SIGDN
+SendInput
+INPUT
+EnumThreadWindows
+GetClassName
+WM_CLOSE
+
 // Later milestones
 RegisterHotKey
 UnregisterHotKey

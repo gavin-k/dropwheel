@@ -42,11 +42,11 @@ public sealed class FileActionsTests : IDisposable
         var wheel = Wheel(AppSettings.Default, File("a.jpg"));
 
         wheel.Mode.Should().Be(WheelMode.Actions);
-        wheel.Slots.Select(s => s.ItemId).Should().Equal("action.copy-path", "action.rename", "action.zip", "action.recycle");
+        wheel.Slots.Select(s => s.ItemId).Should().Equal("action.copy-path", "action.move-to", "action.copy-to", "action.rename", "action.zip", "action.recycle");
         wheel.Slots.Should().OnlyContain(s => s.Source == SlotSource.Fixed && s.Operation != null);
         wheel.Slots[0].SubLabel.Should().Be("带引号");
 
-        var delete = wheel.Slots[3];
+        var delete = wheel.Slots[5];
         delete.Availability.IsAvailable.Should().BeFalse();
         delete.Availability.Cause.Should().Be(UnavailableCause.DisabledInSettings);
         delete.Availability.Reason.Should().Be(FileActionSettings.DisabledReason);
@@ -61,7 +61,7 @@ public sealed class FileActionsTests : IDisposable
         var wheel = Wheel(settings, File("a.jpg"));
 
         wheel.Slots.Should().OnlyContain(s => s.Availability.IsAvailable);
-        wheel.Slots[3].SubLabel.Should().Be("回收站");
+        wheel.Slots[5].SubLabel.Should().Be("回收站");
     }
 
     [Fact]
@@ -216,6 +216,115 @@ public sealed class FileActionsTests : IDisposable
         Directory.GetFileSystemEntries(_dir).Select(Path.GetFileName).Should().Equal("a.txt");
     }
 
+    [Fact]
+    public async Task Move_asks_for_a_folder_and_moves_the_items_there_under_their_own_names()
+    {
+        var a = File("a.jpg");
+        var b = Folder("b");
+        var dest = Folder("dest");
+        _desktop.Pick = dest;
+
+        var result = await Run(Action("action.move-to"), a, b);
+
+        var plan = new[] { new FileMove(a, Path.Combine(dest, "a.jpg")), new FileMove(b, Path.Combine(dest, "b")) };
+        _files.Moved.Should().Equal(plan);
+        result.OutputPaths.Should().Equal(plan.Select(m => m.To));
+        result.Undo.Should().BeOfType<UndoPlan.MoveBack>().Which.Moves.Should().Equal(plan);
+        result.Detail.Should().Be("已移动到 dest");
+        _desktop.Prompts.Should().ContainSingle().Which.Should().BeEquivalentTo(new { Title = "把 2 项移动到", OkLabel = "移动到这里", StartFolder = _dir });
+    }
+
+    [Fact]
+    public async Task Copy_numbers_a_taken_name_also_within_one_batch_and_undo_recycles_the_copies()
+    {
+        var a = File("one/a.txt");
+        var b = File("two/a.txt");
+        var dest = Folder("dest");
+        File("dest/a.txt", "older");
+        _desktop.Pick = dest;
+
+        var result = await Run(Action("action.copy-to"), a, b);
+
+        _files.Copied.Select(m => m.To).Should().Equal(Path.Combine(dest, "a (1).txt"), Path.Combine(dest, "a (2).txt"));
+        result.Undo.Should().BeNull();
+        result.Detail.Should().Be("已复制到 dest");
+        _desktop.Prompts[0].Title.Should().Be("把 2 项复制到");
+    }
+
+    [Fact]
+    public async Task Copy_and_move_remember_their_folders_apart()
+    {
+        var a = File("a.jpg");
+        _desktop.Pick = Folder("dest");
+
+        await Run(Action("action.move-to"), a);
+        await Run(Action("action.copy-to"), a);
+
+        _desktop.Prompts.Select(p => p.Memory).Should().OnlyHaveUniqueItems();
+        _desktop.Prompts[0].Title.Should().Be("把 a.jpg 移动到");
+    }
+
+    [Fact]
+    public async Task A_taken_name_is_skipped_when_the_policy_says_skip()
+    {
+        var a = File("a.txt");
+        var b = File("b.txt");
+        var dest = Folder("dest");
+        File("dest/a.txt", "older");
+        _desktop.Pick = dest;
+        var move = Action("action.move-to");
+
+        var result = await move.RunAsync(AppSettings.Default.Request([a, b], move.Id) with { Conflict = ConflictPolicy.Skip }, new InlineProgress(_ => { }), CancellationToken.None);
+
+        _files.Moved.Should().Equal(new FileMove(b, Path.Combine(dest, "b.txt")));
+        result.Detail.Should().Be("已移动到 dest，跳过 1 项");
+    }
+
+    [Fact]
+    public async Task Moving_into_the_folder_the_items_are_in_does_nothing()
+    {
+        var a = File("a.txt");
+        _desktop.Pick = _dir;
+
+        var result = await Run(Action("action.move-to"), a);
+
+        _files.Moved.Should().BeEmpty();
+        result.Skipped.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task A_folder_cannot_go_into_itself_but_can_go_next_to_itself()
+    {
+        var b = Folder("b");
+        var move = Action("action.move-to");
+
+        foreach (var inside in new[] { b, Folder("b/sub"), Folder("b/..x") })
+        {
+            _desktop.Pick = inside;
+            var refused = await Run(move, b);
+            refused.Succeeded.Should().BeFalse();
+            refused.Error.Should().Be("不能把 b 移动到它自己里面");
+        }
+
+        _files.Moved.Should().BeEmpty();
+        _desktop.Pick = Folder("bb");
+        (await Run(move, b)).Succeeded.Should().BeTrue();
+        _files.Moved.Should().Equal(new FileMove(b, Path.Combine(_dir, "bb", "b")));
+    }
+
+    [Fact]
+    public async Task Closing_the_folder_dialog_skips_the_job()
+    {
+        var a = File("a.txt");
+        _desktop.Pick = null;
+
+        var result = await Run(Action("action.copy-to"), a);
+
+        _files.Copied.Should().BeEmpty();
+        result.Skipped.Should().BeTrue();
+        result.Detail.Should().Be("没有选文件夹");
+    }
+
     private static string[] Entries(string zip)
     {
         using var archive = ZipFile.OpenRead(zip);
@@ -246,6 +355,16 @@ public sealed class FileActionsTests : IDisposable
             Renamed.Add(path);
             return Task.CompletedTask;
         }
+
+        public string? Pick { get; set; }
+
+        public List<FolderPrompt> Prompts { get; } = [];
+
+        public Task<string?> PickFolderAsync(FolderPrompt prompt, CancellationToken cancellationToken)
+        {
+            Prompts.Add(prompt);
+            return Task.FromResult(Pick);
+        }
     }
 
     private sealed class RecordingFiles : IFileOperations
@@ -258,6 +377,20 @@ public sealed class FileActionsTests : IDisposable
             return Task.CompletedTask;
         }
 
-        public Task MoveAsync(IReadOnlyList<FileMove> moves, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public List<FileMove> Moved { get; } = [];
+
+        public List<FileMove> Copied { get; } = [];
+
+        public Task MoveAsync(IReadOnlyList<FileMove> moves, CancellationToken cancellationToken = default)
+        {
+            Moved.AddRange(moves);
+            return Task.CompletedTask;
+        }
+
+        public Task CopyAsync(IReadOnlyList<FileMove> copies, CancellationToken cancellationToken = default)
+        {
+            Copied.AddRange(copies);
+            return Task.CompletedTask;
+        }
     }
 }

@@ -1,11 +1,13 @@
 using System.Runtime.InteropServices;
+using DropWheel.App.Diagnostics;
 using DropWheel.Core.Actions;
+using DropWheel.Shell;
 using Microsoft.UI.Dispatching;
 using Windows.ApplicationModel.DataTransfer;
 
 namespace DropWheel.App;
 
-/// <summary>The clipboard on the UI thread, and Explorer's rename box on an STA thread of its own.</summary>
+/// <summary>The clipboard on the UI thread; Explorer's rename box and the folder picker on STA threads of their own.</summary>
 internal sealed class Desktop(DispatcherQueue ui) : IDesktop
 {
     /// <summary>CLIPBRD_E_CANT_OPEN: another program has the clipboard open.</summary>
@@ -51,6 +53,14 @@ internal sealed class Desktop(DispatcherQueue ui) : IDesktop
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
         return done.Task;
+    }
+
+    public async Task<string?> PickFolderAsync(FolderPrompt prompt, CancellationToken cancellationToken)
+    {
+        FileLog.Info($"actions: asking for a folder: {prompt.Title}");
+        var folder = await FolderDialog.PickAsync(prompt, cancellationToken).ConfigureAwait(false);
+        FileLog.Info(folder is null ? "actions: no folder picked" : $"actions: picked {folder}");
+        return folder;
     }
 
     private Task OnUiAsync(Action action)

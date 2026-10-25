@@ -361,5 +361,7 @@ public class JobQueueTests
             Moved.AddRange(moves);
             return Task.CompletedTask;
         }
+
+        public Task CopyAsync(IReadOnlyList<FileMove> copies, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 }

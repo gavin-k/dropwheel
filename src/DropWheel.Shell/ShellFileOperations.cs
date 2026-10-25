@@ -34,20 +34,33 @@ public sealed class ShellFileOperations : IFileOperations
         }, $"recycle {existing.Count} item(s)", cancellationToken);
     }
 
-    public Task MoveAsync(IReadOnlyList<FileMove> moves, CancellationToken cancellationToken = default)
+    public Task MoveAsync(IReadOnlyList<FileMove> moves, CancellationToken cancellationToken = default) =>
+        TransferAsync(moves, copy: false, cancellationToken);
+
+    public Task CopyAsync(IReadOnlyList<FileMove> copies, CancellationToken cancellationToken = default) =>
+        TransferAsync(copies, copy: true, cancellationToken);
+
+    private static Task TransferAsync(IReadOnlyList<FileMove> items, bool copy, CancellationToken cancellationToken)
     {
         // No FOF_NOCONFIRMATION here: it would answer "replace" for a file now sitting at the destination.
         const FILEOPERATION_FLAGS flags = FILEOPERATION_FLAGS.FOF_ALLOWUNDO | FILEOPERATION_FLAGS.FOF_NOCONFIRMMKDIR
             | FILEOPERATION_FLAGS.FOF_RENAMEONCOLLISION | FILEOPERATION_FLAGS.FOF_SILENT;
         return RunAsync(flags, op =>
         {
-            foreach (var move in moves)
+            foreach (var item in items)
             {
-                var folder = Path.GetDirectoryName(Path.GetFullPath(move.To)) ?? throw new ArgumentException($"No folder in {move.To}.", nameof(moves));
+                var folder = Path.GetDirectoryName(Path.GetFullPath(item.To)) ?? throw new ArgumentException($"No folder in {item.To}.", nameof(items));
                 Directory.CreateDirectory(folder);
-                op.MoveItem(Item(move.From), Item(folder), Path.GetFileName(move.To), null);
+                if (copy)
+                {
+                    op.CopyItem(Item(item.From), Item(folder), Path.GetFileName(item.To), null);
+                }
+                else
+                {
+                    op.MoveItem(Item(item.From), Item(folder), Path.GetFileName(item.To), null);
+                }
             }
-        }, $"move {moves.Count} item(s)", cancellationToken);
+        }, $"{(copy ? "copy" : "move")} {items.Count} item(s)", cancellationToken);
     }
 
     private static Task RunAsync(FILEOPERATION_FLAGS flags, Action<IFileOperation> queue, string what, CancellationToken cancellationToken)

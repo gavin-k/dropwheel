@@ -10,6 +10,8 @@ public static class FileActions
     public static IReadOnlyList<IWheelOperation> Create(IFileOperations files, IDesktop desktop, TimeProvider? time = null) =>
     [
         new CopyPathAction(desktop),
+        new TransferAction(copy: false, files, desktop),
+        new TransferAction(copy: true, files, desktop),
         new RenameAction(desktop),
         new CompressZipAction(time),
         new RecycleAction(files),

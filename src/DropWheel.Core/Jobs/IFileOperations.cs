@@ -8,4 +8,7 @@ public interface IFileOperations
 
     /// <summary>Moves each item to its full destination path, as one operation.</summary>
     Task MoveAsync(IReadOnlyList<FileMove> moves, CancellationToken cancellationToken = default);
+
+    /// <summary>Copies each item to its full destination path, as one operation.</summary>
+    Task CopyAsync(IReadOnlyList<FileMove> copies, CancellationToken cancellationToken = default);
 }
