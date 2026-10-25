@@ -12,6 +12,7 @@ public sealed class DefaultRecommender(ConversionGraph graph) : IRecommender
     {
         [MediaKind.Image] = ["png", "jpg", "webp", "avif", "gif", "tiff", "bmp"],
         [MediaKind.Subtitle] = ["srt", "vtt", "ass", "lrc", "ssa"],
+        [MediaKind.Archive] = ["zip", "7z", "tgz", "tar"],
     };
 
     public IEnumerable<string> For(IReadOnlyList<string> sourcePaths, MediaKind kind, WheelMode mode)

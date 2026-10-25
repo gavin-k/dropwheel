@@ -27,7 +27,7 @@
     <PackageVersion Include="PdfPig" Version="0.1.11" />
     <PackageVersion Include="PDFsharp" Version="6.2.1" />
     <PackageVersion Include="DocumentFormat.OpenXml" Version="3.3.0" />
-    <PackageVersion Include="SharpCompress" Version="0.40.0" />
+    <PackageVersion Include="SharpCompress" Version="0.50.5" />
 
     <!-- Tests -->
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />

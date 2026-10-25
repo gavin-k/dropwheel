@@ -37,7 +37,7 @@
 | PDF | PDFium（渲染 / 转图 / 拆分合并）+ PdfPig（文本提取） | PDF → DOCX 走「提取 + 重建」或 LibreOffice sidecar（可选模块） |
 | Office 文档 | Open XML SDK（原生读写）+ LibreOffice headless（可选下载模块） | 旧版 DOC / PPT / XLS 仅输入 |
 | OCR | `Windows.Media.Ocr`（系统内置，25 语种）→ Windows AI `TextRecognizer`（Copilot+ PC）→ RapidOCR / Tesseract 回退 | 全部离线 |
-| 压缩包 | SharpCompress（读 RAR / 7z，写 ZIP / TAR / GZ）+ 7-Zip sidecar（写 7z） | RAR 仅输入 |
+| 压缩包 | SharpCompress（读 ZIP / 7z / TAR / TAR.GZ / RAR，写 ZIP / 7z / TAR / TAR.GZ） | RAR 仅输入 |
 | 打包分发 | MSIX（Store + winget）· 稀疏包 + WiX MSI（企业直装） | `winapp` CLI 产出 x64 / ARM64 msixbundle |
 
 完整调研与替代方案对比见 [`docs/01-tech-stack.md`](docs/01-tech-stack.md)。

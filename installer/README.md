@@ -29,5 +29,4 @@ winapp embed-identity ./publish/x64/DropWheel.exe
 放在 `tools/sidecars/<name>/<arch>/`（不入库，由 CI 下载并校验 SHA-256）：
 
 - `ffmpeg/`：FFmpeg **LGPL** 构建（x64、arm64）+ `LICENSE.LGPL` + 构建配置与源码链接
-- `7za/`：7-Zip 命令行版 + `License.txt`
 - LibreOffice 不随包分发，运行时按需下载到 `%LOCALAPPDATA%\DropWheel\modules\`

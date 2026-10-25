@@ -28,7 +28,7 @@
 ├─────────────────────────────────────────────────────────────────┤
 │ DropWheel.Engines (IConverter 实现)                               │
 │  Image(Magick.NET) · Media(ffmpeg sidecar) · Pdf(PDFium+PdfPig)   │
-│  Document(OpenXML / soffice sidecar) · Archive(SharpCompress/7za) │
+│  Document(OpenXML / soffice sidecar) · Archive(SharpCompress)     │
 │  Subtitle(自写) · Ocr(Windows.Media.Ocr / TextRecognizer)          │
 └─────────────────────────────────────────────────────────────────┘
           │ COM (IExplorerCommand → 启动参数 / 命名管道)
@@ -72,7 +72,7 @@ public interface IConverter
 }
 ```
 
-sidecar 引擎（ffmpeg / 7za / soffice）通过 `SidecarProcess` 统一启动：工作目录为 `%TEMP%\DropWheel\<jobId>`，进度解析 stderr，取消 = 结束进程 + 清理临时目录。
+sidecar 引擎（ffmpeg / soffice）通过 `SidecarProcess` 统一启动：工作目录为 `%TEMP%\DropWheel\<jobId>`，进度解析 stderr，取消 = 结束进程 + 清理临时目录。
 
 ## 隐私与离线
 

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Globalization;
+using System.IO.Compression;
 using System.Text;
 using System.Text.RegularExpressions;
 using DropWheel.Core.Wheel;
@@ -19,9 +20,9 @@ namespace DropWheel.Acceptance;
 /// a PNG next to the JPG; press Undo in the task window, expect the PNG in the Recycle Bin. Then a second
 /// drag released off the wheel must convert nothing, and near the top edge, where the wheel opens shifted
 /// with a sector under the pointer, an immediate release must convert nothing either. Last, an SRT dropped
-/// on the VTT sector must come out as UTF-8 WebVTT. The app is started
-/// by path and observed only through its log file and UI Automation, so this project never references
-/// DropWheel.App.
+/// on the VTT sector must come out as UTF-8 WebVTT, and a zip dropped on the 7z sector as a 7z. The app is
+/// started by path and observed only through its log file and UI Automation, so this project never
+/// references DropWheel.App.
 /// </summary>
 internal static partial class AppScenario
 {
@@ -82,6 +83,7 @@ internal static partial class AppScenario
                 Attempt(checks, "release off the wheel", () => ReleaseOff(checks, log, jpg, explorer));
                 Attempt(checks, "wheel shifted at the edge", () => EdgeShift(checks, log, jpg, explorer));
                 Attempt(checks, "convert a subtitle", () => ConvertSubtitle(checks, log, dir, explorer));
+                Attempt(checks, "repack an archive", () => RepackArchive(checks, log, dir, explorer));
             }
         }
         finally
@@ -275,6 +277,27 @@ internal static partial class AppScenario
         checks.Check("VTT lands next to the SRT as UTF-8 WebVTT",
             SameDir(output, srt) && bytes is [0xEF, 0xBB, 0xBF, ..] && text.Contains("WEBVTT", StringComparison.Ordinal) && text.Contains("00:00:01.000 --> 00:00:02.500\r\n<i>你好</i>\r\n世界", StringComparison.Ordinal),
             $"{output}: {text.ReplaceLineEndings("⏎")}");
+    }
+
+    private static void RepackArchive(Checks checks, AppLog log, string dir, bool explorer)
+    {
+        // Its own prefix: with extensions hidden Explorer shows only the stem, which must not match the subtitle files.
+        var zip = Path.Combine(dir, $"m1z-{DateTime.Now:HHmmss}.zip");
+        using (var archive = ZipFile.Open(zip, ZipArchiveMode.Create))
+        {
+            using var entry = archive.CreateEntry("报告/数据.txt").Open();
+            entry.Write(Encoding.UTF8.GetBytes(new string('数', 4096)));
+        }
+
+        var output = ConvertThroughWheel(checks, log, zip, "7z", explorer);
+        if (output is null)
+        {
+            return;
+        }
+
+        var bytes = File.ReadAllBytes(output);
+        checks.Check("7z lands next to the zip", SameDir(output, zip) && bytes is [(byte)'7', (byte)'z', 0xBC, 0xAF, 0x27, 0x1C, ..],
+            $"{output}: {bytes.Length} bytes, starts {Convert.ToHexString(bytes.AsSpan(0, Math.Min(6, bytes.Length)))}");
     }
 
     /// <summary>Drags <paramref name="source"/>, drops it on the <paramref name="target"/> sector and waits for the queue.</summary>

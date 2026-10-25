@@ -8,6 +8,7 @@ using DropWheel.Core.Input;
 using DropWheel.Core.Jobs;
 using DropWheel.Core.Settings;
 using DropWheel.Core.Wheel;
+using DropWheel.Engines.Archive;
 using DropWheel.Engines.Image;
 using DropWheel.Engines.Subtitle;
 using DropWheel.Shell;
@@ -74,6 +75,7 @@ public partial class App : Application
             var graph = new ConversionGraph();
             graph.Register(new MagickImageConverter());
             graph.Register(new SubtitleConverter());
+            graph.Register(new SharpCompressArchiveConverter());
             _queue = new JobQueue(graph, new UndoLedger(new ShellFileOperations()));
             var dataDir = ArgValue(commandLine, "--data-dir") ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DropWheel");
             var settings = new SettingsStore(Path.Combine(dataDir, "settings.json"));

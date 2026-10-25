@@ -3,7 +3,7 @@ using System.Diagnostics;
 namespace DropWheel.Engines.Media;
 
 /// <summary>
-/// Launches an external engine (ffmpeg.exe, 7za.exe, soffice.exe) with a per-job temp working directory.
+/// Launches an external engine (ffmpeg.exe, soffice.exe) with a per-job temp working directory.
 /// Keeps LGPL / MPL binaries at a process boundary from the MIT main program (see ADR-0003).
 /// </summary>
 public sealed class SidecarProcess(string executablePath)

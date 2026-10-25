@@ -37,6 +37,13 @@ public class OutputPlannerTests
             .Should().BeNull();
 
     [Fact]
+    public void Double_extension_of_a_compressed_tar_is_dropped_whole()
+    {
+        var tgz = Path.Combine(Dir, "backup.tar.gz");
+        OutputPlanner.PathFor(new([tgz], "zip", ""), tgz, Now, _ => false).Should().Be(Path.Combine(Dir, "backup.zip"));
+    }
+
+    [Fact]
     public void Alias_target_uses_the_canonical_extension()
         => OutputPlanner.PathFor(new([Source], "tif", ""), Source, Now, _ => false)
             .Should().Be(Path.Combine(Dir, "photo.tiff"));

@@ -15,3 +15,8 @@
 - 安装包体积：核心 ~60 MB + ffmpeg LGPL ~50 MB；LibreOffice 模块 ~300 MB 按需下载。
 - 每个 sidecar 需要 x64 与 ARM64 两份二进制。
 - 「不可用并说明原因」机制必须覆盖：缺少系统编解码器（HEIC）、缺少可选模块（DOC→DOCX 需 LibreOffice）、许可证限制（RAR 仅输入）。
+
+## 更新（2026-10-25）
+
+- SharpCompress 0.50 已能写 7z（LZMA2，非 solid），压缩包引擎全部在进程内完成，不再分发 7za sidecar。sidecar 只剩 ffmpeg 和可选的 soffice。
+- RAR 仍然只读：RAR 格式只有 WinRAR 能创建，SharpCompress 只实现了解压。

@@ -101,5 +101,12 @@ public static class FormatRegistry
         return FromExtension(Path.GetExtension(path));
     }
 
+    /// <summary>The file name without its format extension, so "backup.tar.gz" gives "backup", not "backup.tar".</summary>
+    public static string StemOf(string path)
+    {
+        var name = Path.GetFileName(path);
+        return name.EndsWith(".tar.gz", StringComparison.OrdinalIgnoreCase) ? name[..^".tar.gz".Length] : Path.GetFileNameWithoutExtension(name);
+    }
+
     public static IEnumerable<FileFormat> OfKind(MediaKind kind) => All.Where(f => f.Kind == kind);
 }

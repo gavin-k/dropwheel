@@ -24,7 +24,7 @@ public static class OutputPlanner
         var directory = string.IsNullOrEmpty(request.OutputDirectory)
             ? Path.GetDirectoryName(Path.GetFullPath(sourcePath))!
             : request.OutputDirectory;
-        var context = new NamingContext(Path.GetFileNameWithoutExtension(sourcePath), target.Id, target.Id, now, sequence, width, height);
+        var context = new NamingContext(FormatRegistry.StemOf(sourcePath), target.Id, target.Id, now, sequence, width, height);
         var baseName = new NamingTemplate(request.Naming).Expand(context);
         return NamingTemplate.ResolveConflict(directory, baseName, target.Id, request.Conflict, exists);
     }

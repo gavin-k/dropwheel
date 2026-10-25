@@ -7,7 +7,7 @@
 | `Image/` | Magick.NET | M0 | 进程内 |
 | `Media/` | FFmpeg (LGPL 构建) · `h264_mf` / `hevc_mf` | M1 | sidecar |
 | `Pdf/` | PDFium (PDFtoImage) + PdfPig + PDFsharp | M1 | 进程内 |
-| `Archive/` | SharpCompress · 7za sidecar | M1 | 进程内 + sidecar |
+| `Archive/` | SharpCompress | M1 | 进程内 |
 | `Subtitle/` | 自写解析器 | M1 | 进程内 |
 | `Document/` | Open XML SDK · LibreOffice headless（可选模块） | M2 | 进程内 + sidecar |
 | `Ocr/` | Windows.Media.Ocr → TextRecognizer → RapidOCR | M2 | 进程内 |

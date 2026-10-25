@@ -115,8 +115,7 @@ Windows **没有**「全局拖拽开始」事件。Microsoft Q&A 上的讨论给
 
 ### 4.6 压缩包
 
-- **SharpCompress**（MIT）：读 RAR / 7z / ZIP / TAR / GZ，写 ZIP / TAR / GZ / BZ2。
-- 写 7z：**7-Zip** sidecar（`7za.exe`，LGPL）。
+- **SharpCompress**（MIT）：读 RAR / 7z / ZIP / TAR / GZ，写 ZIP / 7z / TAR / GZ。0.50 起能写 7z（LZMA2，非 solid），不再需要 7-Zip sidecar。
 - RAR 仅输入（解压算法授权限制）。
 
 ### 4.7 字幕
@@ -134,14 +133,14 @@ Windows **没有**「全局拖拽开始」事件。Microsoft Q&A 上的讨论给
 
 - `winapp` CLI（`winget install Microsoft.winappcli`）覆盖创建、带标识运行、打包、签名、多架构 bundle 全流程，可在 CI 使用。
 - 单文件 EXE 仅支持「非打包 + 自包含」，与右键菜单（需包标识）冲突 → 不采用。
-- ARM64：WinUI 3 原生支持；需逐一确认 Magick.NET、PDFium、FFmpeg LGPL、7-Zip 的 ARM64 二进制。
+- ARM64：WinUI 3 原生支持；需逐一确认 Magick.NET、PDFium、FFmpeg LGPL 的 ARM64 二进制。
 
 ## 6. 许可证边界（MIT 主程序）
 
 ```
 DropWheel.exe (MIT)
  ├─ 进程内：Magick.NET (Apache-2.0) · PdfPig (Apache-2.0) · PDFium (BSD) · Open XML SDK (MIT) · SharpCompress (MIT) · PDFsharp (MIT)
- └─ 子进程：ffmpeg.exe (LGPL-2.1+) · 7za.exe (LGPL) · soffice.exe (MPL-2.0，可选下载)
+ └─ 子进程：ffmpeg.exe (LGPL-2.1+) · soffice.exe (MPL-2.0，可选下载)
 ```
 
 LGPL 组件以独立可执行文件随包分发并附带许可证文本与源码链接，用户可自行替换 → 满足 LGPL 对 MIT 主程序的要求。详见 `05-third-party-licenses.md`。
