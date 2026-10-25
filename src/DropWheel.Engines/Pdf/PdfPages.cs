@@ -58,20 +58,25 @@ internal static class PdfPages
         }
 
         var stem = FormatRegistry.StemOf(source);
-        var digits = Math.Max(2, sizes.Count.ToString(CultureInfo.InvariantCulture).Length);
-        var extension = request.TargetFormatId;
         return await OutputFiles.WriteFolderAsync(request, source, index, now, folder =>
         {
             for (var number = 1; number <= sizes.Count; number++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 using var page = Render(number - 1);
-                Save(page, Path.Combine(folder, $"{stem}-{number.ToString(CultureInfo.InvariantCulture).PadLeft(digits, '0')}.{extension}"), format);
+                Save(page, Path.Combine(folder, FileName(stem, number, sizes.Count, request.TargetFormatId)), format);
                 progress.Report((double)number / sizes.Count);
             }
 
             return Task.CompletedTask;
         }).ConfigureAwait(false);
+    }
+
+    /// <summary>"report-07.pdf": the page number padded to as many digits as the last page needs, at least two.</summary>
+    internal static string FileName(string stem, int number, int count, string extension)
+    {
+        var digits = Math.Max(2, count.ToString(CultureInfo.InvariantCulture).Length);
+        return $"{stem}-{number.ToString(CultureInfo.InvariantCulture).PadLeft(digits, '0')}.{extension}";
     }
 
     /// <summary>

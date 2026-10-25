@@ -79,13 +79,19 @@ public sealed class PdfConverter(TimeProvider? time = null) : IConverter
                 _ => await PdfPages.WriteAsync(request, source, index, now, progress, cancellationToken).ConfigureAwait(false),
             };
         }
-        catch (Exception ex) when (ex is PdfPasswordProtectedException or PdfUnsupportedSecuritySchemeException or PdfDocumentEncryptedException)
+        catch (Exception ex) when (Unreadable(ex, name) is { } message)
         {
-            throw new InvalidDataException($"{name} 有密码保护，暂不支持加密的 PDF", ex);
-        }
-        catch (Exception ex) when (ex is PdfException or PdfDocumentFormatException or MagickException)
-        {
-            throw new InvalidDataException($"{name} 无法读取：{ex.Message}", ex);
+            throw new InvalidDataException(message, ex);
         }
     }
+
+    /// <summary>What to tell the user when PDFium, PdfPig or Magick cannot read the PDF called <paramref name="name"/>; null for any other exception.</summary>
+    internal static string? Unreadable(Exception ex, string name) => ex switch
+    {
+        PdfPasswordProtectedException or PdfUnsupportedSecuritySchemeException or PdfDocumentEncryptedException => Encrypted(name),
+        PdfException or PdfDocumentFormatException or MagickException => $"{name} 无法读取：{ex.Message}",
+        _ => null,
+    };
+
+    internal static string Encrypted(string name) => $"{name} 有密码保护，暂不支持加密的 PDF";
 }
