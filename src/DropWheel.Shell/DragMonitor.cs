@@ -163,6 +163,17 @@ public sealed unsafe class DragMonitor(ModifierTapper tapper, WinKeyGate winKeys
             {
                 var vk = (VIRTUAL_KEY)((KBDLLHOOKSTRUCT*)lParam.Value)->vkCode;
                 var down = (uint)wParam.Value is PInvoke.WM_KEYDOWN or PInvoke.WM_SYSKEYDOWN;
+
+                // A button-up the hook never saw (it was skipped, or landed on the secure desktop) would leave
+                // the phase stuck, a Shift tap opening the wheel with nothing dragged and every Win press
+                // swallowed. The physical button settles it.
+                if (down && _phase != DragPhase.Idle && !ButtonIsDown())
+                {
+                    _buttonDown = false;
+                    StopPolling();
+                    Transition(DragPhase.Idle);
+                }
+
                 var dragging = _phase != DragPhase.Idle;
                 var modifier = ModifierOf(vk);
                 if (modifier == Modifiers.None)
@@ -204,6 +215,13 @@ public sealed unsafe class DragMonitor(ModifierTapper tapper, WinKeyGate winKeys
                 Faulted?.Invoke(ex);
             }
         }
+    }
+
+    /// <summary>The primary button, which is the right one with the buttons swapped; GetAsyncKeyState reads the physical one.</summary>
+    private static bool ButtonIsDown()
+    {
+        var button = PInvoke.GetSystemMetrics(SYSTEM_METRICS_INDEX.SM_SWAPBUTTON) != 0 ? VIRTUAL_KEY.VK_RBUTTON : VIRTUAL_KEY.VK_LBUTTON;
+        return (PInvoke.GetAsyncKeyState((int)button) & 0x8000) != 0;
     }
 
     private void StopPolling()

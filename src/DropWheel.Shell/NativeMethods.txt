@@ -30,6 +30,7 @@ SetTimer
 KillTimer
 WM_TIMER
 VIRTUAL_KEY
+GetAsyncKeyState
 
 // Drop target host
 OleInitialize
