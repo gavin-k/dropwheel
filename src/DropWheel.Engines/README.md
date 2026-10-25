@@ -11,9 +11,9 @@
 | `Subtitle/` | 自写解析器 | M1 | 进程内 |
 | `Tools/` | 复用上面的 Magick.NET、SharpCompress、SkiaSharp、PdfPig、FFmpeg；去元数据按 JPEG / PNG / WebP 的段结构直接删，不重新编码 | M1 | 进程内 + sidecar |
 | `Document/` | Open XML SDK · LibreOffice headless（可选模块） | M2 | 进程内 + sidecar |
-| `Ocr/` | Windows.Media.Ocr → TextRecognizer → RapidOCR | M2 | 进程内 |
+| `Ocr/` | 只有 `ITextRecognizer` 接口；Windows.Media.Ocr 的实现是 App 里的 `WindowsTextRecognizer`。TextRecognizer、RapidOCR 还没做 | M2 | 进程内 |
 
-`Tools/` 里的是工具轮盘上的操作，实现 `DropWheel.Core.Wheel.IWheelOperation`，不是转换。图片工具输出原格式，文件名加后缀（`-压缩`、`-320x200`）；合成 PDF 和合并 PDF 输出 `第一个-合并.pdf`；拆分 PDF 输出同名文件夹，里面是 `名字-01.pdf` 这样的单页 PDF；压缩视频输出 `-压缩.mp4`，去掉声音输出原容器加 `-无声`，提取音频按音轨的编码选容器（AAC 是 `.m4a`，MP3 是 `.mp3`），解压输出同名文件夹。视频工具共用 `MediaTool`：先用 ffprobe 读信息，再让 `FfmpegPlan` 出参数，没有可做的（没有音轨、压完没变小）记为跳过。都不套用设置里的命名模板。`EngineTools.Create` 按轮盘上的顺序列出全部工具。
+`Tools/` 里的是工具轮盘上的操作，实现 `DropWheel.Core.Wheel.IWheelOperation`，不是转换。图片工具输出原格式，文件名加后缀（`-压缩`、`-320x200`）；合成 PDF 和合并 PDF 输出 `第一个-合并.pdf`；拆分 PDF 输出同名文件夹，里面是 `名字-01.pdf` 这样的单页 PDF；压缩视频输出 `-压缩.mp4`，去掉声音输出原容器加 `-无声`，提取音频按音轨的编码选容器（AAC 是 `.m4a`，MP3 是 `.mp3`），解压输出同名文件夹，识别文字输出同名 `.txt`（UTF-8 带 BOM，CRLF 换行，PDF 每页按 300 DPI 渲染再识别，超过识别器的最大边长就缩小，页之间空一行）。视频工具共用 `MediaTool`：先用 ffprobe 读信息，再让 `FfmpegPlan` 出参数，没有可做的（没有音轨、压完没变小）记为跳过。都不套用设置里的命名模板。`EngineTools.Create` 按轮盘上的顺序列出全部工具。
 
 规则：
 - `Check()` 必须便宜、同步；不可用时给出用户可读原因并设置 `Cause`。

@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Drawing.Imaging;
+using System.Drawing.Text;
 using System.IO.Compression;
 using System.Text;
 using Windows.Win32.UI.Input.KeyboardAndMouse;
@@ -12,8 +14,8 @@ internal static partial class AppScenario
     /// <summary>
     /// The Tools wheel, opened by a Ctrl+Alt tap mid-drag: 缩小 halves a JPG into a copy named by its new
     /// size, 解压 unpacks a zip into a folder named after it, which 撤销 then moves to the Recycle Bin,
-    /// 拆分 PDF puts each page of a PDF in a folder, and 压缩视频 makes a smaller H.264 MP4 with the
-    /// bundled ffmpeg.
+    /// 拆分 PDF puts each page of a PDF in a folder, 识别文字 saves the text of a PNG in a TXT with Windows'
+    /// own OCR, and 压缩视频 makes a smaller H.264 MP4 with the bundled ffmpeg.
     /// </summary>
     private static void Tools(Checks checks, AppLog log, string exe, bool explorer)
     {
@@ -33,6 +35,7 @@ internal static partial class AppScenario
         HalfSize(checks, log, Path.Combine(dir, $"half-{stamp}.jpg"), explorer);
         Extract(checks, log, Path.Combine(dir, $"unzip-{stamp}.zip"), explorer);
         SplitPdf(checks, log, Path.Combine(dir, $"split-{stamp}.pdf"), explorer);
+        ReadText(checks, log, Path.Combine(dir, $"ocr-{stamp}.png"), explorer);
         CompressVideo(checks, log, Path.Combine(Path.GetDirectoryName(exe)!, "sidecars", "ffmpeg"), Path.Combine(dir, $"video-{stamp}.mp4"), explorer);
     }
 
@@ -60,6 +63,36 @@ internal static partial class AppScenario
         checks.Check("缩小 halves the JPG into a copy named by its new size",
             string.Equals(output, expected, StringComparison.OrdinalIgnoreCase) && size == "320x200" && File.Exists(jpg),
             $"{done ?? "no queue outcome within 30 s"}; {size}; foreground before the drop {owner}");
+    }
+
+    /// <summary>Two lines of large black text on white; the TXT has to hold both, spaces aside.</summary>
+    private static void ReadText(Checks checks, AppLog log, string png, bool explorer)
+    {
+        using (var bitmap = new Bitmap(640, 200))
+        using (var g = Graphics.FromImage(bitmap))
+        using (var font = new Font("Segoe UI", 48, GraphicsUnit.Pixel))
+        {
+            g.Clear(Color.White);
+            g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
+            g.DrawString("DropWheel 2026", font, Brushes.Black, 24, 20);
+            g.DrawString("Hello OCR", font, Brushes.Black, 24, 110);
+            bitmap.Save(png, ImageFormat.Png);
+        }
+
+        if (DropOnWheel(checks, log, png, "tool.ocr", explorer, CtrlAlt) is not { } label)
+        {
+            return;
+        }
+
+        var done = log.WaitFor(30000, $"queue: {label} ");
+        var output = done is null ? null : OutputsRegex().Match(done) is { Success: true } m ? m.Groups[1].Value : null;
+        var expected = Path.Combine(Path.GetDirectoryName(png)!, $"{Path.GetFileNameWithoutExtension(png)}.txt");
+        var text = output is not null && File.Exists(output) ? File.ReadAllText(output) : "";
+        // Segoe UI draws l and I alike, so "Hello" may come back as "HeIIo"; fold one into the other before comparing.
+        var squeezed = new string([.. text.Where(c => !char.IsWhiteSpace(c)).Select(c => c == 'I' ? 'l' : c)]).ToUpperInvariant();
+        checks.Check("识别文字 saves both lines of the PNG's text in a TXT next to it",
+            string.Equals(output, expected, StringComparison.OrdinalIgnoreCase) && squeezed.Contains("DROPWHEEL2026", StringComparison.Ordinal) && squeezed.Contains("HELLOOCR", StringComparison.Ordinal),
+            $"{log.FindSinceStart("ocr: ") ?? "no 'ocr:' line"}; {done ?? "no queue outcome within 30 s"}; text [{text.ReplaceLineEndings(" / ").Trim()}]");
     }
 
     private static void Extract(Checks checks, AppLog log, string zip, bool explorer)

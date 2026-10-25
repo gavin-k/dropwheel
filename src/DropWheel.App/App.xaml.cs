@@ -107,10 +107,13 @@ public partial class App : Application
                 FileLog.Info(ffmpeg.Tools is { } tools ? $"ffmpeg sidecar: {tools.Ffmpeg}" : "ffmpeg sidecar not found; audio and video targets and video tools are greyed out");
                 ffmpeg.Warmup();
             });
+            var recognizer = new WindowsTextRecognizer();
+            // Finding the recognizer language can take a moment, and the wheel asks for it before it opens.
+            _ = Task.Run(() => recognizer.Unavailable);
             var files = new ShellFileOperations();
             var desktop = new Desktop(ui);
             _queue = new JobQueue(graph, new UndoLedger(files), prompt: desktop);
-            IReadOnlyList<IWheelOperation> operations = [.. FileActions.Create(files, desktop), .. EngineTools.Create(archives, ffmpeg)];
+            IReadOnlyList<IWheelOperation> operations = [.. FileActions.Create(files, desktop), .. EngineTools.Create(archives, ffmpeg, recognizer: recognizer)];
             var dataDir = ArgValue(commandLine, "--data-dir") ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DropWheel");
             var settings = new SettingsStore(Path.Combine(dataDir, "settings.json"));
             var recent = new RecentItems(path: Path.Combine(dataDir, "recent.json"));

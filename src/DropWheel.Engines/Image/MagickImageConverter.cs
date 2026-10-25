@@ -38,6 +38,9 @@ public sealed class MagickImageConverter(TimeProvider? time = null) : IConverter
     /// <summary>Read to convert, but not one of <see cref="Formats"/>, so the image tools cannot write it back.</summary>
     internal static bool ConvertsOnly(string formatId) => Inputs.Contains(formatId) && !Formats.ContainsKey(formatId);
 
+    /// <summary>Whether <see cref="Read"/> takes this format.</summary>
+    internal static bool Reads(string formatId) => Inputs.Contains(formatId);
+
     /// <summary>The largest side an icon holds, and the sizes written into one, largest first.</summary>
     private static readonly uint[] IconSizes = [256, 128, 64, 48, 32, 16];
 
@@ -140,7 +143,8 @@ public sealed class MagickImageConverter(TimeProvider? time = null) : IConverter
         }
     }
 
-    private static MagickImage Read(string source)
+    /// <summary>The first frame of <paramref name="source"/>, its largest picture for an icon; an SVG that refers outside itself is refused.</summary>
+    internal static MagickImage Read(string source)
     {
         switch (FormatRegistry.FromPath(source)?.Id)
         {
