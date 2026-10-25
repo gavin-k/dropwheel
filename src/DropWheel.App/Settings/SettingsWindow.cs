@@ -81,6 +81,9 @@ internal sealed class SettingsWindow
     private readonly TextBlock _logNote = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = 0.75 };
     private readonly DispatcherQueueTimer _namingPause;
     private StartupTask? _startupTask;
+
+    /// <summary>With a package the startup task starts DropWheel at sign-in, without one <see cref="SignInRun"/>.</summary>
+    private readonly bool _packaged = HasPackageIdentity();
     private bool _placed;
     private bool _loading;
 
@@ -179,6 +182,7 @@ internal sealed class SettingsWindow
         AutomationProperties.SetAutomationId(_edgeDock, "edge-dock");
         AutomationProperties.SetAutomationId(_solidWheel, "solid-wheel");
         AutomationProperties.SetAutomationId(_conflict, "conflict");
+        AutomationProperties.SetAutomationId(_startup, "start-at-sign-in");
         _namingPause = ui.CreateTimer();
         _namingPause.Interval = TimeSpan.FromMilliseconds(600);
         _namingPause.IsRepeating = false;
@@ -228,9 +232,7 @@ internal sealed class SettingsWindow
         page.Children.Add(Section("隐私与离线", "读取、转换和写入都在这台电脑上完成，文件不会上传。DropWheel 没有账号，不收集使用数据，也不自己联网检查更新。",
             _network, _logNote, logButtons));
 
-        // Unpackaged builds (development, the acceptance run) have no startup task to show.
         _startupSection = Section("启动", null, _startup, _startupNote);
-        _startupSection.Visibility = HasPackageIdentity() ? Visibility.Visible : Visibility.Collapsed;
         page.Children.Add(_startupSection);
         _window.Content = new ScrollViewer { Content = page };
     }
@@ -499,6 +501,12 @@ internal sealed class SettingsWindow
             return;
         }
 
+        if (!_packaged)
+        {
+            ShowStartup(SignInRun.State);
+            return;
+        }
+
         try
         {
             _startupTask ??= await StartupTask.GetAsync(StartupTaskId).AsTask().ConfigureAwait(true);
@@ -530,6 +538,12 @@ internal sealed class SettingsWindow
 
     private async Task StartupToggledAsync()
     {
+        if (!_packaged)
+        {
+            StartupToggled();
+            return;
+        }
+
         if (_startupTask is not { } task || _startup.IsOn == IsOn(task.State))
         {
             return;
@@ -554,6 +568,27 @@ internal sealed class SettingsWindow
         }
 
         ShowStartup(task.State);
+    }
+
+    /// <summary>Without a package: the Run value instead of the startup task.</summary>
+    private void StartupToggled()
+    {
+        if (_startup.IsOn == IsOn(SignInRun.State))
+        {
+            return;
+        }
+
+        try
+        {
+            SignInRun.Set(_startup.IsOn);
+            FileLog.Info($"settings: sign-in run value {(_startup.IsOn ? "set" : "removed")}");
+        }
+        catch (Exception ex)
+        {
+            FileLog.Error("settings: could not change the sign-in run value", ex);
+        }
+
+        ShowStartup(SignInRun.State);
     }
 
     private void ConflictChanged()

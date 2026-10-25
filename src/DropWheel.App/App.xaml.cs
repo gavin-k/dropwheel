@@ -176,8 +176,9 @@ public partial class App : Application
             _instance.Listen(show: () => ui.TryEnqueue(ShowHome), quit: () => ui.TryEnqueue(Shutdown));
 
             // A user who has not seen the guide gets it, unless Windows started the app at sign-in (the
-            // startup task in Package.appxmanifest): then only the tray.
-            var atSignIn = AppInstance.GetCurrent().GetActivatedEventArgs().Kind == ExtendedActivationKind.StartupTask;
+            // startup task in Package.appxmanifest, or the Run value without a package): then only the tray.
+            var atSignIn = AppInstance.GetCurrent().GetActivatedEventArgs().Kind == ExtendedActivationKind.StartupTask
+                || commandLine.Contains(SignInRun.Switch);
             if (atSignIn)
             {
                 FileLog.Info("started by Windows at sign-in");

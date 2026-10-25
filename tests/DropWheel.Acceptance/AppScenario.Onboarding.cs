@@ -9,6 +9,46 @@ internal static partial class AppScenario
     private const string GuideTitle = "DropWheel 入门";
 
     /// <summary>
+    /// Started the way the Run value starts it, with --at-sign-in, DropWheel stays in the tray even with no
+    /// settings file yet: no guide, no task window.
+    /// </summary>
+    private static void AtSignIn(Checks checks, string exe)
+    {
+        var profile = Path.Combine(Path.GetTempPath(), "DropWheelAcceptance", "at-sign-in");
+        if (Directory.Exists(profile))
+        {
+            Directory.Delete(profile, recursive: true);
+        }
+
+        Directory.CreateDirectory(profile);
+        var log = new AppLog();
+        using var app = Process.Start(new ProcessStartInfo(exe, ["--data-dir", profile, "--at-sign-in"]) { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(exe)! })
+            ?? throw new InvalidOperationException($"could not start {exe}");
+        try
+        {
+            var ready = log.WaitFor(30000, "ready:");
+            var guide = PInvoke.FindWindow(null, GuideTitle);
+            var queue = PInvoke.FindWindow(null, QueueTitle);
+            var shown = (!guide.IsNull && PInvoke.IsWindowVisible(guide)) || (!queue.IsNull && PInvoke.IsWindowVisible(queue));
+            var signIn = log.FindSinceStart("started by Windows at sign-in");
+            checks.Check("started with --at-sign-in and no settings yet, DropWheel stays in the tray", ready is not null && signIn is not null && !shown,
+                $"{(ready is null ? "no 'ready:' line within 30 s" : signIn ?? "no 'started by Windows at sign-in' line")}; guide or task window visible={shown}");
+        }
+        finally
+        {
+            using (var quit = Process.Start(new ProcessStartInfo(exe, ["--quit"]) { UseShellExecute = false }))
+            {
+                quit?.WaitForExit(10000);
+            }
+
+            if (!app.WaitForExit(10000))
+            {
+                app.Kill();
+            }
+        }
+    }
+
+    /// <summary>
     /// A first launch with no settings file opens the guide instead of the task window. 试一试 puts a sample
     /// photo in Pictures and selects it in Explorer; converting that photo to PNG is reported in the guide;
     /// 开始使用 hides the guide and saves that it was seen.

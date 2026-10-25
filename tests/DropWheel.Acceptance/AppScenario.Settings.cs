@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using Microsoft.Win32;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.UI.Accessibility;
@@ -16,11 +17,11 @@ internal static partial class AppScenario
     /// there exactly when its acrylic fell back; unticking the only key is refused
     /// with the reason and nothing is saved; Ctrl instead of Shift, touch long press off, the dock off, the
     /// output folder preset in settings.json and a file-name template are saved; 隐私与离线 counts no network
-    /// request, opens the log folder and clears the logs; a resting finger then opens nothing, nor does a
-    /// drag pushed against the edge, and the next drag opens the wheel on Ctrl, not Shift, and puts the PNG
-    /// in that folder, which does not exist yet, under the new name.
+    /// request, opens the log folder and clears the logs; 登录 Windows 时启动 writes and removes the Run value; a
+    /// resting finger then opens nothing, nor does a drag pushed against the edge, and the next drag opens the
+    /// wheel on Ctrl, not Shift, and puts the PNG in that folder, which does not exist yet, under the new name.
     /// </summary>
-    private static void ChangeSettings(Checks checks, AppLog log, string profile, string folder, bool explorer)
+    private static void ChangeSettings(Checks checks, AppLog log, string profile, string folder, string exe, bool explorer)
     {
         var file = Path.Combine(profile, "settings.json");
         log.Mark();
@@ -68,6 +69,7 @@ internal static partial class AppScenario
             $"{keys ?? "no keys line"}; {touch ?? "no long press line"}; {dock ?? "no dock line"}; {location ?? "no folder line"}; {naming ?? "no naming line"}");
 
         Privacy(checks, log);
+        StartAtSignIn(checks, log, exe);
 
         PInvoke.PostMessage(window, PInvoke.WM_CLOSE, new WPARAM(0), new LPARAM(0));
         var hidden = Checks.Wait(() => !PInvoke.IsWindowVisible(window), 3000);
@@ -121,6 +123,52 @@ internal static partial class AppScenario
         checks.Check("清除日志 deletes the logs and the app starts today's afresh",
             cleared is not null && after.Count == 1 && after[0] == $"dropwheel-{DateTime.Now:yyyyMMdd}.log" && new FileInfo(Path.Combine(logs, after[0])).Length < 4096,
             $"{cleared ?? how}; {before} log(s) before, after: {string.Join(", ", after)}");
+    }
+
+    /// <summary>
+    /// 登录 Windows 时启动, which without a package is a value under the user's Run key: switching it on writes
+    /// one that starts this DropWheel.exe with --at-sign-in, switching it off removes it. A value that was there
+    /// before is put back.
+    /// </summary>
+    private static void StartAtSignIn(Checks checks, AppLog log, string exe)
+    {
+        const string Name = "DropWheel";
+        using var run = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
+        var before = run.GetValue(Name);
+        try
+        {
+            string Switch(string what)
+            {
+                log.Mark();
+                Pattern<IUIAutomationTogglePattern>("start-at-sign-in", UIA_PATTERN_ID.UIA_TogglePatternId, byId: true)?.Toggle();
+                return log.WaitFor(2000, $"settings: sign-in run value {what}") ?? $"no 'sign-in run value {what}' line";
+            }
+
+            if (before is not null)
+            {
+                Switch("removed");
+            }
+
+            var on = Switch("set");
+            var written = run.GetValue(Name) as string;
+            var off = Switch("removed");
+            var gone = run.GetValue(Name) is null;
+            var expected = $"\"{exe}\" --at-sign-in";
+            checks.Check("登录 Windows 时启动 writes the Run value that starts this DropWheel.exe in the tray, and removes it again",
+                string.Equals(written, expected, StringComparison.OrdinalIgnoreCase) && gone,
+                $"{on}; value [{written ?? "none"}], expected [{expected}]; {off}; {(gone ? "value gone" : $"value still [{run.GetValue(Name)}]")}");
+        }
+        finally
+        {
+            if (before is not null)
+            {
+                run.SetValue(Name, before);
+            }
+            else
+            {
+                run.DeleteValue(Name, throwOnMissingValue: false);
+            }
+        }
     }
 
     private static void Toggle(string name) => Pattern<IUIAutomationTogglePattern>(name, UIA_PATTERN_ID.UIA_TogglePatternId)?.Toggle();
