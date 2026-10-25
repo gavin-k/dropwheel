@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using DropWheel.App.Diagnostics;
 using DropWheel.App.Overlay;
 using DropWheel.App.Queue;
+using DropWheel.App.Settings;
 using DropWheel.App.Tray;
 using DropWheel.Core.Conversion;
 using DropWheel.Core.Input;
@@ -20,9 +21,10 @@ using Microsoft.UI.Xaml;
 namespace DropWheel.App;
 
 /// <summary>
-/// Composition: Magick image engine, job queue with Recycle Bin undo, the hook thread and drop target
-/// host from DropWheel.Shell, the wheel overlay, the task window and the tray icon. One instance per
-/// session; launching again shows the task window, <c>DropWheel.exe --quit</c> exits the running one.
+/// Composition: the conversion engines, job queue with Recycle Bin undo, the hook thread and drop target
+/// host from DropWheel.Shell, the wheel overlay, the task and settings windows and the tray icon. Key
+/// changes made in Settings reach the hooks at once. One instance per session; launching again shows
+/// the task window, <c>DropWheel.exe --quit</c> exits the running one.
 /// The app lives in the tray: closing the task window hides it, the tray menu's 退出 quits.
 /// </summary>
 [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1001", Justification = "Lives as long as the process; Shutdown disposes everything.")]
@@ -31,6 +33,7 @@ public partial class App : Application
     private SingleInstance? _instance;
     private TrayIcon? _tray;
     private QueueWindow? _queueWindow;
+    private SettingsWindow? _settingsWindow;
     private bool _shuttingDown;
     private DragMonitor? _monitor;
     private DropTargetHost? _host;
@@ -97,14 +100,23 @@ public partial class App : Application
 
             var builder = new WheelBuilder(graph, recent, new DefaultRecommender(graph));
 
-            // Convert only: binding Win or Ctrl+Alt to wheels M0 does not have would swallow the Win key mid-drag for nothing.
-            var bindings = settings.Current.Keys with { Bindings = [.. settings.Current.Keys.Bindings.Where(b => b.Mode == WheelMode.Convert)] };
+            var bindings = WheelController.Active(settings.Current.Keys);
             var tapper = new ModifierTapper(bindings, TimeProvider.System);
-            _monitor = new DragMonitor(tapper, new WinKeyGate(bindings));
+            var winKey = new WinKeyGate(bindings);
+            _monitor = new DragMonitor(tapper, winKey);
             _monitor.Faulted += ex => FileLog.Error("hook thread handler failed", ex);
             _host = new DropTargetHost();
 
-            var queueWindow = _queueWindow = new QueueWindow(_queue, ui);
+            var settingsWindow = _settingsWindow = new SettingsWindow(settings, ui);
+            var queueWindow = _queueWindow = new QueueWindow(_queue, ui, settingsWindow.Show);
+            queueWindow.ShowKeys(settings.Current.Keys.KeysFor(WheelMode.Convert));
+            settings.Changed += changed =>
+            {
+                var active = WheelController.Active(changed.Keys);
+                tapper.Rebind(active);
+                winKey.Rebind(active);
+                queueWindow.ShowKeys(changed.Keys.KeysFor(WheelMode.Convert));
+            };
             _wheel = new WheelWindow();
             _controller = new WheelController(ui, _monitor, _host, _wheel, builder, _queue, recent, settings, tapper);
 
@@ -113,6 +125,7 @@ public partial class App : Application
             _tray = new TrayIcon(queueWindow.Handle, "DropWheel", Path.Combine(AppContext.BaseDirectory, "Assets", "DropWheel.ico"),
             [
                 ("打开任务窗口", () => queueWindow.Show()),
+                ("设置", settingsWindow.Show),
                 ("退出 DropWheel", Shutdown),
             ]);
             _tray.Selected += () => queueWindow.Show();
@@ -177,6 +190,7 @@ public partial class App : Application
         _monitor?.Dispose();
         _host?.Dispose();
         _wheel?.Close();
+        _settingsWindow?.Close();
         _queueWindow?.Close();
         if (_queue is not null && !_queue.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(2)))
         {

@@ -1,5 +1,6 @@
 using DropWheel.App.Diagnostics;
 using DropWheel.Core.Jobs;
+using DropWheel.Core.Settings;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Text;
 using Microsoft.UI.Windowing;
@@ -13,9 +14,9 @@ using Windows.Win32.Foundation;
 namespace DropWheel.App.Queue;
 
 /// <summary>
-/// Task list: one row per job with its state and an Undo button once it is done. Closing the window only
-/// hides it; the app keeps running in the tray. Job events arrive on the queue's worker thread and are
-/// marshalled to the UI thread here.
+/// Task list: one row per job with its state and an Undo button once it is done, and the way into
+/// Settings. Closing the window only hides it; the app keeps running in the tray. Job events arrive on
+/// the queue's worker thread and are marshalled to the UI thread here.
 /// </summary>
 internal sealed class QueueWindow
 {
@@ -27,7 +28,7 @@ internal sealed class QueueWindow
     private readonly Dictionary<Guid, Row> _byJob = [];
     private bool _placed;
 
-    public QueueWindow(JobQueue queue, DispatcherQueue ui)
+    public QueueWindow(JobQueue queue, DispatcherQueue ui, Action showSettings)
     {
         _queue = queue;
         _ui = ui;
@@ -41,20 +42,23 @@ internal sealed class QueueWindow
                 window.Hide();
             }
         };
-        _empty = new TextBlock
-        {
-            Text = "从资源管理器拖动文件时轻点 Shift，轮盘会在鼠标处弹出；松手到扇区即开始转换。",
-            TextWrapping = TextWrapping.Wrap,
-            Opacity = 0.7,
-        };
+        _empty = new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = 0.7 };
         _rows.Children.Add(_empty);
+        var settings = new Button { Content = "设置", VerticalAlignment = VerticalAlignment.Center };
+        settings.Click += (_, _) => showSettings();
+        Grid.SetColumn(settings, 1);
         _window.Content = new Grid
         {
             Padding = new Thickness(16),
             RowDefinitions = { new RowDefinition { Height = GridLength.Auto }, new RowDefinition { Height = new GridLength(1, GridUnitType.Star) } },
             Children =
             {
-                new TextBlock { Text = "任务", FontSize = 20, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 12) },
+                new Grid
+                {
+                    Margin = new Thickness(0, 0, 0, 12),
+                    ColumnDefinitions = { new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }, new ColumnDefinition { Width = GridLength.Auto } },
+                    Children = { new TextBlock { Text = "任务", FontSize = 20, FontWeight = FontWeights.SemiBold }, settings },
+                },
                 Rows(new ScrollViewer { Content = _rows }),
             },
         };
@@ -97,6 +101,11 @@ internal sealed class QueueWindow
         Quitting = true;
         _window.Close();
     }
+
+    /// <summary>Names the keys that open the Convert wheel in the how-to line shown while the list is empty.</summary>
+    public void ShowKeys(Modifiers keys) => _empty.Text = keys == Modifiers.None
+        ? "还没有设置唤出转换轮盘的按键，请在「设置」里选择。"
+        : $"从资源管理器拖动文件时轻点 {ModifierNames.Of(keys)}，轮盘会在鼠标处弹出；松手到扇区即开始转换。";
 
     private static void LogOutcome(Job job)
     {

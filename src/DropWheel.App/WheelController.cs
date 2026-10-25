@@ -86,6 +86,12 @@ internal sealed class WheelController : IDisposable
         _host.Canceled += OnCanceled;
     }
 
+    /// <summary>
+    /// The bindings the hooks act on: Convert only. Binding Win or Ctrl+Alt to wheels M0 does not have would
+    /// swallow the Win key mid-drag for nothing.
+    /// </summary>
+    public static KeyBindings Active(KeyBindings keys) => keys with { Bindings = [.. keys.Bindings.Where(b => b.Mode == WheelMode.Convert)] };
+
     public void Dispose()
     {
         _tapper.Invoked -= OnInvoked;
