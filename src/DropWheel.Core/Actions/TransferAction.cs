@@ -18,15 +18,13 @@ public sealed class TransferAction(bool copy, IFileOperations files, IDesktop de
     private static readonly Guid MoveMemory = new("5b0f7d0e-3c51-4a52-9a43-0d2f6c1e7a01");
     private static readonly Guid CopyMemory = new("5b0f7d0e-3c51-4a52-9a43-0d2f6c1e7a02");
 
-    private string Verb => copy ? "复制" : "移动";
-
     public string Id => copy ? "action.copy-to" : "action.move-to";
 
     public WheelMode Mode => WheelMode.Actions;
 
-    public string Label => copy ? "复制到" : "移动到";
+    public string Label => copy ? L.T("复制到") : L.T("移动到");
 
-    public string Hint => "选文件夹";
+    public string Hint => L.T("选文件夹");
 
     public FileAction? Action => copy ? FileAction.CopyTo : FileAction.MoveTo;
 
@@ -35,23 +33,31 @@ public sealed class TransferAction(bool copy, IFileOperations files, IDesktop de
     public async Task<ConversionResult> RunAsync(ConversionRequest request, IProgress<double> progress, CancellationToken cancellationToken)
     {
         var items = request.SourcePaths;
-        var title = items.Count > 1 ? $"把 {items.Count} 项{Verb}到" : $"把 {Path.GetFileName(Path.TrimEndingDirectorySeparator(items[0]))} {Verb}到";
-        var prompt = new FolderPrompt(title, $"{Verb}到这里", Path.GetDirectoryName(items[0]) ?? items[0], copy ? CopyMemory : MoveMemory);
+        var first = Path.GetFileName(Path.TrimEndingDirectorySeparator(items[0]));
+        var title = (items.Count > 1, copy) switch
+        {
+            (true, true) => L.T("把 {0} 项复制到", items.Count),
+            (true, false) => L.T("把 {0} 项移动到", items.Count),
+            (false, true) => L.T("把 {0} 复制到", first),
+            (false, false) => L.T("把 {0} 移动到", first),
+        };
+        var prompt = new FolderPrompt(title, copy ? L.T("复制到这里") : L.T("移动到这里"), Path.GetDirectoryName(items[0]) ?? items[0], copy ? CopyMemory : MoveMemory);
         if (await desktop.PickFolderAsync(prompt, cancellationToken).ConfigureAwait(false) is not { } folder)
         {
-            return new ConversionResult(true, []) { Skipped = true, Detail = "没有选文件夹" };
+            return new ConversionResult(true, []) { Skipped = true, Detail = L.T("没有选文件夹") };
         }
 
         if (items.FirstOrDefault(i => Directory.Exists(i) && IsSameOrInside(folder, i)) is { } inside)
         {
-            return new ConversionResult(false, [], $"不能把 {Path.GetFileName(Path.TrimEndingDirectorySeparator(inside))} {Verb}到它自己里面");
+            var self = Path.GetFileName(Path.TrimEndingDirectorySeparator(inside));
+            return new ConversionResult(false, [], copy ? L.T("不能把 {0} 复制到它自己里面", self) : L.T("不能把 {0} 移动到它自己里面", self));
         }
 
         var (plan, replace, skipped) = await PlanAsync(items, folder, request).ConfigureAwait(false);
         var where = Path.GetFileName(Path.TrimEndingDirectorySeparator(folder)) is { Length: > 0 } name ? name : folder;
         if (plan.Count == 0)
         {
-            return new ConversionResult(true, []) { Skipped = true, Detail = copy ? $"{where} 里已有同名项，按重名策略跳过" : $"已经在 {where} 里，或那里已有同名项" };
+            return new ConversionResult(true, []) { Skipped = true, Detail = copy ? L.T("{0} 里已有同名项，按重名策略跳过", where) : L.T("已经在 {0} 里，或那里已有同名项", where) };
         }
 
         foreach (var taken in replace)
@@ -64,7 +70,7 @@ public sealed class TransferAction(bool copy, IFileOperations files, IDesktop de
         return new ConversionResult(true, outputs)
         {
             Undo = copy ? null : new UndoPlan.MoveBack(plan),
-            Detail = $"已{Verb}到 {where}" + (skipped > 0 ? $"，跳过 {skipped} 项" : ""),
+            Detail = (copy ? L.T("已复制到 {0}", where) : L.T("已移动到 {0}", where)) + (skipped > 0 ? L.T("，跳过 {0} 项", skipped) : ""),
         };
     }
 

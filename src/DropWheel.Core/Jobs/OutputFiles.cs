@@ -149,7 +149,7 @@ public static class OutputFiles
                 }
                 catch (IOException) when (Exists(target) && policy == ConflictPolicy.AutoNumber && attempt < 5)
                 {
-                    target = Plan() ?? throw new IOException($"{Path.GetFileName(target)} 已存在");
+                    target = Plan() ?? throw new IOException(L.T("{0} 已存在", Path.GetFileName(target)));
                 }
             }
         }

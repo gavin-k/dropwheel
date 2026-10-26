@@ -14,7 +14,7 @@ public sealed record FileActionSettings(ImmutableHashSet<FileAction> Enabled)
 {
     public static FileActionSettings Default { get; } = new([FileAction.CopyPath, FileAction.MoveTo, FileAction.CopyTo, FileAction.Rename, FileAction.CompressZip]);
 
-    public const string DisabledReason = "默认关闭 · 可在 设置 › 文件动作 中开启";
+    public static string DisabledReason => L.T("默认关闭 · 可在 设置 › 文件动作 中开启");
 
     public bool IsEnabled(FileAction action) => Enabled.Contains(action);
 

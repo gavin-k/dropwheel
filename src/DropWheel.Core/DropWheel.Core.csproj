@@ -6,4 +6,9 @@
     <Description>DropWheel domain model: conversion graph, wheel ranking, job queue, undo, naming, settings. No Windows dependency.</Description>
   </PropertyGroup>
 
+  <ItemGroup>
+    <Compile Include="../Shared/L.cs" Link="Localization/L.cs" />
+    <EmbeddedResource Include="Strings.en.json" LogicalName="Strings.en.json" WithCulture="false" />
+  </ItemGroup>
+
 </Project>

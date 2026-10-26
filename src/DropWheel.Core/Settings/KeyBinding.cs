@@ -75,7 +75,7 @@ public static class ConflictChecker
             {
                 if (b.Mode == WheelMode.Convert)
                 {
-                    list.Add(new(b, ConflictSeverity.Error, "必须至少选择一个修饰键。"));
+                    list.Add(new(b, ConflictSeverity.Error, L.T("必须至少选择一个修饰键。")));
                 }
 
                 continue;
@@ -83,19 +83,19 @@ public static class ConflictChecker
 
             if (seen.TryGetValue(b.Keys, out var other))
             {
-                list.Add(new(b, ConflictSeverity.Error, $"与「{Name(other)}」使用了相同的按键。"));
+                list.Add(new(b, ConflictSeverity.Error, L.T("与「{0}」使用了相同的按键。", Name(other))));
             }
 
             seen[b.Keys] = b.Mode;
 
             if (bindings.Style == InvokeStyle.Hold && (b.Keys & (Modifiers.Ctrl | Modifiers.Shift | Modifiers.Alt)) != 0)
             {
-                list.Add(new(b, ConflictSeverity.Warning, "「按住唤出」会覆盖资源管理器拖放时的复制 / 移动 / 创建快捷方式。"));
+                list.Add(new(b, ConflictSeverity.Warning, L.T("「按住唤出」会覆盖资源管理器拖放时的复制 / 移动 / 创建快捷方式。")));
             }
 
             if (layoutHasAltGr && b.Keys == (Modifiers.Ctrl | Modifiers.Alt))
             {
-                list.Add(new(b, ConflictSeverity.Warning, "已安装的键盘布局里有 AltGr 键，Windows 把它当作 Ctrl+Alt，建议换一组键。"));
+                list.Add(new(b, ConflictSeverity.Warning, L.T("已安装的键盘布局里有 AltGr 键，Windows 把它当作 Ctrl+Alt，建议换一组键。")));
             }
         }
 
@@ -104,9 +104,9 @@ public static class ConflictChecker
 
     private static string Name(WheelMode mode) => mode switch
     {
-        WheelMode.Convert => "转换轮盘",
-        WheelMode.Tools => "工具轮盘",
-        WheelMode.Actions => "动作轮盘",
+        WheelMode.Convert => L.T("转换轮盘"),
+        WheelMode.Tools => L.T("工具轮盘"),
+        WheelMode.Actions => L.T("动作轮盘"),
         _ => mode.ToString(),
     };
 }

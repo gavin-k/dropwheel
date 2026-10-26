@@ -93,7 +93,7 @@ public sealed class JobConflicts(IFileOperations files, IConflictPrompt? prompt,
         await files.RecycleAsync([target], cancellationToken).ConfigureAwait(false);
         if (File.Exists(target) || Directory.Exists(target))
         {
-            throw new IOException($"{Path.GetFileName(target)} 没能移到回收站，没有替换它");
+            throw new IOException(L.T("{0} 没能移到回收站，没有替换它", Path.GetFileName(target)));
         }
 
         Interlocked.Increment(ref _replaced);

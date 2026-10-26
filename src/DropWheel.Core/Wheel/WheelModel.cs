@@ -25,7 +25,7 @@ public sealed record WheelSlot(
     /// </summary>
     public SlotDetail? Detail => !Availability.IsAvailable
         ? new($"{Label} {SubLabel}", Availability.Reason ?? "")
-        : Quality is { } q ? new($"预期质量{LevelName(q.Level)}", q.Reasons.Count > 0 ? q.Reasons[0] : "") : null;
+        : Quality is { } q ? new(L.T("预期质量{0}", LevelName(q.Level)), q.Reasons.Count > 0 ? q.Reasons[0] : "") : null;
 
     /// <summary>"PNG，推荐，预期质量高：…；…" or "HEIC，匹配，不可用：…": the sector's name for screen readers, every reason included.</summary>
     public string AccessibleName
@@ -41,31 +41,31 @@ public sealed record WheelSlot(
 
             if (!Availability.IsAvailable)
             {
-                parts.Add(Availability.Reason is { } reason ? $"{SubLabel}：{reason}" : SubLabel);
+                parts.Add(Availability.Reason is { } reason ? L.T("{0}：{1}", SubLabel, reason) : SubLabel);
             }
             else if (Quality is { } q)
             {
-                parts.Add(q.Reasons.Count > 0 ? $"预期质量{LevelName(q.Level)}：{string.Join("；", q.Reasons)}" : $"预期质量{LevelName(q.Level)}");
+                parts.Add(q.Reasons.Count > 0 ? L.T("预期质量{0}：{1}", LevelName(q.Level), string.Join(L.T("；"), q.Reasons)) : L.T("预期质量{0}", LevelName(q.Level)));
             }
 
-            return string.Join("，", parts);
+            return string.Join(L.T("，"), parts);
         }
     }
 
     /// <summary>Why a Convert item is on the wheel; empty for a Tools or Actions item, which is always there.</summary>
     public static string SourceName(SlotSource source) => source switch
     {
-        SlotSource.Recent => "最近",
-        SlotSource.Recommended => "推荐",
-        SlotSource.Search => "匹配",
+        SlotSource.Recent => L.T("最近"),
+        SlotSource.Recommended => L.T("推荐"),
+        SlotSource.Search => L.T("匹配"),
         _ => "",
     };
 
     private static string LevelName(QualityLevel level) => level switch
     {
-        QualityLevel.High => "高",
-        QualityLevel.Medium => "中",
-        _ => "低",
+        QualityLevel.High => L.T("高"),
+        QualityLevel.Medium => L.T("中"),
+        _ => L.T("低"),
     };
 }
 
@@ -133,7 +133,7 @@ public sealed class WheelBuilder(ConversionGraph graph, IRecentItems recent, IRe
                 i,
                 p.id,
                 target?.DisplayName ?? p.id.ToUpperInvariant(),
-                availability.IsAvailable ? WheelSlot.SourceName(p.src) : "不可用",
+                availability.IsAvailable ? WheelSlot.SourceName(p.src) : L.T("不可用"),
                 p.src,
                 availability,
                 quality);
@@ -142,11 +142,11 @@ public sealed class WheelBuilder(ConversionGraph graph, IRecentItems recent, IRe
         var hasMore = matches.Count > WheelModel.SlotCount;
         if (query.Length > 0)
         {
-            return new WheelModel(mode, $"搜索 {query.ToUpperInvariant()}", SearchSubtitle(format, query, matches.Count), slots, hasMore);
+            return new WheelModel(mode, L.T("搜索 {0}", query.ToUpperInvariant()), SearchSubtitle(format, query, matches.Count), slots, hasMore);
         }
 
         var name = Path.GetFileName(sourcePaths[0]);
-        var subtitle = sourcePaths.Count > 1 ? $"{sourcePaths.Count} 个文件" : (format?.DisplayName ?? "未知类型");
+        var subtitle = sourcePaths.Count > 1 ? L.T("{0} 个文件", sourcePaths.Count) : (format?.DisplayName ?? L.T("未知类型"));
         return new WheelModel(mode, name, subtitle, slots, hasMore);
     }
 
@@ -183,14 +183,14 @@ public sealed class WheelBuilder(ConversionGraph graph, IRecentItems recent, IRe
     {
         if (count > 0)
         {
-            return $"{count} 个格式";
+            return L.T("{0} 个格式", count);
         }
 
         return FormatRegistry.FromExtension(query) switch
         {
-            { } named when named.Id == source?.Id => $"已经是 {named.DisplayName}",
-            { } named => $"转不了 {named.DisplayName}",
-            null => "没有这个格式",
+            { } named when named.Id == source?.Id => L.T("已经是 {0}", named.DisplayName),
+            { } named => L.T("转不了 {0}", named.DisplayName),
+            null => L.T("没有这个格式"),
         };
     }
 
@@ -201,12 +201,13 @@ public sealed class WheelBuilder(ConversionGraph graph, IRecentItems recent, IRe
             var availability = op.Action is { } action && !settings.Actions.IsEnabled(action)
                 ? Availability.Unavailable(FileActionSettings.DisabledReason) with { Cause = UnavailableCause.DisabledInSettings }
                 : op.Check(settings.Request(sourcePaths, op.Id));
-            var subLabel = availability.IsAvailable ? op.Hint : availability.Cause == UnavailableCause.DisabledInSettings ? "未开启" : "不可用";
+            var subLabel = availability.IsAvailable ? op.Hint : availability.Cause == UnavailableCause.DisabledInSettings ? L.T("未开启") : L.T("不可用");
             return new WheelSlot(i, op.Id, op.Label, subLabel, SlotSource.Fixed, availability, null, op);
         }).ToList();
 
-        var title = mode == WheelMode.Tools ? "工具" : "动作";
-        var subtitle = slots.Count == 0 ? $"这类文件还没有{title}" : sourcePaths.Count > 1 ? $"{title} · {sourcePaths.Count} 项" : title;
+        var title = mode == WheelMode.Tools ? L.T("工具") : L.T("动作");
+        var subtitle = slots.Count == 0 ? (mode == WheelMode.Tools ? L.T("这类文件还没有工具") : L.T("这类文件还没有动作"))
+            : sourcePaths.Count > 1 ? L.T("{0} · {1} 项", title, sourcePaths.Count) : title;
         return new WheelModel(mode, Path.GetFileName(sourcePaths[0]), subtitle, slots);
     }
 }

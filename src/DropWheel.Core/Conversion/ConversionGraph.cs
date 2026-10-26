@@ -29,22 +29,22 @@ public sealed class ConversionGraph
 
         if (to is null)
         {
-            return Availability.Unavailable("未知的目标格式。");
+            return Availability.Unavailable(L.T("未知的目标格式。"));
         }
 
         if (!to.CanOutput)
         {
-            return Availability.Unavailable(to.InputOnlyReason ?? $"{to.DisplayName} 仅支持作为输入。") with { Cause = UnavailableCause.InputOnly };
+            return Availability.Unavailable(to.InputOnlyReason ?? L.T("{0} 仅支持作为输入。", to.DisplayName)) with { Cause = UnavailableCause.InputOnly };
         }
 
         if (from is null)
         {
-            return Availability.Unavailable("无法识别源文件格式。");
+            return Availability.Unavailable(L.T("无法识别源文件格式。"));
         }
 
         var converter = Resolve(from.Id, to.Id);
         return converter is null
-            ? Availability.Unavailable($"没有引擎支持 {from.DisplayName} → {to.DisplayName}。") with { Cause = UnavailableCause.MissingOptionalModule }
+            ? Availability.Unavailable(L.T("没有引擎支持 {0} → {1}。", from.DisplayName, to.DisplayName)) with { Cause = UnavailableCause.MissingOptionalModule }
             : converter.Check(request);
     }
 }

@@ -185,11 +185,11 @@ public sealed class JobQueue : IAsyncDisposable
 
             if (!result.Succeeded)
             {
-                Finish(job, JobState.Failed, error: result.Error ?? "转换失败。");
+                Finish(job, JobState.Failed, error: result.Error ?? L.T("转换失败。"));
             }
             else if (result.Skipped)
             {
-                Finish(job, JobState.Skipped, detail: result.Detail ?? "目标文件已存在，按重名策略跳过。");
+                Finish(job, JobState.Skipped, detail: result.Detail ?? L.T("目标文件已存在，按重名策略跳过。"));
             }
             else
             {

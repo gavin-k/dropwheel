@@ -12,9 +12,9 @@ public sealed class RecycleAction(IFileOperations files) : IWheelOperation
 
     public WheelMode Mode => WheelMode.Actions;
 
-    public string Label => "删除";
+    public string Label => L.T("删除");
 
-    public string Hint => "回收站";
+    public string Hint => L.T("回收站");
 
     public FileAction? Action => FileAction.DeleteToRecycleBin;
 
@@ -24,6 +24,6 @@ public sealed class RecycleAction(IFileOperations files) : IWheelOperation
     {
         await files.RecycleAsync(request.SourcePaths, cancellationToken).ConfigureAwait(false);
         var count = request.SourcePaths.Count;
-        return new ConversionResult(true, []) { Detail = count > 1 ? $"已把 {count} 项移到回收站" : "已移到回收站" };
+        return new ConversionResult(true, []) { Detail = count > 1 ? L.T("已把 {0} 项移到回收站", count) : L.T("已移到回收站") };
     }
 }

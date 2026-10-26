@@ -11,9 +11,9 @@ public sealed class CopyPathAction(IDesktop desktop) : IWheelOperation
 
     public WheelMode Mode => WheelMode.Actions;
 
-    public string Label => "复制路径";
+    public string Label => L.T("复制路径");
 
-    public string Hint => "带引号";
+    public string Hint => L.T("带引号");
 
     public FileAction? Action => FileAction.CopyPath;
 
@@ -23,7 +23,7 @@ public sealed class CopyPathAction(IDesktop desktop) : IWheelOperation
     {
         await desktop.SetClipboardTextAsync(Text(request.SourcePaths)).ConfigureAwait(false);
         var count = request.SourcePaths.Count;
-        return new ConversionResult(true, []) { Detail = count > 1 ? $"已复制 {count} 个路径" : "已复制路径" };
+        return new ConversionResult(true, []) { Detail = count > 1 ? L.T("已复制 {0} 个路径", count) : L.T("已复制路径") };
     }
 
     public static string Text(IReadOnlyList<string> paths) => string.Join("\r\n", paths.Select(p => $"\"{p}\""));

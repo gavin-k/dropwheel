@@ -26,7 +26,7 @@ public sealed class CompressZipAction(TimeProvider? time = null) : IWheelOperati
 
     public WheelMode Mode => WheelMode.Actions;
 
-    public string Label => "压缩";
+    public string Label => L.T("压缩");
 
     public string Hint => "ZIP";
 
