@@ -408,7 +408,7 @@ internal sealed partial class DocxReader
     }
 
     /// <summary>Runs that look the same and go to the same place joined into one, empty ones dropped.</summary>
-    private static List<DocRun> Merge(List<DocRun> runs)
+    internal static List<DocRun> Merge(List<DocRun> runs)
     {
         var merged = new List<DocRun>();
         foreach (var run in runs.Where(r => r.Text.Length > 0))

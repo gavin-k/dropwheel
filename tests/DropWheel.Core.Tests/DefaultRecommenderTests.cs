@@ -68,6 +68,14 @@ public class DefaultRecommenderTests
     }
 
     [Fact]
+    public void A_presentation_is_offered_as_text_then_markdown_then_html()
+    {
+        var graph = new ConversionGraph();
+        graph.Register(new TestConverter([new("pptx", "html"), new("pptx", "md"), new("pptx", "txt")]));
+        new DefaultRecommender(graph).For(["a.pptx"], MediaKind.Slides, WheelMode.Convert).Should().Equal("txt", "md", "html");
+    }
+
+    [Fact]
     public void Video_offers_other_containers_then_audio_and_gif()
     {
         var graph = Graph("mp4", "mkv", "mov", "webm", "avi", "mp3", "m4a", "wav", "gif");

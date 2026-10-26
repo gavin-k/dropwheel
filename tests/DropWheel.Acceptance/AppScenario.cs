@@ -109,6 +109,7 @@ internal static partial class AppScenario
                 Attempt(checks, "pdf to word", () => PdfToDocx(checks, log, dir, explorer));
                 Attempt(checks, "word to markdown", () => WordToMarkdown(checks, log, dir, explorer));
                 Attempt(checks, "excel to csv", () => ExcelToCsv(checks, log, dir, explorer));
+                Attempt(checks, "powerpoint to markdown", () => PowerPointToMarkdown(checks, log, dir, explorer));
                 Attempt(checks, "search a format", () => SearchFormat(checks, log, dir, explorer));
                 Attempt(checks, "an unavailable format says why", () => UnavailableFormat(checks, log, jpg, explorer));
                 Attempt(checks, "touch long press", () => TouchLongPress(checks, log, dir, explorer));

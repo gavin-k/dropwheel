@@ -101,7 +101,8 @@ Windows **没有**「全局拖拽开始」事件。Microsoft Q&A 上的讨论给
 
 ### 4.4 Office 文档 / 幻灯片 / 表格
 
-- **DOCX ↔ 文本**：已选手写 OOXML，和 PDF → DOCX 同一个理由。读 document.xml、styles.xml、numbering.xml 和超链接关系，得到标题、列表、粗斜体、链接和表格，写成 TXT、Markdown（按 CommonMark 转义）、HTML；TXT → DOCX 每行一段。**Open XML SDK**（MIT）只在测试里用来造输入、校验输出。PPTX 还没做。
+- **DOCX ↔ 文本**：已选手写 OOXML，和 PDF → DOCX 同一个理由。读 document.xml、styles.xml、numbering.xml 和超链接关系，得到标题、列表、粗斜体、链接和表格，写成 TXT、Markdown（按 CommonMark 转义）、HTML；TXT → DOCX 每行一段。**Open XML SDK**（MIT）只在测试里用来造输入、校验输出。
+- **PPTX → 文本**：同样手写，读出的结构和 DOCX 一样，写法共用。按 presentation.xml 里的顺序读幻灯片，隐藏的跳过；标题占位符成标题，其余形状按叠放顺序读，组合和 mc:AlternateContent 都打开；项目符号和编号沿段落、文本框、版式、母版的顺序继承；表格读成表格，SmartArt 从数据部件取文字，备注页只读正文占位符。日期、页脚、页码、图片和图表不读。旧版 PPT 留给 LibreOffice 模块。
 - **XLSX ↔ CSV / TSV**：同样手写。用 XmlReader 一行一行读工作表，取共享字符串、内联字符串、布尔值和公式上次算好的结果；数字格式是日期或时间的写成日期时间，其余数字写成 15 位有效数字，格式定了小数位数的补足位数。写 XLSX 只有一个工作表，小数配上同样位数的格式，文字一律写成内联字符串，测试用 Open XML SDK 按 Office 2019 架构校验。超过 Excel 上限（1,048,576 行、16,384 列、一格 32,767 个字符）就报错。
 - **LibreOffice headless**（MPL-2.0）：ODT / ODP / ODS、DOC / PPT / XLS（仅输入）、文档→PDF 高保真。作为可选引擎模块，首次使用时下载（或企业离线包预置）。
 - EPUB：自写生成器（EPUB 本质是 ZIP + XHTML）。

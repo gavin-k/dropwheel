@@ -49,6 +49,7 @@
 | 图片 | JPG、PNG、WebP、AVIF、GIF、BMP、TIFF，另可读 HEIC、PSD（取合成后的图像）、ICO（取最大的一张）、SVG（按标明的尺寸画成位图，引用了外部文件的不转） | JPG、PNG、WebP、AVIF、GIF、BMP、TIFF（转 JPG、BMP 时透明部分填白），另有 ICO（最大 256×256，不是正方形时补透明边）和 PDF（一张图一页，多页 TIFF 每页一页）。HEIC 还不能输出，轮盘上灰显 |
 | PDF | PDF | DOCX（按段落重建文字和图片，保留字号、粗斜体、颜色）、PNG、JPG（150 DPI，每页一张，多页放进同名文件夹）、TXT（只取文字层） |
 | Word 文档 | DOCX | TXT（只留文字，表格的单元格用 Tab 隔开）、Markdown 和 HTML（保留标题、列表、粗体、斜体、链接和表格）。修订按全部接受，图片、页眉页脚和脚注不保留 |
+| 演示文稿 | PPTX | TXT（只留文字）、Markdown 和 HTML（每张幻灯片的标题成一级标题，保留项目符号、编号、粗体、斜体、链接和表格，SmartArt 只取文字，备注放在每张幻灯片最后）。隐藏的幻灯片、图片、图表、动画和版式不保留 |
 | 纯文本 | TXT（UTF-8、GBK，或带 BOM 的 UTF-16） | DOCX（每行一段） |
 | 表格 | XLSX（只取看得见的工作表里的值）、CSV（逗号或分号分隔，认 Excel 的 `sep=` 行）、TSV；CSV 和 TSV 认 UTF-8、GBK 和带 BOM 的 UTF-16 | CSV、TSV（XLSX 每个工作表一个文件，有几个就放进同名文件夹；公式取上次算好的结果，日期写成 2026-10-25，小数位数照格式）、XLSX（一个工作表；数字写成数字，小数位数照原样显示，以 0 开头的编号、超过 15 位的数字和日期按文字保留） |
 | 视频 | MP4、MOV、MKV、WebM、AVI、RMVB | MP4、MOV、MKV、WebM、AVI、GIF，以及下面的音频格式 |

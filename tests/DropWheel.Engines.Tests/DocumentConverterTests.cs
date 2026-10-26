@@ -146,9 +146,12 @@ public sealed class DocumentConverterTests : IDisposable
     }
 
     [Fact]
-    public void Edges_are_word_to_text_markdown_and_html_and_text_to_word()
+    public void Edges_are_word_and_powerpoint_to_text_markdown_and_html_and_text_to_word()
     {
-        _converter.Edges.Should().BeEquivalentTo(new ConversionEdge[] { new("docx", "txt"), new("docx", "md"), new("docx", "html"), new("txt", "docx") });
+        _converter.Edges.Should().BeEquivalentTo(new ConversionEdge[]
+        {
+            new("docx", "txt"), new("docx", "md"), new("docx", "html"), new("pptx", "txt"), new("pptx", "md"), new("pptx", "html"), new("txt", "docx"),
+        });
     }
 
     [Fact]

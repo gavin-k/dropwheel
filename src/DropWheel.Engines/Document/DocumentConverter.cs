@@ -5,9 +5,9 @@ using DropWheel.Core.Jobs;
 namespace DropWheel.Engines.Document;
 
 /// <summary>
-/// Word documents in process, without Office: DOCX to plain text, Markdown and HTML through <see cref="DocxReader"/>
-/// and <see cref="DocxExport"/>, and plain text to DOCX through <see cref="TextDocx"/>. A password-protected DOCX
-/// and an old binary .doc are refused.
+/// Word documents and PowerPoint presentations in process, without Office: DOCX and PPTX to plain text, Markdown and
+/// HTML through <see cref="DocxReader"/>, <see cref="PptxReader"/> and <see cref="DocxExport"/>, and plain text to
+/// DOCX through <see cref="TextDocx"/>. A password-protected file and an old binary .doc or .ppt are refused.
 /// </summary>
 public sealed class DocumentConverter(TimeProvider? time = null) : IConverter
 {
@@ -20,7 +20,7 @@ public sealed class DocumentConverter(TimeProvider? time = null) : IConverter
     public string Id => "document";
 
     public IEnumerable<ConversionEdge> Edges =>
-        WordOutputs.Select(o => new ConversionEdge("docx", o)).Append(new ConversionEdge("txt", "docx"));
+        WordOutputs.SelectMany(o => new[] { new ConversionEdge("docx", o), new ConversionEdge("pptx", o) }).Append(new ConversionEdge("txt", "docx"));
 
     public Availability Check(ConversionRequest request) => Availability.Available;
 
@@ -32,6 +32,8 @@ public sealed class DocumentConverter(TimeProvider? time = null) : IConverter
         {
             ("docx", "txt") => new(QualityLevel.Medium, ["只留文字，格式、图片、页眉页脚和脚注不保留", "表格一行一行，单元格之间用 Tab 隔开", "修订按全部接受处理"]),
             ("docx", "md" or "html") => new(QualityLevel.Medium, structure),
+            ("pptx", "txt") => new(QualityLevel.Medium, ["只留文字：每张幻灯片先写标题，再写各个文本框、表格和 SmartArt 的文字，最后是备注", "图片、图表、动画和版式不保留", "隐藏的幻灯片不导出"]),
+            ("pptx", "md" or "html") => new(QualityLevel.Medium, ["每张幻灯片的标题成一级标题，保留项目符号、编号、粗体、斜体、链接和表格，备注放在最后", "图片、图表、动画和版式不保留", "隐藏的幻灯片不导出"]),
             ("txt", "docx") => new(QualityLevel.High, ["每行一段，用 Word 默认字体"]),
             _ => null,
         };
@@ -81,12 +83,12 @@ public sealed class DocumentConverter(TimeProvider? time = null) : IConverter
             }).ConfigureAwait(false);
         }
 
-        if (from != "docx" || !WordOutputs.Contains(to))
+        if (from is not ("docx" or "pptx") || !WordOutputs.Contains(to))
         {
             throw new InvalidDataException($"{name} 转不了 {FormatRegistry.FromExtension(to)?.DisplayName ?? to}");
         }
 
-        var blocks = DocxReader.Read(source, cancellationToken);
+        var blocks = from == "docx" ? DocxReader.Read(source, cancellationToken) : PptxReader.Read(source, cancellationToken);
         if (!DocxReader.HasText(blocks))
         {
             throw new InvalidDataException($"{name} 里没有文字");
