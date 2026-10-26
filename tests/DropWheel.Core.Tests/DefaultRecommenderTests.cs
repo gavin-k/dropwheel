@@ -48,6 +48,16 @@ public class DefaultRecommenderTests
     }
 
     [Fact]
+    public void A_word_document_is_offered_as_text_then_markdown_then_html()
+    {
+        var graph = new ConversionGraph();
+        graph.Register(new TestConverter([new("docx", "html"), new("docx", "md"), new("docx", "txt"), new("txt", "docx")]));
+        var recommender = new DefaultRecommender(graph);
+        recommender.For(["a.docx"], MediaKind.Document, WheelMode.Convert).Should().Equal("txt", "md", "html");
+        recommender.For(["a.txt"], MediaKind.Document, WheelMode.Convert).Should().Equal("docx");
+    }
+
+    [Fact]
     public void Video_offers_other_containers_then_audio_and_gif()
     {
         var graph = Graph("mp4", "mkv", "mov", "webm", "avi", "mp3", "m4a", "wav", "gif");

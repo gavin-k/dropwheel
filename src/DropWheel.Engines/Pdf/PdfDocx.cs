@@ -4,6 +4,7 @@ using System.Text;
 using System.Xml;
 using DropWheel.Core.Conversion;
 using DropWheel.Core.Jobs;
+using DropWheel.Engines.Document;
 using UglyToad.PdfPig;
 using UglyToad.PdfPig.Content;
 using UglyToad.PdfPig.Core;
@@ -22,41 +23,20 @@ namespace DropWheel.Engines.Pdf;
 /// before the first paragraph below them: JPEG data unchanged, others as PNG when PdfPig can decode them. Each PDF
 /// page starts a new page. Columns, tables, headers and footers come out as plain paragraphs. A scanned PDF has no
 /// text layer and fails, as it does for TXT; an OCR'd scan keeps its invisible text and drops the page image under it.
-///
-/// The package is written by hand: the few WordprocessingML elements this needs do not justify the 8.5 MB
-/// Open XML SDK, which the tests use to validate the output instead.
+/// The package is written by hand, see <see cref="DocxPackage"/>.
 /// </summary>
 internal static class PdfDocx
 {
-    private const string W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-    private const string R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+    private const string W = DocxPackage.W;
+    private const string R = DocxPackage.R;
     private const string WP = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing";
     private const string A = "http://schemas.openxmlformats.org/drawingml/2006/main";
     private const string Pic = "http://schemas.openxmlformats.org/drawingml/2006/picture";
 
     private const long EmuPerPoint = 12700;
-    private const int TwipsPerPoint = 20;
 
     /// <summary>An image covering this share of a page that has text is taken for a scan under OCR text.</summary>
     private const double ScanCoverage = 0.8;
-
-    private const string ContentTypes = """
-        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-        <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="jpeg" ContentType="image/jpeg"/><Default Extension="png" ContentType="image/png"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>
-        """;
-
-    private const string PackageRelationships = """
-        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-        <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>
-        """;
-
-    /// <summary>Calibri and DengXian, the Office defaults for Western and Chinese text; 6 pt after each paragraph.</summary>
-    private const string Styles = """
-        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-        <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:eastAsia="DengXian" w:hAnsi="Calibri" w:cs="Calibri"/><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="120"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style></w:styles>
-        """;
-
-    private static readonly XmlWriterSettings Settings = new() { Encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false) };
 
     private readonly record struct Look(double Size, bool Bold, bool Italic, string? Color);
 
@@ -79,14 +59,14 @@ internal static class PdfDocx
     {
         using var pdf = PdfDocument.Open(source);
         using var zip = new ZipArchive(File.Create(temp), ZipArchiveMode.Create);
-        WriteText(zip, "[Content_Types].xml", ContentTypes);
-        WriteText(zip, "_rels/.rels", PackageRelationships);
+        DocxPackage.WriteText(zip, "[Content_Types].xml", DocxPackage.ContentTypes);
+        DocxPackage.WriteText(zip, "_rels/.rels", DocxPackage.PackageRelationships);
 
         // The pictures go into the package page by page; the text waits here until the last page is read.
         var pictures = new List<string>();
         var text = new MemoryStream();
         var words = 0;
-        using (var xml = XmlWriter.Create(text, Settings))
+        using (var xml = XmlWriter.Create(text, DocxPackage.Settings))
         {
             xml.WriteStartElement("w", "document", W);
             foreach (var (prefix, ns) in new[] { ("r", R), ("wp", WP), ("a", A), ("pic", Pic) })
@@ -110,7 +90,8 @@ internal static class PdfDocx
                 throw new InvalidDataException($"{Path.GetFileName(source)} 没有可提取的文字（可能是扫描件，需要 OCR）");
             }
 
-            WriteSection(xml, first.Width, first.Height, margin);
+            // The page size of the first page.
+            DocxPackage.WriteSection(xml, first.Width, first.Height, margin);
             xml.WriteEndElement();
             xml.WriteEndElement();
         }
@@ -121,7 +102,7 @@ internal static class PdfDocx
             text.CopyTo(entry);
         }
 
-        WriteText(zip, "word/styles.xml", Styles);
+        DocxPackage.WriteText(zip, "word/styles.xml", DocxPackage.Styles(after: 120));
         var relationships = new StringBuilder("""
             <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
             <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="styles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
@@ -132,13 +113,13 @@ internal static class PdfDocx
                 $"""<Relationship Id="image{i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/{pictures[i]}"/>""");
         }
 
-        WriteText(zip, "word/_rels/document.xml.rels", relationships.Append("</Relationships>").ToString());
+        DocxPackage.WriteText(zip, "word/_rels/document.xml.rels", relationships.Append("</Relationships>").ToString());
     }
 
     /// <returns>How many words the page has.</returns>
     private static int WritePage(XmlWriter xml, ZipArchive zip, Page page, bool newPage, List<string> pictures, (double Width, double Height) room)
     {
-        var words = NearestNeighbourWordExtractor.Instance.GetWords(page.Letters).Where(w => Clean(w.Text).Trim().Length > 0).ToList();
+        var words = NearestNeighbourWordExtractor.Instance.GetWords(page.Letters).Where(w => DocxPackage.Clean(w.Text).Trim().Length > 0).ToList();
         var blocks = words.Count == 0 ? [] : UnsupervisedReadingOrderDetector.Instance.Get(DocstrumBoundingBoxes.Instance.GetBlocks(words)).ToList();
         var crop = page.CropBox.Bounds;
         var images = page.GetImages()
@@ -263,7 +244,7 @@ internal static class PdfDocx
                 separator = "";
             }
 
-            run.Append(separator).Append(Clean(word.Text));
+            run.Append(separator).Append(DocxPackage.Clean(word.Text));
             look = next;
             previous = word;
         }
@@ -344,12 +325,12 @@ internal static class PdfDocx
 
         if (look.Color is { } color)
         {
-            Value(xml, "color", color);
+            DocxPackage.Value(xml, "color", color);
         }
 
         var halfPoints = ((int)(look.Size * 2)).ToString(CultureInfo.InvariantCulture);
-        Value(xml, "sz", halfPoints);
-        Value(xml, "szCs", halfPoints);
+        DocxPackage.Value(xml, "sz", halfPoints);
+        DocxPackage.Value(xml, "szCs", halfPoints);
         xml.WriteEndElement();
         xml.WriteStartElement("w", "t", W);
         xml.WriteAttributeString("xml", "space", null, "preserve");
@@ -409,74 +390,11 @@ internal static class PdfDocx
         xml.WriteEndElement();
     }
 
-    /// <summary>The page size of the first page, landscape when it is wider than tall.</summary>
-    private static void WriteSection(XmlWriter xml, double width, double height, double margin)
-    {
-        static string Twips(double points) => ((int)Math.Round(points * TwipsPerPoint)).ToString(CultureInfo.InvariantCulture);
-        xml.WriteStartElement("w", "sectPr", W);
-        xml.WriteStartElement("w", "pgSz", W);
-        xml.WriteAttributeString("w", "w", W, Twips(width));
-        xml.WriteAttributeString("w", "h", W, Twips(height));
-        if (width > height)
-        {
-            xml.WriteAttributeString("w", "orient", W, "landscape");
-        }
-
-        xml.WriteEndElement();
-        xml.WriteStartElement("w", "pgMar", W);
-        foreach (var side in new[] { "top", "right", "bottom", "left" })
-        {
-            xml.WriteAttributeString("w", side, W, Twips(margin));
-        }
-
-        foreach (var side in new[] { "header", "footer" })
-        {
-            xml.WriteAttributeString("w", side, W, Twips(margin / 2));
-        }
-
-        xml.WriteAttributeString("w", "gutter", W, "0");
-        xml.WriteEndElement();
-        xml.WriteEndElement();
-    }
-
-    private static void Value(XmlWriter xml, string element, string value)
-    {
-        xml.WriteStartElement("w", element, W);
-        xml.WriteAttributeString("w", "val", W, value);
-        xml.WriteEndElement();
-    }
-
     private static void Attributes(XmlWriter xml, params (string Name, object Value)[] attributes)
     {
         foreach (var (name, value) in attributes)
         {
             xml.WriteAttributeString(name, Convert.ToString(value, CultureInfo.InvariantCulture));
         }
-    }
-
-    /// <summary>Text layers often carry control characters from a bad ToUnicode map; XML 1.0 has no place for them.</summary>
-    private static string Clean(string text)
-    {
-        var clean = new StringBuilder(text.Length);
-        for (var i = 0; i < text.Length; i++)
-        {
-            var c = text[i];
-            if (char.IsHighSurrogate(c) && i + 1 < text.Length && char.IsLowSurrogate(text[i + 1]))
-            {
-                clean.Append(c).Append(text[++i]);
-            }
-            else if (XmlConvert.IsXmlChar(c))
-            {
-                clean.Append(c is '\t' or '\r' or '\n' ? ' ' : c);
-            }
-        }
-
-        return clean.ToString();
-    }
-
-    private static void WriteText(ZipArchive zip, string path, string content)
-    {
-        using var writer = new StreamWriter(zip.CreateEntry(path).Open(), Settings.Encoding);
-        writer.Write(content);
     }
 }

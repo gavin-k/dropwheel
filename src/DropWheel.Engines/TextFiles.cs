@@ -1,19 +1,19 @@
 using System.Text;
 
-namespace DropWheel.Engines.Subtitle;
+namespace DropWheel.Engines;
 
 /// <summary>
-/// Reads subtitle files whatever their encoding and writes them as UTF-8. Many Chinese SRT files are GBK
-/// without a BOM, so the order is: BOM, then strict UTF-8, then GB18030 (a superset of GBK).
+/// Reads text files whatever their encoding and says how text outputs are written. Many Chinese SRT and TXT
+/// files are GBK without a BOM, so the order is: BOM, then strict UTF-8, then GB18030 (a superset of GBK).
 /// </summary>
-internal static class SubtitleText
+internal static class TextFiles
 {
     private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
-    /// <summary>UTF-8 with a BOM: older Windows players and TVs guess ANSI without one.</summary>
-    public static readonly Encoding Output = new UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
+    /// <summary>UTF-8 with a BOM: Notepad on an older Windows, older players and TVs guess ANSI without one.</summary>
+    public static readonly Encoding Utf8WithBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
 
-    static SubtitleText() => Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+    static TextFiles() => Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
     public static string Decode(byte[] bytes)
     {

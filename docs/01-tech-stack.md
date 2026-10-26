@@ -101,7 +101,7 @@ Windows **没有**「全局拖拽开始」事件。Microsoft Q&A 上的讨论给
 
 ### 4.4 Office 文档 / 幻灯片 / 表格
 
-- **Open XML SDK**（MIT）：DOCX / PPTX / XLSX 原生读写，TXT / MD / HTML / CSV 互转。
+- **DOCX ↔ 文本**：已选手写 OOXML，和 PDF → DOCX 同一个理由。读 document.xml、styles.xml、numbering.xml 和超链接关系，得到标题、列表、粗斜体、链接和表格，写成 TXT、Markdown（按 CommonMark 转义）、HTML；TXT → DOCX 每行一段。**Open XML SDK**（MIT）只在测试里用来造输入、校验输出。PPTX / XLSX 还没做。
 - **LibreOffice headless**（MPL-2.0）：ODT / ODP / ODS、DOC / PPT / XLS（仅输入）、文档→PDF 高保真。作为可选引擎模块，首次使用时下载（或企业离线包预置）。
 - EPUB：自写生成器（EPUB 本质是 ZIP + XHTML）。
 
@@ -141,7 +141,7 @@ Windows **没有**「全局拖拽开始」事件。Microsoft Q&A 上的讨论给
 
 ```
 DropWheel.exe (MIT)
- ├─ 进程内：Magick.NET (Apache-2.0) · PdfPig (Apache-2.0) · PDFium (BSD-3 / Apache-2.0) · SkiaSharp (MIT) · Open XML SDK (MIT) · SharpCompress (MIT)
+ ├─ 进程内：Magick.NET (Apache-2.0) · PdfPig (Apache-2.0) · PDFium (BSD-3 / Apache-2.0) · SkiaSharp (MIT) · SharpCompress (MIT)
  └─ 子进程：ffmpeg.exe (LGPL-2.1+) · soffice.exe (MPL-2.0，可选下载)
 ```
 

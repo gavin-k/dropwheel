@@ -1,4 +1,3 @@
-using System.Text;
 using DropWheel.Core.Conversion;
 using DropWheel.Core.Jobs;
 using UglyToad.PdfPig;
@@ -13,8 +12,6 @@ namespace DropWheel.Engines.Pdf;
 /// </summary>
 internal static class PdfText
 {
-    private static readonly UTF8Encoding Utf8WithBom = new(encoderShouldEmitUTF8Identifier: true);
-
     public static async Task<string?> WriteAsync(
         ConversionRequest request,
         string source,
@@ -47,6 +44,6 @@ internal static class PdfText
 
         var all = string.Join("\n\n", pages).ReplaceLineEndings("\r\n");
         return await OutputFiles.WriteAsync(request, source, index, now,
-            temp => File.WriteAllTextAsync(temp, all + "\r\n", Utf8WithBom, cancellationToken)).ConfigureAwait(false);
+            temp => File.WriteAllTextAsync(temp, all + "\r\n", TextFiles.Utf8WithBom, cancellationToken)).ConfigureAwait(false);
     }
 }

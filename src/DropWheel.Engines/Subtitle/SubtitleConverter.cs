@@ -5,7 +5,7 @@ namespace DropWheel.Engines.Subtitle;
 
 /// <summary>
 /// Text subtitles between SRT, WebVTT, ASS, SSA and LRC, in process. Timing and the line text survive;
-/// styling is cut down to italic, bold and underline. Any input encoding, UTF-8 output, see <see cref="SubtitleText"/>.
+/// styling is cut down to italic, bold and underline. Any input encoding, UTF-8 output, see <see cref="TextFiles"/>.
 /// </summary>
 public sealed class SubtitleConverter(TimeProvider? time = null) : IConverter
 {
@@ -74,7 +74,7 @@ public sealed class SubtitleConverter(TimeProvider? time = null) : IConverter
             throw new InvalidDataException($"{Path.GetFileName(source)} 不是可转换的文本字幕");
         }
 
-        var text = SubtitleText.Decode(await File.ReadAllBytesAsync(source, cancellationToken).ConfigureAwait(false));
+        var text = TextFiles.Decode(await File.ReadAllBytesAsync(source, cancellationToken).ConfigureAwait(false));
         var cues = SubtitleFormats.Parse(from, text);
         if (cues.Count == 0)
         {
@@ -83,6 +83,6 @@ public sealed class SubtitleConverter(TimeProvider? time = null) : IConverter
 
         var output = SubtitleFormats.Write(request.TargetFormatId, cues);
         return await OutputFiles.WriteAsync(request, source, index, _time.GetLocalNow(),
-            temp => File.WriteAllTextAsync(temp, output, SubtitleText.Output, cancellationToken)).ConfigureAwait(false);
+            temp => File.WriteAllTextAsync(temp, output, TextFiles.Utf8WithBom, cancellationToken)).ConfigureAwait(false);
     }
 }

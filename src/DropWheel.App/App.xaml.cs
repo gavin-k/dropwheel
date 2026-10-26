@@ -14,6 +14,7 @@ using DropWheel.Core.Privacy;
 using DropWheel.Core.Settings;
 using DropWheel.Core.Wheel;
 using DropWheel.Engines.Archive;
+using DropWheel.Engines.Document;
 using DropWheel.Engines.Image;
 using DropWheel.Engines.Media;
 using DropWheel.Engines.Pdf;
@@ -102,6 +103,7 @@ public partial class App : Application
             var ffmpeg = new FfmpegConverter();
             graph.Register(ffmpeg);
             graph.Register(new PdfConverter());
+            graph.Register(new DocumentConverter());
             _ = Task.Run(() =>
             {
                 FileLog.Info(ffmpeg.Tools is { } tools ? $"ffmpeg sidecar: {tools.Ffmpeg}" : "ffmpeg sidecar not found; audio and video targets and video tools are greyed out");

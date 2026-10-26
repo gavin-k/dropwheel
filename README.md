@@ -35,7 +35,7 @@
 | 图片 | Magick.NET (ImageMagick) 或 SkiaSharp + libheif/libavif | 许可证友好；HEIC 编码依赖系统 HEVC 扩展时需灰显说明 |
 | 音视频 | **FFmpeg LGPL 构建，独立进程（sidecar）** | MIT 主程序 + LGPL 进程边界；H.264 编码走 `h264_mf`（Media Foundation），WebM 编成 AV1 + Opus |
 | PDF | PDFium（渲染 / 转图）+ PdfPig（文本提取）+ SkiaSharp（图片→PDF） | PDF → DOCX 用 PdfPig 提取后按段落重建；LibreOffice sidecar 留作以后的可选模块 |
-| Office 文档 | Open XML SDK（原生读写）+ LibreOffice headless（可选下载模块） | 旧版 DOC / PPT / XLS 仅输入 |
+| Office 文档 | 手写 OOXML 读写 + LibreOffice headless（可选下载模块，还没做） | Open XML SDK 只在测试里校验输出；旧版 DOC / PPT / XLS 要等 LibreOffice 模块 |
 | OCR | `Windows.Media.Ocr`（系统内置，25 语种）→ Windows AI `TextRecognizer`（Copilot+ PC）→ RapidOCR / Tesseract 回退 | 全部离线 |
 | 压缩包 | SharpCompress（读 ZIP / 7z / TAR / TAR.GZ / RAR，写 ZIP / 7z / TAR / TAR.GZ） | RAR 仅输入 |
 | 打包分发 | MSIX（Store + winget）· WiX v5 MSI（企业直装，稀疏包未做） | `winapp` CLI 产出 x64 / ARM64 msixbundle，WiX 产出各架构的 .msi |
@@ -48,6 +48,8 @@
 |---|---|---|
 | 图片 | JPG、PNG、WebP、AVIF、GIF、BMP、TIFF，另可读 HEIC、PSD（取合成后的图像）、ICO（取最大的一张）、SVG（按标明的尺寸画成位图，引用了外部文件的不转） | JPG、PNG、WebP、AVIF、GIF、BMP、TIFF（转 JPG、BMP 时透明部分填白），另有 ICO（最大 256×256，不是正方形时补透明边）和 PDF（一张图一页，多页 TIFF 每页一页）。HEIC 还不能输出，轮盘上灰显 |
 | PDF | PDF | DOCX（按段落重建文字和图片，保留字号、粗斜体、颜色）、PNG、JPG（150 DPI，每页一张，多页放进同名文件夹）、TXT（只取文字层） |
+| Word 文档 | DOCX | TXT（只留文字，表格的单元格用 Tab 隔开）、Markdown 和 HTML（保留标题、列表、粗体、斜体、链接和表格）。修订按全部接受，图片、页眉页脚和脚注不保留 |
+| 纯文本 | TXT（UTF-8、GBK，或带 BOM 的 UTF-16） | DOCX（每行一段） |
 | 视频 | MP4、MOV、MKV、WebM、AVI、RMVB | MP4、MOV、MKV、WebM、AVI、GIF，以及下面的音频格式 |
 | 音频 | MP3、AAC、M4A、WAV、FLAC、OGG、Opus、AIFF、AMR | MP3、AAC、M4A、WAV、FLAC、OGG、Opus、AIFF |
 | 字幕 | SRT、VTT、ASS、SSA、LRC | 同左 |

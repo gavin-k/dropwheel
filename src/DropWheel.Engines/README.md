@@ -10,10 +10,12 @@
 | `Archive/` | SharpCompress | M1 | 进程内 |
 | `Subtitle/` | 自写解析器 | M1 | 进程内 |
 | `Tools/` | 复用上面的 Magick.NET、SharpCompress、SkiaSharp、PdfPig、FFmpeg；去元数据按 JPEG / PNG / WebP 的段结构直接删，不重新编码 | M1 | 进程内 + sidecar |
-| `Document/` | Open XML SDK · LibreOffice headless（可选模块） | M2 | 进程内 + sidecar |
+| `Document/` | 手写 OOXML：DOCX 读成标题、列表、段落和表格，写成 TXT、Markdown、HTML；TXT 写成 DOCX。Open XML SDK 只在测试里用。LibreOffice headless（可选模块）还没做 | M1 · LibreOffice 在 M2 | 进程内 + sidecar |
 | `Ocr/` | 只有 `ITextRecognizer` 接口；Windows.Media.Ocr 的实现是 App 里的 `WindowsTextRecognizer`。TextRecognizer、RapidOCR 还没做 | M2 | 进程内 |
 
 `Tools/` 里的是工具轮盘上的操作，实现 `DropWheel.Core.Wheel.IWheelOperation`，不是转换。图片工具输出原格式，文件名加后缀（`-压缩`、`-320x200`）；合成 PDF 和合并 PDF 输出 `第一个-合并.pdf`；拆分 PDF 输出同名文件夹，里面是 `名字-01.pdf` 这样的单页 PDF；压缩视频输出 `-压缩.mp4`，去掉声音输出原容器加 `-无声`，提取音频按音轨的编码选容器（AAC 是 `.m4a`，MP3 是 `.mp3`），解压输出同名文件夹，识别文字输出同名 `.txt`（UTF-8 带 BOM，CRLF 换行，PDF 每页按 300 DPI 渲染再识别，超过识别器的最大边长就缩小，页之间空一行）。视频工具共用 `MediaTool`：先用 ffprobe 读信息，再让 `FfmpegPlan` 出参数，没有可做的（没有音轨、压完没变小）记为跳过。都不套用设置里的命名模板。`EngineTools.Create` 按轮盘上的顺序列出全部工具。
+
+`Document/` 和 `Pdf/` 的 DOCX 共用 `DocxPackage` 里的部件写法。DOCX 转出的 TXT 和其他 TXT 输出一样是带 BOM 的 UTF-8、CRLF 换行；Markdown 和 HTML 是不带 BOM 的 UTF-8、LF 换行。读 TXT 时按 `TextFiles.Decode` 判断编码（BOM，否则 UTF-8，否则 GB18030），字幕也用它。加密的 DOCX、旧版 DOC、Strict Open XML 和损坏的文件都报错说明原因，不猜。
 
 规则：
 - `Check()` 必须便宜、同步；不可用时给出用户可读原因并设置 `Cause`。
