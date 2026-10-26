@@ -17,6 +17,7 @@ public sealed class DefaultRecommender(ConversionGraph graph) : IRecommender
         [MediaKind.Archive] = ["zip", "7z", "tgz", "tar"],
         [MediaKind.Pdf] = ["docx", "png", "jpg", "txt"],
         [MediaKind.Document] = ["pdf", "docx", "txt", "md", "html"],
+        [MediaKind.Sheet] = ["xlsx", "csv", "tsv"],
     };
 
     public IEnumerable<string> For(IReadOnlyList<string> sourcePaths, MediaKind kind, WheelMode mode)

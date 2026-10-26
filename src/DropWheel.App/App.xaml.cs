@@ -18,6 +18,7 @@ using DropWheel.Engines.Document;
 using DropWheel.Engines.Image;
 using DropWheel.Engines.Media;
 using DropWheel.Engines.Pdf;
+using DropWheel.Engines.Sheet;
 using DropWheel.Engines.Subtitle;
 using DropWheel.Engines.Tools;
 using DropWheel.Shell;
@@ -104,6 +105,7 @@ public partial class App : Application
             graph.Register(ffmpeg);
             graph.Register(new PdfConverter());
             graph.Register(new DocumentConverter());
+            graph.Register(new SheetConverter());
             _ = Task.Run(() =>
             {
                 FileLog.Info(ffmpeg.Tools is { } tools ? $"ffmpeg sidecar: {tools.Ffmpeg}" : "ffmpeg sidecar not found; audio and video targets and video tools are greyed out");

@@ -58,6 +58,16 @@ public class DefaultRecommenderTests
     }
 
     [Fact]
+    public void A_spreadsheet_is_offered_as_xlsx_then_csv_then_tsv()
+    {
+        var graph = new ConversionGraph();
+        graph.Register(new TestConverter([new("xlsx", "tsv"), new("xlsx", "csv"), new("csv", "xlsx"), new("csv", "tsv")]));
+        var recommender = new DefaultRecommender(graph);
+        recommender.For(["a.xlsx"], MediaKind.Sheet, WheelMode.Convert).Should().Equal("csv", "tsv");
+        recommender.For(["a.csv"], MediaKind.Sheet, WheelMode.Convert).Should().Equal("xlsx", "tsv");
+    }
+
+    [Fact]
     public void Video_offers_other_containers_then_audio_and_gif()
     {
         var graph = Graph("mp4", "mkv", "mov", "webm", "avi", "mp3", "m4a", "wav", "gif");

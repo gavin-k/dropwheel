@@ -1,4 +1,3 @@
-using System.IO.Compression;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml;
@@ -31,7 +30,7 @@ internal sealed record DocRun(string Text, bool Bold, bool Italic, string? Link)
 /// styles, styles based on them, or an outline level), lists with Word's numbers, bold and italic, external links
 /// and tables. Text boxes follow the paragraph they are anchored to. Inserted text is kept and deleted text dropped,
 /// as Word shows with all changes accepted. Images, fonts, sizes, colours, headers, footers, footnotes and
-/// comments are not read. Hand-parsed with the zip and XML readers the runtime has, like <see cref="DocxPackage"/>.
+/// comments are not read. Hand-parsed, through <see cref="OoxmlPackage"/>.
 /// </summary>
 internal sealed partial class DocxReader
 {
@@ -39,12 +38,6 @@ internal sealed partial class DocxReader
     private static readonly XNamespace R = DocxPackage.R;
     private static readonly XNamespace Mc = "http://schemas.openxmlformats.org/markup-compatibility/2006";
     private static readonly XNamespace M = "http://schemas.openxmlformats.org/officeDocument/2006/math";
-    private static readonly XNamespace Rels = "http://schemas.openxmlformats.org/package/2006/relationships";
-
-    /// <summary>The OLE compound file signature: Word saves a password-protected DOCX in one, and a .doc is one too.</summary>
-    private static readonly byte[] Compound = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
-
-    private static readonly XmlReaderSettings Safe = new() { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null };
 
     /// <summary>A style chain longer than this is taken for a loop.</summary>
     private const int MaxStyleDepth = 16;
@@ -86,34 +79,16 @@ internal sealed partial class DocxReader
     public static IReadOnlyList<DocBlock> Read(string path, CancellationToken cancellationToken)
     {
         var name = Path.GetFileName(path);
-        using var stream = File.OpenRead(path);
-        var head = new byte[Compound.Length];
-        if (stream.ReadAtLeast(head, head.Length, throwOnEndOfStream: false) == head.Length && head.AsSpan().SequenceEqual(Compound))
-        {
-            throw new InvalidDataException($"{name} 有密码保护，或是改了扩展名的旧版 .doc，暂不支持");
-        }
-
-        stream.Position = 0;
-        ZipArchive zip;
-        try
-        {
-            zip = new ZipArchive(stream, ZipArchiveMode.Read);
-        }
-        catch (InvalidDataException)
-        {
-            throw new InvalidDataException($"{name} 不是有效的 DOCX 文件");
-        }
-
-        using (zip)
+        using (var zip = OoxmlPackage.Open(path, "DOCX", ".doc"))
         {
             XDocument? document;
             DocxReader reader;
             try
             {
-                var main = Relationships(zip, "").FirstOrDefault(r => r.Type.EndsWith("/officeDocument", StringComparison.Ordinal)).Target ?? "word/document.xml";
-                document = Load(zip, main);
-                var rels = Relationships(zip, main);
-                XDocument? Part(string type) => rels.FirstOrDefault(r => r.Type.EndsWith(type, StringComparison.Ordinal) && !r.External) is { Target: { } target } ? Load(zip, target) : null;
+                var main = OoxmlPackage.Main(zip, "word/document.xml");
+                document = OoxmlPackage.Load(zip, main);
+                var rels = OoxmlPackage.Relationships(zip, main);
+                XDocument? Part(string type) => rels.FirstOrDefault(r => r.Type.EndsWith(type, StringComparison.Ordinal) && !r.External) is { Target: { } target } ? OoxmlPackage.Load(zip, target) : null;
                 var links = rels.Where(r => r.External).GroupBy(r => r.Id).ToDictionary(g => g.Key, g => g.First().Target);
                 reader = new DocxReader(Part("/styles"), Part("/numbering"), links);
             }
@@ -553,60 +528,4 @@ internal sealed partial class DocxReader
     private static bool? Toggle(XElement? e) => e is null ? null : e.Attribute(W + "val")?.Value is not { } value || On(value);
 
     private static bool On(string? value) => value is "1" or "true" or "on";
-
-    private static XDocument? Load(ZipArchive zip, string path)
-    {
-        // Part names are not case sensitive in a package; zip entry names are.
-        var entry = zip.GetEntry(path) ?? zip.Entries.FirstOrDefault(e => string.Equals(e.FullName, path, StringComparison.OrdinalIgnoreCase));
-        if (entry is null)
-        {
-            return null;
-        }
-
-        using var stream = entry.Open();
-        using var reader = XmlReader.Create(stream, Safe);
-        return XDocument.Load(reader);
-    }
-
-    /// <summary>The relationships of the part at <paramref name="part"/>, or of the package for "", with targets resolved to entry names.</summary>
-    private static List<(string Id, string Type, string Target, bool External)> Relationships(ZipArchive zip, string part)
-    {
-        var folder = part.Contains('/') ? part[..part.LastIndexOf('/')] : "";
-        var name = part[(part.LastIndexOf('/') + 1)..];
-        var document = Load(zip, (folder.Length > 0 ? folder + "/" : "") + "_rels/" + name + ".rels");
-        var list = new List<(string, string, string, bool)>();
-        foreach (var rel in document?.Root?.Elements(Rels + "Relationship") ?? [])
-        {
-            if (rel.Attribute("Id")?.Value is not { } id || rel.Attribute("Type")?.Value is not { } type || rel.Attribute("Target")?.Value is not { } target)
-            {
-                continue;
-            }
-
-            var external = rel.Attribute("TargetMode")?.Value == "External";
-            list.Add((id, type, external ? target : Resolve(folder, target), external));
-        }
-
-        return list;
-    }
-
-    private static string Resolve(string folder, string target)
-    {
-        var parts = target.StartsWith('/') ? [] : folder.Split('/', StringSplitOptions.RemoveEmptyEntries).ToList();
-        foreach (var segment in Uri.UnescapeDataString(target).Split('/', StringSplitOptions.RemoveEmptyEntries))
-        {
-            if (segment == "..")
-            {
-                if (parts.Count > 0)
-                {
-                    parts.RemoveAt(parts.Count - 1);
-                }
-            }
-            else if (segment != ".")
-            {
-                parts.Add(segment);
-            }
-        }
-
-        return string.Join('/', parts);
-    }
 }
