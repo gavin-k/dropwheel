@@ -11,7 +11,25 @@ public sealed class MagickImageConverterTests : IDisposable
     private readonly string _dir = Directory.CreateTempSubdirectory("dropwheel-engines-").FullName;
     private readonly MagickImageConverter _converter = new();
 
-    public void Dispose() => Directory.Delete(_dir, recursive: true);
+    /// <summary>
+    /// On the Windows CI runner something outside the test, likely the virus scanner, still had rotated.heic open
+    /// when the test ended, twice in a row; a handle of ours would outlast the retries and still fail here.
+    /// </summary>
+    public void Dispose()
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                Directory.Delete(_dir, recursive: true);
+                return;
+            }
+            catch (IOException) when (attempt < 30)
+            {
+                Thread.Sleep(100);
+            }
+        }
+    }
 
     private string Sample(string name = "photo.jpg", uint width = 64, uint height = 48, OrientationType orientation = OrientationType.TopLeft)
     {
