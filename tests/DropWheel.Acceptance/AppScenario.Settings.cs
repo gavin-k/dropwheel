@@ -16,7 +16,8 @@ internal static partial class AppScenario
     /// Through the settings window, the way a screen reader would use it: the note that the wheel is solid is
     /// there exactly when its acrylic fell back; unticking the only key is refused
     /// with the reason and nothing is saved; Ctrl instead of Shift, touch long press off, the dock off, the
-    /// output folder preset in settings.json and a file-name template are saved; 隐私与离线 counts no network
+    /// output folder preset in settings.json and a file-name template are saved, and so are English and then
+    /// 简体中文 picked as the language, the window staying Chinese; 隐私与离线 counts no network
     /// request, opens the log folder and clears the logs; 登录 Windows 时启动 writes and removes the Run value; a
     /// resting finger then opens nothing, nor does a drag pushed against the edge, and the next drag opens the
     /// wheel on Ctrl, not Shift, and puts the PNG in that folder, which does not exist yet, under the new name.
@@ -67,6 +68,14 @@ internal static partial class AppScenario
         checks.Check("Ctrl, long press off, the dock off, the output folder and the file name are saved as they are changed",
             keys is not null && touch is not null && dock is not null && location is not null && naming is not null,
             $"{keys ?? "no keys line"}; {touch ?? "no long press line"}; {dock ?? "no dock line"}; {location ?? "no folder line"}; {naming ?? "no naming line"}");
+
+        // A language takes effect at the next start, so the window stays Chinese; the English scenario starts in English.
+        var english = Pick("language", "English", out how) ? log.WaitFor(2000, "settings: saved language English") : null;
+        var chinese = english is not null && Pick("language", "简体中文", out how) ? log.WaitFor(2000, "settings: saved language Chinese") : null;
+        var still = Element(SettingsTitle, "唤出轮盘", out _) is not null;
+        checks.Check("English and then 简体中文 are saved as they are picked, and the window stays Chinese",
+            english is not null && chinese is not null && still,
+            $"{how}; {english ?? "no English line"}; {chinese ?? "no Chinese line"}; 唤出轮盘 {(still ? "still there" : "gone")}");
 
         Privacy(checks, log);
         StartAtSignIn(checks, log, exe);

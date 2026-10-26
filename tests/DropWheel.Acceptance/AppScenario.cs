@@ -85,8 +85,9 @@ internal static partial class AppScenario
             Directory.Delete(folder, recursive: true);
         }
 
+        // In Chinese whatever Windows speaks: the scenarios find the windows and buttons by their Chinese names.
         File.WriteAllText(Path.Combine(profile, "settings.json"),
-            $$"""{ "version": 1, "onboardingDone": true, "output": { "folder": "{{folder.Replace(@"\", @"\\", StringComparison.Ordinal)}}" } }""");
+            $$"""{ "version": 1, "onboardingDone": true, "language": "Chinese", "output": { "folder": "{{folder.Replace(@"\", @"\\", StringComparison.Ordinal)}}" } }""");
 
         var log = new AppLog();
         var started = Log.NowMs;
@@ -130,6 +131,7 @@ internal static partial class AppScenario
         Attempt(checks, "white wheel", () => WhiteWheel(checks, exe));
         Attempt(checks, "at sign-in", () => AtSignIn(checks, exe));
         Attempt(checks, "first run", () => FirstRun(checks, exe, explorer));
+        Attempt(checks, "in english", () => InEnglish(checks, exe));
         return checks.Report($"DropWheel.App M0 ({(explorer ? "Explorer" : "WinForms")} source)");
     }
 

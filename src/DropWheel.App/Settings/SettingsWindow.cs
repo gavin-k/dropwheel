@@ -23,7 +23,7 @@ namespace DropWheel.App.Settings;
 /// must be, with a note when the wheel is solid because Windows has transparency effects off; which items
 /// the Actions wheel offers, where results go, what they are called and what happens when the name is taken, and whether Windows starts it at sign-in; and what this computer keeps or sends:
 /// the network requests counted since start, and the logs, which name the files converted, to open or
-/// clear. Each change is saved as it is made,
+/// clear; and the language, which takes effect at the next start. Each change is saved as it is made,
 /// the file name a moment after typing stops. Keys that <see cref="ConflictChecker"/> calls an error are
 /// shown with the reason and not saved, so the Convert wheel is never left without a way to open it.
 /// Closing only hides the window.
@@ -45,8 +45,8 @@ internal sealed class SettingsWindow
     private bool _altGr;
     private readonly NumberBox _tapWindow = new()
     {
-        Header = "轻点时限（毫秒）",
-        Description = "按下到松开不超过这个时间，才算轻点。",
+        Header = L.T("轻点时限（毫秒）"),
+        Description = L.T("按下到松开不超过这个时间，才算轻点。"),
         Minimum = 100,
         Maximum = 1000,
         SmallChange = 50,
@@ -54,7 +54,7 @@ internal sealed class SettingsWindow
         SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Inline,
         HorizontalAlignment = HorizontalAlignment.Left,
     };
-    private readonly ToggleSwitch _longPress = new() { Header = "触屏或笔长按唤出转换轮盘", OnContent = "开", OffContent = "关" };
+    private readonly ToggleSwitch _longPress = new() { Header = L.T("触屏或笔长按唤出转换轮盘"), OnContent = L.T("开"), OffContent = L.T("关") };
     private readonly TextBlock _longPressNote = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = 0.75 };
     private readonly Windows.UI.ViewManagement.UISettings _system = new(); // kept: it raises AdvancedEffectsEnabledChanged only while alive
     private readonly InfoBar _solidWheel = new()
@@ -62,18 +62,19 @@ internal sealed class SettingsWindow
         Severity = InfoBarSeverity.Informational,
         IsOpen = true,
         IsClosable = false,
-        Title = "轮盘是纯色的",
-        Message = "Windows 的「透明效果」关着，轮盘用深灰底色代替半透明，用起来没有区别。想要半透明，在「个性化 › 颜色」里打开透明效果。",
+        Title = L.T("轮盘是纯色的"),
+        Message = L.T("Windows 的「透明效果」关着，轮盘用深灰底色代替半透明，用起来没有区别。想要半透明，在「个性化 › 颜色」里打开透明效果。"),
     };
-    private readonly ToggleSwitch _edgeDock = new() { Header = "拖到屏幕左右边缘时弹出停靠栏", OnContent = "开", OffContent = "关" };
-    private readonly RadioButton _nextToSource = new() { Content = "放在源文件旁边", GroupName = "location" };
-    private readonly RadioButton _toFolder = new() { Content = "统一放到一个文件夹", GroupName = "location" };
+    private readonly ToggleSwitch _edgeDock = new() { Header = L.T("拖到屏幕左右边缘时弹出停靠栏"), OnContent = L.T("开"), OffContent = L.T("关") };
+    private readonly RadioButton _nextToSource = new() { Content = L.T("放在源文件旁边"), GroupName = "location" };
+    private readonly RadioButton _toFolder = new() { Content = L.T("统一放到一个文件夹"), GroupName = "location" };
     private readonly TextBlock _folder = new() { TextWrapping = TextWrapping.Wrap, Opacity = 0.75, VerticalAlignment = VerticalAlignment.Center };
-    private readonly TextBox _naming = new() { Header = "文件名", PlaceholderText = NamingTemplate.Default };
+    private readonly TextBox _naming = new() { Header = L.T("文件名"), PlaceholderText = NamingTemplate.Default };
     private readonly TextBlock _preview = new() { TextWrapping = TextWrapping.Wrap, Opacity = 0.75 };
-    private readonly ComboBox _conflict = new() { Header = "同名文件已经存在时", Items = { "自动编号，例如 photo (1).png", "跳过，不转换这个文件", "替换，旧的移到回收站", "每次询问" } };
-    private readonly InfoBar _saveProblem = new() { Severity = InfoBarSeverity.Error, Title = "设置没有保存" };
-    private readonly ToggleSwitch _startup = new() { Header = "登录 Windows 时启动", OnContent = "开", OffContent = "关" };
+    private readonly ComboBox _conflict = new() { Header = L.T("同名文件已经存在时"), Items = { L.T("自动编号，例如 photo (1).png"), L.T("跳过，不转换这个文件"), L.T("替换，旧的移到回收站"), L.T("每次询问") } };
+    private readonly InfoBar _saveProblem = new() { Severity = InfoBarSeverity.Error, Title = L.T("设置没有保存") };
+    private readonly ComboBox _language = new() { Items = { L.T("跟随 Windows"), "简体中文", "English" } };
+    private readonly ToggleSwitch _startup = new() { Header = L.T("登录 Windows 时启动"), OnContent = L.T("开"), OffContent = L.T("关") };
     private readonly TextBlock _startupNote = new() { TextWrapping = TextWrapping.Wrap, Opacity = 0.75 };
     private readonly StackPanel _startupSection;
     private readonly NetworkWatch _networkWatch;
@@ -94,7 +95,7 @@ internal sealed class SettingsWindow
         _settings = settings;
         _networkWatch = network;
         network.Seen += _ => ui.TryEnqueue(ShowNetwork);
-        _window = new Window { Title = "DropWheel 设置" };
+        _window = new Window { Title = L.T("DropWheel 设置") };
         _window.AppWindow.SetIcon("Assets/DropWheel.ico");
         _window.AppWindow.Closing += (window, e) =>
         {
@@ -128,14 +129,14 @@ internal sealed class SettingsWindow
         foreach (var op in operations.Where(o => o.Action is not null))
         {
             var action = op.Action!.Value;
-            var box = new CheckBox { Content = $"{op.Label}（{op.Hint}）" };
+            var box = new CheckBox { Content = L.T("{0}（{1}）", op.Label, op.Hint) };
             box.Checked += (_, _) => ActionChanged(action, true);
             box.Unchecked += (_, _) => ActionChanged(action, false);
             _actions[action] = box;
             actions.Children.Add(box);
         }
 
-        var colors = new HyperlinkButton { Content = "打开颜色设置" };
+        var colors = new HyperlinkButton { Content = L.T("打开颜色设置") };
         colors.Click += async (_, _) =>
         {
             var opened = await Windows.System.Launcher.LaunchUriAsync(new Uri("ms-settings:colors"));
@@ -167,7 +168,7 @@ internal sealed class SettingsWindow
             }
         };
         _toFolder.Checked += async (_, _) => await ToFolderAsync().ConfigureAwait(true);
-        var pick = new Button { Content = "选择文件夹…" };
+        var pick = new Button { Content = L.T("选择文件夹…") };
         pick.Click += async (_, _) => await PickFolderAsync().ConfigureAwait(true);
         Grid.SetColumn(pick, 1);
         var folderRow = new Grid
@@ -183,6 +184,8 @@ internal sealed class SettingsWindow
         AutomationProperties.SetAutomationId(_solidWheel, "solid-wheel");
         AutomationProperties.SetAutomationId(_conflict, "conflict");
         AutomationProperties.SetAutomationId(_startup, "start-at-sign-in");
+        AutomationProperties.SetAutomationId(_language, "language");
+        AutomationProperties.SetName(_language, L.T("语言"));
         _namingPause = ui.CreateTimer();
         _namingPause.Interval = TimeSpan.FromMilliseconds(600);
         _namingPause.IsRepeating = false;
@@ -194,27 +197,28 @@ internal sealed class SettingsWindow
             _namingPause.Start();
         };
         _conflict.SelectionChanged += (_, _) => ConflictChanged();
+        _language.SelectionChanged += (_, _) => LanguageChanged();
         _startup.Toggled += async (_, _) => await StartupToggledAsync().ConfigureAwait(true);
-        var openLogs = new Button { Content = "打开日志文件夹" };
+        var openLogs = new Button { Content = L.T("打开日志文件夹") };
         openLogs.Click += (_, _) => OpenLogs();
-        var clearLogs = new Button { Content = "清除日志" };
+        var clearLogs = new Button { Content = L.T("清除日志") };
         clearLogs.Click += async (_, _) => await ClearLogsAsync().ConfigureAwait(true);
         var logButtons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { openLogs, clearLogs } };
 
         var page = new StackPanel { Spacing = 24, Padding = new Thickness(20, 16, 20, 24) };
-        page.Children.Add(new TextBlock { Text = "设置", FontSize = 20, FontWeight = FontWeights.SemiBold });
+        page.Children.Add(new TextBlock { Text = L.T("设置"), FontSize = 20, FontWeight = FontWeights.SemiBold });
         page.Children.Add(_saveProblem);
-        page.Children.Add(Section("唤出轮盘", "拖动文件时，把一行里选中的键一起按下再松开，那个轮盘就会在鼠标处弹出。转换轮盘把文件转成别的格式；工具轮盘压缩、缩小、拆分或提取音频；动作轮盘复制路径、重命名、压缩或删除。工具和动作轮盘一个键都不选就不会弹出。", keys, _keyProblem, _tapWindow, _longPress, _longPressNote, _solidWheel));
-        page.Children.Add(Section("停靠栏", "拖动文件时把鼠标推到屏幕左边或右边，那里会弹出停靠栏。文件先放进去，可以从几个文件夹陆续收集，回头一起或一个个拖走。放进去和拖出来都不会移动原文件，拖到文件夹里是复制。", _edgeDock));
-        page.Children.Add(Section("文件动作", "动作轮盘上哪几项能用。没勾选的仍然显示，只是灰色。删除默认不勾选，免得手一滑把文件扔进回收站。", actions));
-        page.Children.Add(Section("输出", null,
+        page.Children.Add(Section(L.T("唤出轮盘"), L.T("拖动文件时，把一行里选中的键一起按下再松开，那个轮盘就会在鼠标处弹出。转换轮盘把文件转成别的格式；工具轮盘压缩、缩小、拆分或提取音频；动作轮盘复制路径、重命名、压缩或删除。工具和动作轮盘一个键都不选就不会弹出。"), keys, _keyProblem, _tapWindow, _longPress, _longPressNote, _solidWheel));
+        page.Children.Add(Section(L.T("停靠栏"), L.T("拖动文件时把鼠标推到屏幕左边或右边，那里会弹出停靠栏。文件先放进去，可以从几个文件夹陆续收集，回头一起或一个个拖走。放进去和拖出来都不会移动原文件，拖到文件夹里是复制。"), _edgeDock));
+        page.Children.Add(Section(L.T("文件动作"), L.T("动作轮盘上哪几项能用。没勾选的仍然显示，只是灰色。删除默认不勾选，免得手一滑把文件扔进回收站。"), actions));
+        page.Children.Add(Section(L.T("输出"), null,
             _nextToSource,
             _toFolder,
             folderRow,
             _naming,
             new TextBlock
             {
-                Text = "可以用：{name} 原文件名，{fmt} 目标格式，{date} 日期，{time} 时间，{n} 多个文件一起转换时的序号，{w} {h} 宽和高（部分格式）",
+                Text = L.T("可以用：{name} 原文件名，{fmt} 目标格式，{date} 日期，{time} 时间，{n} 多个文件一起转换时的序号，{w} {h} 宽和高（部分格式）"),
                 TextWrapping = TextWrapping.Wrap,
                 FontSize = 12,
                 Opacity = 0.75,
@@ -223,16 +227,18 @@ internal sealed class SettingsWindow
             _conflict,
             new TextBlock
             {
-                Text = "替换时旧的文件或文件夹移到回收站，撤销任务不会把它移回来。拖进来的文件本身和这次刚生成的文件不会被替换，照样编号。",
+                Text = L.T("替换时旧的文件或文件夹移到回收站，撤销任务不会把它移回来。拖进来的文件本身和这次刚生成的文件不会被替换，照样编号。"),
                 TextWrapping = TextWrapping.Wrap,
                 FontSize = 12,
                 Opacity = 0.75,
             }));
 
-        page.Children.Add(Section("隐私与离线", "读取、转换和写入都在这台电脑上完成，文件不会上传。DropWheel 没有账号，不收集使用数据，也不自己联网检查更新。",
+        page.Children.Add(Section(L.T("隐私与离线"), L.T("读取、转换和写入都在这台电脑上完成，文件不会上传。DropWheel 没有账号，不收集使用数据，也不自己联网检查更新。"),
             _network, _logNote, logButtons));
 
-        _startupSection = Section("启动", null, _startup, _startupNote);
+        page.Children.Add(Section(L.T("语言"), L.T("跟随 Windows 时，Windows 的显示语言是中文就用简体中文，是其他语言就用英文。换了语言要退出 DropWheel 再打开才生效。"), _language));
+
+        _startupSection = Section(L.T("启动"), null, _startup, _startupNote);
         page.Children.Add(_startupSection);
         _window.Content = new ScrollViewer { Content = page };
     }
@@ -274,7 +280,7 @@ internal sealed class SettingsWindow
     private static string Preview(string template)
     {
         var name = new NamingTemplate(template).Expand(new NamingContext("photo", "png", "png", DateTimeOffset.Now, Sequence: 1, Width: 640, Height: 400));
-        return $"例如 photo.jpg 转成 PNG：{name}.png";
+        return L.T("例如 photo.jpg 转成 PNG：{0}.png", name);
     }
 
     private static StackPanel Section(string title, string? note, params UIElement[] children)
@@ -296,9 +302,9 @@ internal sealed class SettingsWindow
 
     private static string WheelName(WheelMode mode) => mode switch
     {
-        WheelMode.Convert => "转换",
-        WheelMode.Tools => "工具",
-        WheelMode.Actions => "动作",
+        WheelMode.Convert => L.T("转换"),
+        WheelMode.Tools => L.T("工具"),
+        WheelMode.Actions => L.T("动作"),
         _ => mode.ToString(),
     };
 
@@ -328,9 +334,9 @@ internal sealed class SettingsWindow
         _tapWindow.Value = current.Keys.TapWindowMs;
         _longPress.IsOn = current.Keys.TouchLongPress;
         _edgeDock.IsOn = current.Keys.EdgeDock;
-        _longPressNote.Text = $"拖动时手指或笔停在原地 {current.Keys.LongPressMs} 毫秒，转换轮盘就会弹出，鼠标停住不会。习惯停一下再抬起的话，轮盘会挡住要放下的地方，可以关掉。";
+        _longPressNote.Text = L.T("拖动时手指或笔停在原地 {0} 毫秒，转换轮盘就会弹出，鼠标停住不会。习惯停一下再抬起的话，轮盘会挡住要放下的地方，可以关掉。", current.Keys.LongPressMs);
         (current.Output.Location == OutputLocation.Folder ? _toFolder : _nextToSource).IsChecked = true;
-        _folder.Text = current.Output.Folder.Length == 0 ? "还没有选择文件夹" : current.Output.Folder;
+        _folder.Text = current.Output.Folder.Length == 0 ? L.T("还没有选择文件夹") : current.Output.Folder;
         _naming.Text = current.Output.Naming;
         _preview.Text = Preview(current.Output.Naming);
         _conflict.SelectedIndex = current.Output.Conflict switch
@@ -341,9 +347,16 @@ internal sealed class SettingsWindow
             ConflictPolicy.Ask => 3,
             _ => -1, // a number only a hand-edited file can hold; shown as unset
         };
+        _language.SelectedIndex = current.Language switch
+        {
+            LanguageSetting.System => 0,
+            LanguageSetting.Chinese => 1,
+            LanguageSetting.English => 2,
+            _ => -1,
+        };
         ShowEffects();
         ShowNetwork();
-        _logNote.Text = $"日志记下了转换过的文件路径，用来排查问题，只留最近 {LogRetention.KeepDays} 天，不会发给任何人。";
+        _logNote.Text = L.T("日志记下了转换过的文件路径，用来排查问题，只留最近 {0} 天，不会发给任何人。", LogRetention.KeepDays);
     }
 
     /// <summary>
@@ -357,7 +370,7 @@ internal sealed class SettingsWindow
         _solidWheel.Visibility = on ? Visibility.Collapsed : Visibility.Visible;
     }
 
-    private void ShowNetwork() => _network.Text = $"这次启动以来的网络请求：{_networkWatch.Count} 次";
+    private void ShowNetwork() => _network.Text = L.T("这次启动以来的网络请求：{0} 次", _networkWatch.Count);
 
     private void OpenLogs()
     {
@@ -370,7 +383,7 @@ internal sealed class SettingsWindow
     {
         var deleted = await FileLog.ClearAsync().ConfigureAwait(true);
         FileLog.Info($"settings: cleared {deleted} log file(s)");
-        _logNote.Text = $"已清除 {deleted} 个日志文件。";
+        _logNote.Text = L.T("已清除 {0} 个日志文件。", deleted);
     }
 
     private void KeysChanged(WheelMode mode)
@@ -421,7 +434,7 @@ internal sealed class SettingsWindow
 
         var error = conflicts.Any(c => c.Severity == ConflictSeverity.Error);
         _keyProblem.Severity = error ? InfoBarSeverity.Error : InfoBarSeverity.Warning;
-        _keyProblem.Title = error ? "这组按键没有保存" : "";
+        _keyProblem.Title = error ? L.T("这组按键没有保存") : "";
         _keyProblem.Message = string.Join(" ", conflicts.Select(c => c.Message).Distinct());
         AutomationProperties.SetName(_keyProblem, $"{_keyProblem.Title} {_keyProblem.Message}".Trim());
     }
@@ -527,10 +540,10 @@ internal sealed class SettingsWindow
         _startup.IsEnabled = state is StartupTaskState.Enabled or StartupTaskState.Disabled;
         _startupNote.Text = state switch
         {
-            StartupTaskState.DisabledByUser => "已在任务管理器的「启动应用」或「设置 › 应用 › 启动」里关闭，只能在那里重新打开。",
-            StartupTaskState.DisabledByPolicy => "已被组织的策略关闭。",
-            StartupTaskState.EnabledByPolicy => "已由组织的策略打开。",
-            _ => "开机后只在托盘里待命，不打开窗口。",
+            StartupTaskState.DisabledByUser => L.T("已在任务管理器的「启动应用」或「设置 › 应用 › 启动」里关闭，只能在那里重新打开。"),
+            StartupTaskState.DisabledByPolicy => L.T("已被组织的策略关闭。"),
+            StartupTaskState.EnabledByPolicy => L.T("已由组织的策略打开。"),
+            _ => L.T("开机后只在托盘里待命，不打开窗口。"),
         };
     }
 
@@ -604,6 +617,22 @@ internal sealed class SettingsWindow
         if (policy is { } p && p != _settings.Current.Output.Conflict)
         {
             Save($"conflict {p}", s => s with { Output = s.Output with { Conflict = p } });
+        }
+    }
+
+    /// <summary>Saved for the next start; the windows already built keep the language they were built in.</summary>
+    private void LanguageChanged()
+    {
+        var language = _language.SelectedIndex switch
+        {
+            0 => LanguageSetting.System,
+            1 => LanguageSetting.Chinese,
+            2 => LanguageSetting.English,
+            _ => (LanguageSetting?)null,
+        };
+        if (language is { } l && l != _settings.Current.Language)
+        {
+            Save($"language {l}", s => s with { Language = l });
         }
     }
 

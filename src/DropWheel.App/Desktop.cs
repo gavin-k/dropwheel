@@ -46,7 +46,7 @@ internal sealed class Desktop(DispatcherQueue ui) : IDesktop, IConflictPrompt
         {
             if (Explorer.Rename(path) is { } problem)
             {
-                done.SetException(new IOException($"资源管理器没能打开重命名（{problem}）"));
+                done.SetException(new IOException(L.T("资源管理器没能打开重命名（{0}）", problem)));
             }
             else
             {

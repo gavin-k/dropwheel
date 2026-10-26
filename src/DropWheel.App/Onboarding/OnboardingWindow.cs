@@ -23,8 +23,8 @@ namespace DropWheel.App.Onboarding;
 /// </summary>
 internal sealed class OnboardingWindow
 {
-    private const string SampleFolderName = "DropWheel 示例";
-    private const string SampleName = "示例照片.jpg";
+    private static string SampleFolderName => L.T("DropWheel 示例");
+    private static string SampleName => L.T("示例照片.jpg");
     private readonly Window _window;
     private readonly SettingsStore _settings;
     private readonly DispatcherQueue _ui;
@@ -37,7 +37,7 @@ internal sealed class OnboardingWindow
     {
         _settings = settings;
         _ui = ui;
-        _window = new Window { Title = "DropWheel 入门" };
+        _window = new Window { Title = L.T("DropWheel 入门") };
         _window.AppWindow.SetIcon("Assets/DropWheel.ico");
         _window.AppWindow.Closing += (window, e) =>
         {
@@ -50,31 +50,31 @@ internal sealed class OnboardingWindow
 
         AutomationProperties.SetAutomationId(_outcome, "outcome"); // for the acceptance driver
         var drag = Step();
-        drag.Text = "1. 在资源管理器里按住一个文件，开始拖动。";
-        var tryIt = new Button { Content = "试一试" };
+        drag.Text = L.T("1. 在资源管理器里按住一个文件，开始拖动。");
+        var tryIt = new Button { Content = L.T("试一试") };
         tryIt.Click += (_, _) => TrySample();
-        var keys = new Button { Content = "更改按键" };
+        var keys = new Button { Content = L.T("更改按键") };
         keys.Click += (_, _) => showSettings();
-        var start = new Button { Content = "开始使用", Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
+        var start = new Button { Content = L.T("开始使用"), Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
         start.Click += (_, _) => Finish("started");
         Grid.SetColumn(start, 1);
 
         var page = new StackPanel { Spacing = 16, Padding = new Thickness(24, 20, 24, 24) };
-        page.Children.Add(new TextBlock { Text = "拖动文件，轻点一下，松手即转换", FontSize = 20, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
+        page.Children.Add(new TextBlock { Text = L.T("拖动文件，轻点一下，松手即转换"), FontSize = 20, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
         page.Children.Add(new StackPanel { Spacing = 8, Children = { drag, _press, _release } });
         page.Children.Add(new StackPanel
         {
             Spacing = 8,
             Children =
             {
-                new TextBlock { Text = $"手边没有合适的文件？「试一试」会在「图片\\{SampleFolderName}」里放一张示例照片并在资源管理器里选中它，用完可以删掉。", TextWrapping = TextWrapping.Wrap, Opacity = 0.75 },
+                new TextBlock { Text = L.T("手边没有合适的文件？「试一试」会在「图片\\{0}」里放一张示例照片并在资源管理器里选中它，用完可以删掉。", SampleFolderName), TextWrapping = TextWrapping.Wrap, Opacity = 0.75 },
                 tryIt,
             },
         });
         page.Children.Add(_outcome);
         page.Children.Add(new TextBlock
         {
-            Text = "关掉这个窗口后，DropWheel 留在任务栏右侧的通知区域里（新图标可能先收在 ^ 形的隐藏图标里），随时可以用。点它的图标打开任务窗口，那里能看到进度、撤销转换、打开设置。",
+            Text = L.T("关掉这个窗口后，DropWheel 留在任务栏右侧的通知区域里（新图标可能先收在 ^ 形的隐藏图标里），随时可以用。点它的图标打开任务窗口，那里能看到进度、撤销转换、打开设置。"),
             TextWrapping = TextWrapping.Wrap,
         });
         page.Children.Add(new Grid
@@ -130,12 +130,12 @@ internal sealed class OnboardingWindow
     {
         var keys = settings.Keys.KeysFor(WheelMode.Convert);
         _press.Text = keys == Modifiers.None
-            ? "2. 还没有设置唤出转换轮盘的按键，先点「更改按键」选一个。"
-            : $"2. 拖动途中轻点 {ModifierNames.Of(keys)}（按下马上松开），转换轮盘会在鼠标处弹出。";
+            ? L.T("2. 还没有设置唤出转换轮盘的按键，先点「更改按键」选一个。")
+            : L.T("2. 拖动途中轻点 {0}（按下马上松开），转换轮盘会在鼠标处弹出。", ModifierNames.Of(keys));
         var where = settings.Output.Location == OutputLocation.Folder && settings.Output.Folder.Length > 0
-            ? $"「{settings.Output.Folder}」里"
-            : "源文件旁边";
-        _release.Text = $"3. 移到想要的格式上松开鼠标。转换在后台进行，结果放在{where}。";
+            ? L.T("「{0}」里", settings.Output.Folder)
+            : L.T("源文件旁边");
+        _release.Text = L.T("3. 移到想要的格式上松开鼠标。转换在后台进行，结果放在{0}。", where);
     }
 
     /// <summary>Writes the sample photo unless it is already there, then selects it in Explorer.</summary>
@@ -156,7 +156,7 @@ internal sealed class OnboardingWindow
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or MagickException)
         {
             FileLog.Error($"onboarding: could not write the sample {path}", ex);
-            Tell(InfoBarSeverity.Error, "示例照片没有放好", ex.Message);
+            Tell(InfoBarSeverity.Error, L.T("示例照片没有放好"), ex.Message);
             return;
         }
 
@@ -164,12 +164,12 @@ internal sealed class OnboardingWindow
         if (Explorer.Select(path) is { } problem)
         {
             FileLog.Info($"onboarding: could not show the sample in Explorer: {problem}");
-            Tell(InfoBarSeverity.Warning, "没能打开资源管理器", $"示例照片在 {path}，请自己打开那个文件夹。");
+            Tell(InfoBarSeverity.Warning, L.T("没能打开资源管理器"), L.T("示例照片在 {0}，请自己打开那个文件夹。", path));
             return;
         }
 
         FileLog.Info("onboarding: showed the sample in its folder");
-        Tell(InfoBarSeverity.Informational, "示例照片已经选中", "现在把它拖起来，照上面的第 2、3 步做。");
+        Tell(InfoBarSeverity.Informational, L.T("示例照片已经选中"), L.T("现在把它拖起来，照上面的第 2、3 步做。"));
     }
 
     /// <summary>While the guide is open, says how each conversion ended: the task window is not on screen to say it.</summary>
@@ -184,11 +184,11 @@ internal sealed class OnboardingWindow
         {
             case JobState.Done:
                 FileLog.Info($"onboarding: saw {job.Label} done");
-                Tell(InfoBarSeverity.Success, "转换成功", job.Outputs.Count > 0 ? $"{job.Label}，结果在 {job.Outputs[0]}" : job.Label);
+                Tell(InfoBarSeverity.Success, L.T("转换成功"), job.Outputs.Count > 0 ? L.T("{0}，结果在 {1}", job.Label, job.Outputs[0]) : job.Label);
                 break;
             case JobState.Failed:
                 FileLog.Info($"onboarding: saw {job.Label} fail");
-                Tell(InfoBarSeverity.Error, "没有转换成功", job.Error ?? job.Label);
+                Tell(InfoBarSeverity.Error, L.T("没有转换成功"), job.Error ?? job.Label);
                 break;
         }
     }

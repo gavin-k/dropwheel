@@ -40,7 +40,7 @@ internal sealed class DockWindow
     private readonly List<string> _files = [];
     private readonly StackPanel _rows = new() { Spacing = 6 };
     private readonly TextBlock _title = new() { FontSize = 16, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
-    private readonly TextBlock _empty = new() { Text = "把文件放在这里，回头再拖走。", TextWrapping = TextWrapping.Wrap, Opacity = 0.7 };
+    private readonly TextBlock _empty = new() { Text = L.T("把文件放在这里，回头再拖走。"), TextWrapping = TextWrapping.Wrap, Opacity = 0.7 };
     private readonly Border _all;
     private readonly DispatcherQueueTimer _idleGrace;
     private bool _draggingOut;
@@ -52,7 +52,7 @@ internal sealed class DockWindow
     {
         _ui = ui;
         _wheelOpen = wheelOpen;
-        _window = new Window { Title = "DropWheel 停靠栏" };
+        _window = new Window { Title = L.T("DropWheel 停靠栏") };
         _window.AppWindow.SetIcon("Assets/DropWheel.ico");
         var presenter = OverlappedPresenter.Create();
         presenter.SetBorderAndTitleBar(true, false);
@@ -71,7 +71,7 @@ internal sealed class DockWindow
             }
         };
 
-        var clear = new Button { Content = "清空", VerticalAlignment = VerticalAlignment.Center };
+        var clear = new Button { Content = L.T("清空"), VerticalAlignment = VerticalAlignment.Center };
         clear.Click += (_, _) =>
         {
             FileLog.Info($"dock: cleared {_files.Count} file(s)");
@@ -84,7 +84,7 @@ internal sealed class DockWindow
             Padding = new Thickness(10, 8, 10, 8),
             CornerRadius = new CornerRadius(6),
             Background = Brush("AccentFillColorDefaultBrush"),
-            Child = new TextBlock { Text = "全部拖出", Foreground = Brush("TextOnAccentFillColorPrimaryBrush"), HorizontalAlignment = HorizontalAlignment.Center },
+            Child = new TextBlock { Text = L.T("全部拖出"), Foreground = Brush("TextOnAccentFillColorPrimaryBrush"), HorizontalAlignment = HorizontalAlignment.Center },
         };
         DragsOut(_all, () => [.. _files]);
         Grid.SetRow(_all, 2);
@@ -224,7 +224,7 @@ internal sealed class DockWindow
         e.AcceptedOperation = takes ? DataPackageOperation.Copy : DataPackageOperation.None;
         if (takes)
         {
-            e.DragUIOverride.Caption = "放进停靠栏";
+            e.DragUIOverride.Caption = L.T("放进停靠栏");
         }
     }
 
@@ -364,7 +364,7 @@ internal sealed class DockWindow
 
     private void Render()
     {
-        _title.Text = _files.Count == 0 ? "停靠栏" : $"停靠栏 · {_files.Count} 个文件";
+        _title.Text = _files.Count == 0 ? L.T("停靠栏") : L.T("停靠栏 · {0} 个文件", _files.Count);
         _rows.Children.Clear();
         if (_files.Count == 0)
         {

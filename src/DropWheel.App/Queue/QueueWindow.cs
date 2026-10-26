@@ -33,7 +33,7 @@ internal sealed class QueueWindow
     {
         _queue = queue;
         _ui = ui;
-        _window = new Window { Title = "DropWheel 任务" };
+        _window = new Window { Title = L.T("DropWheel 任务") };
         _window.AppWindow.SetIcon("Assets/DropWheel.ico");
         _window.AppWindow.Closing += (window, e) =>
         {
@@ -45,7 +45,7 @@ internal sealed class QueueWindow
         };
         _empty = new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = 0.7 };
         _rows.Children.Add(_empty);
-        var settings = new Button { Content = "设置", VerticalAlignment = VerticalAlignment.Center };
+        var settings = new Button { Content = L.T("设置"), VerticalAlignment = VerticalAlignment.Center };
         settings.Click += (_, _) => showSettings();
         Grid.SetColumn(settings, 1);
         _window.Content = new Grid
@@ -58,7 +58,7 @@ internal sealed class QueueWindow
                 {
                     Margin = new Thickness(0, 0, 0, 12),
                     ColumnDefinitions = { new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }, new ColumnDefinition { Width = GridLength.Auto } },
-                    Children = { new TextBlock { Text = "任务", FontSize = 20, FontWeight = FontWeights.SemiBold }, settings },
+                    Children = { new TextBlock { Text = L.T("任务"), FontSize = 20, FontWeight = FontWeights.SemiBold }, settings },
                 },
                 Rows(new ScrollViewer { Content = _rows }),
             },
@@ -105,8 +105,8 @@ internal sealed class QueueWindow
 
     /// <summary>Names the keys that open the Convert wheel in the how-to line shown while the list is empty.</summary>
     public void ShowKeys(Modifiers keys) => _empty.Text = keys == Modifiers.None
-        ? "还没有设置唤出转换轮盘的按键，请在「设置」里选择。"
-        : $"从资源管理器拖动文件时轻点 {ModifierNames.Of(keys)}，轮盘会在鼠标处弹出；松手到扇区即开始转换。";
+        ? L.T("还没有设置唤出转换轮盘的按键，请在「设置」里选择。")
+        : L.T("从资源管理器拖动文件时轻点 {0}，轮盘会在鼠标处弹出；松手到扇区即开始转换。", ModifierNames.Of(keys));
 
     private static void LogOutcome(Job job)
     {
@@ -182,7 +182,7 @@ internal sealed class QueueWindow
         if (path is null)
         {
             FileLog.Info($"queue: outputs of {job.Label} are gone");
-            row.Fail("输出文件已经不在原处了");
+            row.Fail(L.T("输出文件已经不在原处了"));
             row.Refresh();
             return;
         }
@@ -211,7 +211,7 @@ internal sealed class QueueWindow
         catch (Exception ex)
         {
             FileLog.Error($"queue: undo of {job.Label} failed", ex);
-            row.Fail($"撤销失败：{ex.Message}");
+            row.Fail(L.T("撤销失败：{0}", ex.Message));
         }
         finally
         {
@@ -239,10 +239,10 @@ internal sealed class QueueWindow
         public Row(Job job, QueueWindow owner)
         {
             _job = job;
-            _cancel = Command("取消", () => owner.Cancel(job));
-            _retry = Command("重试", () => owner.Retry(job, this));
-            _reveal = Command("打开位置", () => Reveal(job, this));
-            _undo = Command("撤销", async () => await owner.UndoAsync(job, this).ConfigureAwait(true));
+            _cancel = Command(L.T("取消"), () => owner.Cancel(job));
+            _retry = Command(L.T("重试"), () => owner.Retry(job, this));
+            _reveal = Command(L.T("打开位置"), () => Reveal(job, this));
+            _undo = Command(L.T("撤销"), async () => await owner.UndoAsync(job, this).ConfigureAwait(true));
             var text = new StackPanel { Spacing = 2 };
             text.Children.Add(new TextBlock { Text = job.Label, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
             text.Children.Add(_state);
@@ -272,15 +272,15 @@ internal sealed class QueueWindow
             var state = _job.State;
             _state.Text = _failure ?? state switch
             {
-                JobState.Pending => "等待中",
-                JobState.Running => (_job.Runner is null ? "转换中" : "进行中") + (_job.Progress > 0 ? $" {_job.Progress:P0}" : ""),
-                JobState.Done => _job.Detail ?? $"完成 → {string.Join("、", _job.Outputs.Select(Path.GetFileName))}",
-                JobState.Failed => $"失败：{_job.Error}",
-                JobState.Canceled => "已取消",
-                JobState.Undone => _job.Undo is UndoPlan.MoveBack ? "已撤销，已移回原处" : "已撤销，输出已移到回收站",
-                JobState.Skipped => _job.Detail ?? "已跳过",
+                JobState.Pending => L.T("等待中"),
+                JobState.Running => (_job.Runner is null ? L.T("转换中") : L.T("进行中")) + (_job.Progress > 0 ? $" {_job.Progress:P0}" : ""),
+                JobState.Done => _job.Detail ?? L.T("完成 → {0}", string.Join(L.T("、"), _job.Outputs.Select(Path.GetFileName))),
+                JobState.Failed => L.T("失败：{0}", _job.Error),
+                JobState.Canceled => L.T("已取消"),
+                JobState.Undone => _job.Undo is UndoPlan.MoveBack ? L.T("已撤销，已移回原处") : L.T("已撤销，输出已移到回收站"),
+                JobState.Skipped => _job.Detail ?? L.T("已跳过"),
                 _ => state.ToString(),
-            } + (_failure is null && _job.Replaced > 0 ? $"；替换掉的 {_job.Replaced} 个旧项目在回收站" : "");
+            } + (_failure is null && _job.Replaced > 0 ? L.T("；替换掉的 {0} 个旧项目在回收站", _job.Replaced) : "");
 
             // Engines that cannot tell how far they are report nothing until they finish.
             _progress.Visibility = Shown(state == JobState.Running);

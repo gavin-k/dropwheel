@@ -14,7 +14,7 @@ namespace DropWheel.Shell;
 /// </summary>
 public static class ConflictDialog
 {
-    public const string Title = "DropWheel 同名文件";
+    public static string Title => L.T("DropWheel 同名文件");
 
     // Button ids, which TDM_CLICK_BUTTON presses from outside.
     public const int Replace = 101;
@@ -58,10 +58,11 @@ public static class ConflictDialog
 
     private static unsafe ConflictAnswer Ask(string target, bool more)
     {
-        var kind = Directory.Exists(target) ? "文件夹" : "文件";
-        var instruction = $"「{Path.GetFileName(target)}」已经存在";
-        var content = $"位置：{Path.GetDirectoryName(target)}\n替换会把原来的{kind}移到回收站，之后撤销这个任务也不会把它移回来。保留两个会给新的加上编号。";
-        fixed (char* title = Title, main = instruction, text = content, replace = "替换", keep = "保留两个", skip = "跳过", rest = "后面的同名项也这样处理")
+        var instruction = L.T("「{0}」已经存在", Path.GetFileName(target));
+        var content = Directory.Exists(target)
+            ? L.T("位置：{0}\n替换会把原来的文件夹移到回收站，之后撤销这个任务也不会把它移回来。保留两个会给新的加上编号。", Path.GetDirectoryName(target))
+            : L.T("位置：{0}\n替换会把原来的文件移到回收站，之后撤销这个任务也不会把它移回来。保留两个会给新的加上编号。", Path.GetDirectoryName(target));
+        fixed (char* title = Title, main = instruction, text = content, replace = L.T("替换"), keep = L.T("保留两个"), skip = L.T("跳过"), rest = L.T("后面的同名项也这样处理"))
         {
             var buttons = stackalloc TASKDIALOG_BUTTON[]
             {

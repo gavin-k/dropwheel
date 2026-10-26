@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Runtime.InteropServices;
 using DropWheel.App.Diagnostics;
 using DropWheel.App.Dock;
@@ -10,6 +11,7 @@ using DropWheel.Core.Actions;
 using DropWheel.Core.Conversion;
 using DropWheel.Core.Input;
 using DropWheel.Core.Jobs;
+using DropWheel.Core.Localization;
 using DropWheel.Core.Privacy;
 using DropWheel.Core.Settings;
 using DropWheel.Core.Wheel;
@@ -94,6 +96,13 @@ public partial class App : Application
                 FileLog.Info($"log: deleted {pruned} daily log(s) older than {LogRetention.KeepDays} days");
             }
 
+            var dataDir = ArgValue(commandLine, "--data-dir") ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DropWheel");
+            var settings = new SettingsStore(Path.Combine(dataDir, "settings.json"));
+            // Before anything builds text: the libraries' text is fixed when it is built, some of it when a type first loads.
+            Loc.Current = settings.Current.LanguageFor(CultureInfo.CurrentUICulture);
+            UseLanguage(settings.Current.Language);
+            FileLog.Info($"language: {Loc.Current} (setting {settings.Current.Language}, Windows {CultureInfo.CurrentUICulture.Name})");
+
             var ui = DispatcherQueue.GetForCurrentThread();
 
             var graph = new ConversionGraph();
@@ -118,8 +127,6 @@ public partial class App : Application
             var desktop = new Desktop(ui);
             _queue = new JobQueue(graph, new UndoLedger(files), prompt: desktop);
             IReadOnlyList<IWheelOperation> operations = [.. FileActions.Create(files, desktop), .. EngineTools.Create(archives, ffmpeg, recognizer: recognizer)];
-            var dataDir = ArgValue(commandLine, "--data-dir") ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DropWheel");
-            var settings = new SettingsStore(Path.Combine(dataDir, "settings.json"));
             var recent = new RecentItems(path: Path.Combine(dataDir, "recent.json"));
             foreach (var problem in new[] { settings.LoadProblem, recent.LoadProblem }.OfType<string>())
             {
@@ -157,14 +164,14 @@ public partial class App : Application
             _monitor.Start();
             _tray = new TrayIcon(queueWindow.Handle, "DropWheel", Path.Combine(AppContext.BaseDirectory, "Assets", "DropWheel.ico"),
             [
-                ("打开任务窗口", () => queueWindow.Show()),
-                ("设置", settingsWindow.Show),
-                ("入门指南", onboarding.Show),
-                ("退出 DropWheel", Shutdown),
+                (L.T("打开任务窗口"), () => queueWindow.Show()),
+                (L.T("设置"), settingsWindow.Show),
+                (L.T("入门指南"), onboarding.Show),
+                (L.T("退出 DropWheel"), Shutdown),
             ]);
             _tray.Selected += () => queueWindow.Show();
-            _wheel.LooksFlat += () => _tray?.Notify("轮盘显示成了一整块白色",
-                "多半是显卡驱动卡住了。按 Win+Ctrl+Shift+B 重置显卡驱动；还不行就更新显卡驱动或重启电脑。");
+            _wheel.LooksFlat += () => _tray?.Notify(L.T("轮盘显示成了一整块白色"),
+                L.T("多半是显卡驱动卡住了。按 Win+Ctrl+Shift+B 重置显卡驱动；还不行就更新显卡驱动或重启电脑。"));
             void ShowHome()
             {
                 if (settings.Current.OnboardingDone)
@@ -232,6 +239,32 @@ public partial class App : Application
 
     private static string? ArgValue(string[] args, string name) =>
         Array.IndexOf(args, name) is var i and >= 0 && i + 1 < args.Length ? args[i + 1] : null;
+
+    /// <summary>
+    /// Has WinUI's own text, such as a text box's menu, follow the picked language too. A packaged app keeps the
+    /// override from one start to the next, so following Windows clears one left from before; an unpackaged app
+    /// never keeps it and refuses an empty one, so there is nothing to clear.
+    /// </summary>
+    private static void UseLanguage(LanguageSetting language)
+    {
+        var tag = language switch
+        {
+            LanguageSetting.Chinese => "zh-CN",
+            LanguageSetting.English => "en-US",
+            _ => "",
+        };
+        try
+        {
+            if (tag.Length > 0 || Microsoft.Windows.Globalization.ApplicationLanguages.PrimaryLanguageOverride.Length > 0)
+            {
+                Microsoft.Windows.Globalization.ApplicationLanguages.PrimaryLanguageOverride = tag;
+            }
+        }
+        catch (Exception ex)
+        {
+            FileLog.Error("language: Windows refused the language override", ex);
+        }
+    }
 
     private void Shutdown()
     {

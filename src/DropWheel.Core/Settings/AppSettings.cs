@@ -1,9 +1,14 @@
+using System.Globalization;
 using DropWheel.Core.Conversion;
 using DropWheel.Core.Jobs;
+using DropWheel.Core.Localization;
 
 namespace DropWheel.Core.Settings;
 
 public enum OutputLocation { NextToSource, Folder }
+
+/// <summary>The language the user picked; <see cref="System"/> follows the Windows display language.</summary>
+public enum LanguageSetting { System, Chinese, English }
 
 /// <summary>Where results are written and what they are called.</summary>
 public sealed record OutputSettings(
@@ -38,7 +43,18 @@ public sealed record AppSettings
     /// <summary>The first-run guide has been shown (finished or skipped).</summary>
     public bool OnboardingDone { get; init; }
 
+    /// <summary>Takes effect at the next start: the windows are built once, in the language of their start.</summary>
+    public LanguageSetting Language { get; init; }
+
     public static AppSettings Default { get; } = new();
+
+    /// <summary>The language to speak when Windows shows <paramref name="display"/>.</summary>
+    public UiLanguage LanguageFor(CultureInfo display) => Language switch
+    {
+        LanguageSetting.Chinese => UiLanguage.Chinese,
+        LanguageSetting.English => UiLanguage.English,
+        _ => Loc.For(display),
+    };
 
     /// <summary>A conversion of <paramref name="sourcePaths"/> to <paramref name="targetFormatId"/> under these settings.</summary>
     public ConversionRequest Request(IReadOnlyList<string> sourcePaths, string targetFormatId) =>

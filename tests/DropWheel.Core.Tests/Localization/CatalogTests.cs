@@ -12,10 +12,14 @@ namespace DropWheel.Core.Tests.Localization;
 /// </summary>
 public sealed partial class CatalogTests
 {
-    public static TheoryData<string> Projects => new() { "src/DropWheel.Core", "src/DropWheel.Engines" };
+    public static TheoryData<string> Projects => new() { "src/DropWheel.Core", "src/DropWheel.Engines", "src/DropWheel.App", "src/DropWheel.Shell" };
 
     /// <summary>Chinese literals that are meant to stay Chinese in English too, by project-relative file.</summary>
-    private static readonly Dictionary<string, string[]> Untranslated = new();
+    private static readonly Dictionary<string, string[]> Untranslated = new()
+    {
+        // The language picker names Chinese in Chinese, so someone who reads only it can find it.
+        ["Settings/SettingsWindow.cs"] = ["简体中文"],
+    };
 
     [Theory]
     [MemberData(nameof(Projects))]
@@ -82,6 +86,15 @@ public sealed partial class CatalogTests
         }
 
         left.Should().BeEmpty();
+    }
+
+    [Theory]
+    [MemberData(nameof(Projects))]
+    public void EachProjectEmbedsItsCatalogAndCompilesL(string project)
+    {
+        var csproj = File.ReadAllText(Path.Combine(Root, project, Path.GetFileName(project) + ".csproj"));
+        csproj.Should().Contain("<Compile Include=\"../Shared/L.cs\"")
+            .And.Contain($"<EmbeddedResource Include=\"{Loc.CatalogName}\" LogicalName=\"{Loc.CatalogName}\" WithCulture=\"false\" />");
     }
 
     [Fact]

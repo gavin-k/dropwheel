@@ -69,6 +69,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="../Shared/L.cs" Link="L.cs" />
+    <EmbeddedResource Include="Strings.en.json" LogicalName="Strings.en.json" WithCulture="false" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../DropWheel.Core/DropWheel.Core.csproj" />
     <ProjectReference Include="../DropWheel.Shell/DropWheel.Shell.csproj" />
     <ProjectReference Include="../DropWheel.Engines/DropWheel.Engines.csproj" />

@@ -1,5 +1,7 @@
+using System.Globalization;
 using DropWheel.Core.Conversion;
 using DropWheel.Core.Jobs;
+using DropWheel.Core.Localization;
 using DropWheel.Core.Settings;
 using DropWheel.Core.Wheel;
 using FluentAssertions;
@@ -110,6 +112,24 @@ public sealed class SettingsStoreTests : IDisposable
         migrated.Version.Should().Be(AppSettings.CurrentVersion);
         edited.Actions.Enabled.Should().BeEquivalentTo([FileAction.CopyPath]);
         current.Actions.Enabled.Should().BeEquivalentTo([FileAction.CopyPath, FileAction.MoveTo]);
+    }
+
+    [Theory]
+    [InlineData(LanguageSetting.System, "zh-CN", UiLanguage.Chinese)]
+    [InlineData(LanguageSetting.System, "en-US", UiLanguage.English)]
+    [InlineData(LanguageSetting.English, "zh-CN", UiLanguage.English)]
+    [InlineData(LanguageSetting.Chinese, "en-US", UiLanguage.Chinese)]
+    public void The_language_follows_Windows_unless_one_was_picked(LanguageSetting setting, string display, UiLanguage expected) =>
+        (AppSettings.Default with { Language = setting }).LanguageFor(CultureInfo.GetCultureInfo(display)).Should().Be(expected);
+
+    [Fact]
+    public void The_picked_language_is_saved_by_name_and_a_file_without_one_follows_Windows()
+    {
+        new SettingsStore(File_).Update(s => s with { Language = LanguageSetting.English });
+
+        File.ReadAllText(File_).Should().Contain("\"language\": \"English\"");
+        new SettingsStore(File_).Current.Language.Should().Be(LanguageSetting.English);
+        AppSettings.Default.Language.Should().Be(LanguageSetting.System);
     }
 
     [Fact]

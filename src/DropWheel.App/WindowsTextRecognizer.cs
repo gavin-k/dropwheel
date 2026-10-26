@@ -37,7 +37,7 @@ internal sealed class WindowsTextRecognizer : ITextRecognizer
             if (engine is null)
             {
                 FileLog.Info("ocr: no recognizer language");
-                return (null, "Windows 里没有装文字识别语言，可以在「设置」的「时间和语言」里给语言装上「光学字符识别」");
+                return (null, L.T("Windows 里没有装文字识别语言，可以在「设置」的「时间和语言」里给语言装上「光学字符识别」"));
             }
 
             FileLog.Info($"ocr: {engine.RecognizerLanguage.LanguageTag}, of {string.Join(" ", OcrEngine.AvailableRecognizerLanguages.Select(l => l.LanguageTag))}, up to {OcrEngine.MaxImageDimension} px");
@@ -46,7 +46,7 @@ internal sealed class WindowsTextRecognizer : ITextRecognizer
         catch (Exception ex)
         {
             FileLog.Error("ocr: Windows OCR could not start", ex);
-            return (null, "Windows 的文字识别启动不了，详情在日志里");
+            return (null, L.T("Windows 的文字识别启动不了，详情在日志里"));
         }
     }
 }

@@ -203,7 +203,7 @@ internal sealed class WheelController : IDisposable
                 return;
             }
 
-            var label = paths.Count == 1 ? $"{Path.GetFileName(paths[0])} → {slot.Label}" : $"{paths.Count} 项 → {slot.Label}";
+            var label = paths.Count == 1 ? $"{Path.GetFileName(paths[0])} → {slot.Label}" : L.T("{0} 项 → {1}", paths.Count, slot.Label);
 
             // File actions never count against the daily quota, and only conversions have recent items.
             _queue.Enqueue(session!.Settings.Request(paths, slot.ItemId), label, slot.Operation, countsTowardQuota: session.Mode != WheelMode.Actions);

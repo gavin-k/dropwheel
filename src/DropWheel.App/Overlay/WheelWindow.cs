@@ -68,7 +68,7 @@ internal sealed class WheelWindow
     /// <param name="white">Diagnostic (<c>--white-wheel</c>): an opaque white layer over the whole window, as a stuck graphics driver shows it.</param>
     public WheelWindow(bool white = false)
     {
-        _window = new Window { Title = "DropWheel 轮盘" };
+        _window = new Window { Title = L.T("DropWheel 轮盘") };
         _appWindow = _window.AppWindow;
         var presenter = OverlappedPresenter.Create();
         presenter.SetBorderAndTitleBar(false, false);
@@ -232,7 +232,7 @@ internal sealed class WheelWindow
             var slot = Slot(i);
             _labels[i].Text = slot?.Label ?? "";
             _subLabels[i].Text = slot?.SubLabel ?? "";
-            AutomationProperties.SetName(_sectors[i], slot?.AccessibleName ?? $"扇区 {i + 1}（空）");
+            AutomationProperties.SetName(_sectors[i], slot?.AccessibleName ?? L.T("扇区 {0}（空）", i + 1));
             Paint(i);
         }
     }
@@ -273,8 +273,8 @@ internal sealed class WheelWindow
     {
         var detail = Slot(_hovered)?.Detail;
         _title.Text = detail?.Head ?? _model?.CenterTitle ?? "";
-        _subtitle.Text = detail?.Body ?? _model?.CenterSubtitle ?? "读取文件…";
-        _hint.Text = _hubFirst ? "先移到圆心" : _model?.HasMore == true ? "打字搜索 · Esc 取消" : "Esc 取消";
+        _subtitle.Text = detail?.Body ?? _model?.CenterSubtitle ?? L.T("读取文件…");
+        _hint.Text = _hubFirst ? L.T("先移到圆心") : _model?.HasMore == true ? L.T("打字搜索 · Esc 取消") : L.T("Esc 取消");
         _hint.Visibility = detail is null ? Visibility.Visible : Visibility.Collapsed;
     }
 
