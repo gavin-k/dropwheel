@@ -18,20 +18,20 @@ public sealed class MergePdfTool(TimeProvider? time = null) : IWheelOperation
 
     public WheelMode Mode => WheelMode.Tools;
 
-    public string Label => "合并 PDF";
+    public string Label => L.T("合并 PDF");
 
-    public string Hint => "按文件名排序";
+    public string Hint => L.T("按文件名排序");
 
     public bool AppliesTo(MediaKind kind) => kind == MediaKind.Pdf;
 
     public Availability Check(ConversionRequest request) => request.SourcePaths.Count < 2
-        ? Availability.Unavailable("至少选两个 PDF") with { Cause = UnavailableCause.SelectionShape }
+        ? Availability.Unavailable(L.T("至少选两个 PDF")) with { Cause = UnavailableCause.SelectionShape }
         : CheckPdfs(request.SourcePaths);
 
     public async Task<ConversionResult> RunAsync(ConversionRequest request, IProgress<double> progress, CancellationToken cancellationToken)
     {
         var sources = request.SourcePaths.Order(CombinePdfTool.FileNameOrder.Instance).ToList();
-        var plan = request with { SourcePaths = [sources[0]], TargetFormatId = "pdf", Naming = NamingTemplate.Default + "-合并" };
+        var plan = request with { SourcePaths = [sources[0]], TargetFormatId = "pdf", Naming = NamingTemplate.Default + L.T("-合并") };
         var documents = new List<PdfDocument>();
         try
         {
@@ -47,7 +47,7 @@ public sealed class MergePdfTool(TimeProvider? time = null) : IWheelOperation
                 var done = 0;
                 var written = OutputFiles.Write(plan, sources[0], 0, _time.GetLocalNow(),
                     temp => PdfCopy.Write(temp, pages, () => progress.Report((double)++done / total), cancellationToken));
-                return ConversionResult.Written(written is null ? [] : [written]) with { Detail = written is null ? null : $"{sources.Count} 个文件，共 {total} 页" };
+                return ConversionResult.Written(written is null ? [] : [written]) with { Detail = written is null ? null : L.T("{0} 个文件，共 {1} 页", sources.Count, total) };
             }, cancellationToken).ConfigureAwait(false);
         }
         catch (InvalidDataException ex)
@@ -66,12 +66,12 @@ public sealed class MergePdfTool(TimeProvider? time = null) : IWheelOperation
         {
             if (FormatRegistry.FromPath(path) is not { Id: "pdf" })
             {
-                return Availability.Unavailable($"{Path.GetFileName(path)} 不是 PDF");
+                return Availability.Unavailable(L.T("{0} 不是 PDF", Path.GetFileName(path)));
             }
 
             if (!File.Exists(path))
             {
-                return Availability.Unavailable($"找不到 {Path.GetFileName(path)}");
+                return Availability.Unavailable(L.T("找不到 {0}", Path.GetFileName(path)));
             }
         }
 

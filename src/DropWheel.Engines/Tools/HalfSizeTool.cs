@@ -7,9 +7,9 @@ public sealed class HalfSizeTool(TimeProvider? time = null) : ImageTool(time)
 {
     public override string Id => "tool.half-size";
 
-    public override string Label => "缩小";
+    public override string Label => L.T("缩小");
 
-    public override string Hint => "一半尺寸";
+    public override string Hint => L.T("一半尺寸");
 
     protected override IReadOnlyCollection<string> Formats => Image.MagickImageConverter.Formats.Keys;
 

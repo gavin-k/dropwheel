@@ -36,7 +36,7 @@ internal static class PdfPages
         var sizes = Conversion.GetPageSizes(input, leaveOpen: true);
         if (sizes.Count == 0)
         {
-            throw new InvalidDataException($"{Path.GetFileName(source)} 没有页面");
+            throw new InvalidDataException(L.T("{0} 没有页面", Path.GetFileName(source)));
         }
 
         SKBitmap Render(int page)
@@ -96,7 +96,7 @@ internal static class PdfPages
     private static void Save(SKBitmap page, string path, SKEncodedImageFormat format)
     {
         using var pixels = new SKPixmap(page.Info.WithAlphaType(SKAlphaType.Opaque), page.GetPixels(), page.RowBytes);
-        using var data = pixels.Encode(format, JpegQuality) ?? throw new InvalidDataException($"无法编码 {Path.GetFileName(path)}");
+        using var data = pixels.Encode(format, JpegQuality) ?? throw new InvalidDataException(L.T("无法编码 {0}", Path.GetFileName(path)));
         using var output = File.Create(path);
         data.SaveTo(output);
     }

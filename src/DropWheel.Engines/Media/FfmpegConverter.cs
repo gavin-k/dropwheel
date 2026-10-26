@@ -10,7 +10,7 @@ namespace DropWheel.Engines.Media;
 /// </summary>
 public sealed class FfmpegConverter : IConverter
 {
-    internal const string Missing = "找不到 ffmpeg 组件，请重新安装 DropWheel";
+    internal static string Missing => L.T("找不到 ffmpeg 组件，请重新安装 DropWheel");
 
     private readonly Lazy<FfmpegTools?> _tools;
     private readonly TimeProvider _time;
@@ -55,30 +55,30 @@ public sealed class FfmpegConverter : IConverter
 
         if (to == "gif")
         {
-            return new(QualityLevel.Medium, ["GIF 只有 256 色，每秒 10 帧，宽度不超过 480，没有声音"]);
+            return new(QualityLevel.Medium, [L.T("GIF 只有 256 色，每秒 10 帧，宽度不超过 480，没有声音")]);
         }
 
         var level = QualityLevel.High;
         var reasons = new List<string>();
         if (FfmpegPlan.Lossless.Contains(to) && !FfmpegPlan.Lossless.Contains(from.Id))
         {
-            reasons.Add("无损格式不会补回已丢失的细节，文件会变大");
+            reasons.Add(L.T("无损格式不会补回已丢失的细节，文件会变大"));
         }
 
         if (from.Id == "mkv" && FfmpegPlan.VideoOutputs.Contains(to))
         {
-            reasons.Add("内嵌字幕轨不保留");
+            reasons.Add(L.T("内嵌字幕轨不保留"));
         }
 
         if (to == "avi")
         {
             level = QualityLevel.Medium;
-            reasons.Add("AVI 只能用较旧的 MPEG-4 编码，同样画质文件更大");
+            reasons.Add(L.T("AVI 只能用较旧的 MPEG-4 编码，同样画质文件更大"));
         }
 
         if (to == "webm" && from.Id != "webm")
         {
-            reasons.Add("WebM 要重新编码为 AV1，耗时较长");
+            reasons.Add(L.T("WebM 要重新编码为 AV1，耗时较长"));
         }
 
         return reasons.Count > 0 ? new(level, reasons) : null;
@@ -101,7 +101,7 @@ public sealed class FfmpegConverter : IConverter
         var target = request.TargetFormatId;
         if (target != "gif" && !FfmpegPlan.VideoOutputs.Contains(target) && !FfmpegPlan.AudioOutputs.Contains(target))
         {
-            return new(false, [], $"不支持输出 {target}");
+            return new(false, [], L.T("不支持输出 {0}", target));
         }
 
         if (_tools.Value is not { } tools)
@@ -122,7 +122,7 @@ public sealed class FfmpegConverter : IConverter
         }
         catch (Win32Exception ex)
         {
-            return new(false, [], $"无法启动 ffmpeg：{ex.Message}");
+            return new(false, [], L.T("无法启动 ffmpeg：{0}", ex.Message));
         }
     }
 
@@ -172,11 +172,13 @@ public sealed class FfmpegConverter : IConverter
     {
         if (result.StderrTail.Any(l => l.Contains("could not find any MFT", StringComparison.OrdinalIgnoreCase)))
         {
-            return "系统缺少 H.264 编码器（Windows N 版需安装媒体功能包）";
+            return L.T("系统缺少 H.264 编码器（Windows N 版需安装媒体功能包）");
         }
 
         var detail = MediaProbe.Detail(result.StderrTail);
-        return $"{Path.GetFileName(source)} 转换失败{(detail.Length > 0 ? detail : $"（ffmpeg 退出码 {result.ExitCode}）")}";
+        return detail.Length > 0
+            ? L.T("{0} 转换失败{1}", Path.GetFileName(source), detail)
+            : L.T("{0} 转换失败（ffmpeg 退出码 {1}）", Path.GetFileName(source), result.ExitCode);
     }
 
     /// <summary>Asked once and cached; a failed attempt is retried by the next caller.</summary>
@@ -202,7 +204,7 @@ public sealed class FfmpegConverter : IConverter
         if (result.ExitCode != 0 || encoders.Count == 0)
         {
             var detail = MediaProbe.Detail(result.StderrTail);
-            throw new InvalidDataException($"ffmpeg 无法运行{(detail.Length > 0 ? detail : $"（退出码 {result.ExitCode}）")}");
+            throw new InvalidDataException(detail.Length > 0 ? L.T("ffmpeg 无法运行{0}", detail) : L.T("ffmpeg 无法运行（退出码 {0}）", result.ExitCode));
         }
 
         return encoders;

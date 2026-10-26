@@ -66,12 +66,12 @@ public sealed class SharpCompressArchiveConverter : IConverter
         var reasons = new List<string>();
         if (request.TargetFormatId == "tar")
         {
-            reasons.Add("tar 不压缩，文件会比原包大");
+            reasons.Add(L.T("tar 不压缩，文件会比原包大"));
         }
 
         if (from is "tar" or "tgz")
         {
-            reasons.Add("符号链接和 Unix 权限不保留");
+            reasons.Add(L.T("符号链接和 Unix 权限不保留"));
         }
 
         return reasons.Count > 0 ? new(QualityLevel.High, reasons) : null;
@@ -82,7 +82,7 @@ public sealed class SharpCompressArchiveConverter : IConverter
     {
         if (!Outputs.Contains(request.TargetFormatId))
         {
-            return new(false, [], $"不支持输出 {request.TargetFormatId}");
+            return new(false, [], L.T("不支持输出 {0}", request.TargetFormatId));
         }
 
         try
@@ -137,7 +137,7 @@ public sealed class SharpCompressArchiveConverter : IConverter
         }
         catch (SharpCompressException ex)
         {
-            throw new InvalidDataException($"{Path.GetFileName(source)} 无法读取：{ex.Message}", ex);
+            throw new InvalidDataException(L.T("{0} 无法读取：{1}", Path.GetFileName(source), ex.Message), ex);
         }
     }
 
@@ -263,5 +263,5 @@ public sealed class SharpCompressArchiveConverter : IConverter
         }
     }
 
-    private static InvalidDataException Encrypted(string source) => new($"{Path.GetFileName(source)} 有密码保护，暂不支持加密的压缩包");
+    private static InvalidDataException Encrypted(string source) => new(L.T("{0} 有密码保护，暂不支持加密的压缩包", Path.GetFileName(source)));
 }

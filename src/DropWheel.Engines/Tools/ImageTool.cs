@@ -30,7 +30,7 @@ public abstract class ImageTool(TimeProvider? time) : IWheelOperation
     protected abstract string Suffix { get; }
 
     /// <summary>Why an image was left as it was, such as "没有可去除的元数据".</summary>
-    protected virtual string Unchanged => "没有变化";
+    protected virtual string Unchanged => L.T("没有变化");
 
     public bool AppliesTo(MediaKind kind) => kind == MediaKind.Image;
 
@@ -41,12 +41,12 @@ public abstract class ImageTool(TimeProvider? time) : IWheelOperation
             var format = FormatRegistry.FromPath(path);
             if (format is null || !Formats.Contains(format.Id))
             {
-                return Availability.Unavailable(Unsupported(format) ?? $"不支持 {format?.DisplayName ?? Path.GetFileName(path)}");
+                return Availability.Unavailable(Unsupported(format) ?? L.T("不支持 {0}", format?.DisplayName ?? Path.GetFileName(path)));
             }
 
             if (!File.Exists(path))
             {
-                return Availability.Unavailable($"找不到 {Path.GetFileName(path)}");
+                return Availability.Unavailable(L.T("找不到 {0}", Path.GetFileName(path)));
             }
         }
 
@@ -91,12 +91,12 @@ public abstract class ImageTool(TimeProvider? time) : IWheelOperation
                 return new(true, []) { Skipped = true, Detail = Unchanged };
             }
 
-            var notes = new[] { Detail(before, after), unchanged > 0 ? $"另有 {unchanged} 张{Unchanged}" : null };
-            return ConversionResult.Written(written) with { Detail = string.Join("；", notes.OfType<string>()) is { Length: > 0 } d ? d : null };
+            var notes = new[] { Detail(before, after), unchanged > 0 ? L.T("另有 {0} 张{1}", unchanged, Unchanged) : null };
+            return ConversionResult.Written(written) with { Detail = string.Join(L.T("；"), notes.OfType<string>()) is { Length: > 0 } d ? d : null };
         }
         catch (Exception ex) when (ex is MagickException or InvalidDataException)
         {
-            return new(false, [], $"{Path.GetFileName(ex.Data["source"] as string)} 无法处理：{ex.Message}");
+            return new(false, [], L.T("{0} 无法处理：{1}", Path.GetFileName(ex.Data["source"] as string), ex.Message));
         }
     }
 
@@ -108,7 +108,7 @@ public abstract class ImageTool(TimeProvider? time) : IWheelOperation
     /// converts but no tool writes back, what to convert it to first.
     /// </summary>
     protected virtual string? Unsupported(FileFormat? format) =>
-        format is not null && Image.MagickImageConverter.ConvertsOnly(format.Id) ? $"{Label}不改 {format.DisplayName} 文件，先转成 PNG 或 JPG" : null;
+        format is not null && Image.MagickImageConverter.ConvertsOnly(format.Id) ? L.T("{0}不改 {1} 文件，先转成 PNG 或 JPG", Label, format.DisplayName) : null;
 
     /// <summary>One line for the task window about what was written.</summary>
     protected virtual string? Detail(long before, long after) => null;

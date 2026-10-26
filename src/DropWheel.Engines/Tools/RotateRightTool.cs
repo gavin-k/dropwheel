@@ -8,13 +8,13 @@ public sealed class RotateRightTool(TimeProvider? time = null) : ImageTool(time)
 {
     public override string Id => "tool.rotate-right";
 
-    public override string Label => "右转";
+    public override string Label => L.T("右转");
 
     public override string Hint => "90°";
 
     protected override IReadOnlyCollection<string> Formats => Image.MagickImageConverter.Formats.Keys;
 
-    protected override string Suffix => "-旋转";
+    protected override string Suffix => L.T("-旋转");
 
     protected override Rendered? Render(string source, string formatId)
     {

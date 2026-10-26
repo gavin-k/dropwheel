@@ -100,7 +100,7 @@ public static class ImagePdf
         }
         catch (MagickException ex)
         {
-            throw new InvalidDataException($"{Path.GetFileName(source)} 无法读取：{ex.Message}", ex);
+            throw new InvalidDataException(L.T("{0} 无法读取：{1}", Path.GetFileName(source), ex.Message), ex);
         }
     }
 
@@ -191,7 +191,7 @@ public static class ImagePdf
             frame.AutoOrient();
             var opaque = !frame.HasAlpha;
             using var pixels = frame.GetPixelsUnsafe();
-            var rgba = pixels.ToByteArray(PixelMapping.RGBA) ?? throw new InvalidDataException($"无法读取 {Path.GetFileName(source)} 的像素");
+            var rgba = pixels.ToByteArray(PixelMapping.RGBA) ?? throw new InvalidDataException(L.T("无法读取 {0} 的像素", Path.GetFileName(source)));
             var info = new SKImageInfo((int)frame.Width, (int)frame.Height, SKColorType.Rgba8888, opaque ? SKAlphaType.Opaque : SKAlphaType.Unpremul);
             var image = SKImage.FromPixelCopy(info, rgba);
             if (lossy && opaque)

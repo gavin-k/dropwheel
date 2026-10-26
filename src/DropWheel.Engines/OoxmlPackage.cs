@@ -28,7 +28,7 @@ internal static class OoxmlPackage
             var head = new byte[Compound.Length];
             if (stream.ReadAtLeast(head, head.Length, throwOnEndOfStream: false) == head.Length && head.AsSpan().SequenceEqual(Compound))
             {
-                throw new InvalidDataException($"{name} 有密码保护，或是改了扩展名的旧版 {legacy}，暂不支持");
+                throw new InvalidDataException(L.T("{0} 有密码保护，或是改了扩展名的旧版 {1}，暂不支持", name, legacy));
             }
 
             stream.Position = 0;
@@ -38,7 +38,7 @@ internal static class OoxmlPackage
             }
             catch (InvalidDataException)
             {
-                throw new InvalidDataException($"{name} 不是有效的 {format} 文件");
+                throw new InvalidDataException(L.T("{0} 不是有效的 {1} 文件", name, format));
             }
         }
         catch

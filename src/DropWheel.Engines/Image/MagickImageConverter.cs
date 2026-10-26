@@ -12,7 +12,7 @@ namespace DropWheel.Engines.Image;
 public sealed class MagickImageConverter(TimeProvider? time = null) : IConverter
 {
     /// <summary>Why HEIC is off. It says nothing of the HEVC extension: installing it would change nothing.</summary>
-    private const string HeicReason = "还不能写出 HEIC，体积差不多的可以选 AVIF";
+    private static string HeicReason => L.T("还不能写出 HEIC，体积差不多的可以选 AVIF");
 
     /// <summary>Read and written alike, so the image tools can write a changed copy back in the same format.</summary>
     internal static readonly Dictionary<string, MagickFormat> Formats = new(StringComparer.Ordinal)
@@ -48,10 +48,10 @@ public sealed class MagickImageConverter(TimeProvider? time = null) : IConverter
     private static readonly Dictionary<string, string> SourceNotes = new(StringComparer.Ordinal)
     {
         // Whether this GIF is animated is not read here, so every GIF gets the warning.
-        ["gif"] = "只取第一帧",
-        ["psd"] = "只取合成后的图像，不保留图层",
-        ["ico"] = "只取图标里最大的一张",
-        ["svg"] = "按 SVG 标明的尺寸转成位图",
+        ["gif"] = L.T("只取第一帧"),
+        ["psd"] = L.T("只取合成后的图像，不保留图层"),
+        ["ico"] = L.T("只取图标里最大的一张"),
+        ["svg"] = L.T("按 SVG 标明的尺寸转成位图"),
     };
 
     private readonly TimeProvider _time = time ?? TimeProvider.System;
@@ -79,13 +79,13 @@ public sealed class MagickImageConverter(TimeProvider? time = null) : IConverter
         var from = FormatRegistry.FromPath(request.SourcePaths[0])?.Id;
         var estimate = (from, request.TargetFormatId) switch
         {
-            (_, "gif") => new QualityEstimate(QualityLevel.Medium, ["GIF 仅 256 色"]),
-            (_, "ico") => new(QualityLevel.Medium, ["图标最大 256×256，大图会缩小", "不是正方形时四周补透明"]),
+            (_, "gif") => new QualityEstimate(QualityLevel.Medium, [L.T("GIF 仅 256 色")]),
+            (_, "ico") => new(QualityLevel.Medium, [L.T("图标最大 256×256，大图会缩小"), L.T("不是正方形时四周补透明")]),
             ("jpg" or "heic" or "webp" or "avif", "png" or "bmp" or "tiff") =>
-                new(QualityLevel.High, ["无损保存，画质不会再降低", "原图若是有损压缩，已有的压缩痕迹不会消失", "文件会变大"]),
+                new(QualityLevel.High, [L.T("无损保存，画质不会再降低"), L.T("原图若是有损压缩，已有的压缩痕迹不会消失"), L.T("文件会变大")]),
             ("png" or "gif" or "bmp" or "tiff" or "webp" or "avif" or "ico" or "svg" or "psd", "jpg") =>
-                new(QualityLevel.Medium, ["有损压缩，文字和线条边缘可能出现杂点", "透明部分变成白色"]),
-            ("png" or "gif" or "tiff" or "webp" or "avif" or "ico" or "svg" or "psd", "bmp") => new(QualityLevel.High, ["透明部分变成白色", "文件会变大"]),
+                new(QualityLevel.Medium, [L.T("有损压缩，文字和线条边缘可能出现杂点"), L.T("透明部分变成白色")]),
+            ("png" or "gif" or "tiff" or "webp" or "avif" or "ico" or "svg" or "psd", "bmp") => new(QualityLevel.High, [L.T("透明部分变成白色"), L.T("文件会变大")]),
             _ => null,
         };
 
@@ -99,7 +99,7 @@ public sealed class MagickImageConverter(TimeProvider? time = null) : IConverter
     {
         if (!Outputs.TryGetValue(request.TargetFormatId, out var format))
         {
-            return new(false, [], $"不支持输出 {request.TargetFormatId}");
+            return new(false, [], L.T("不支持输出 {0}", request.TargetFormatId));
         }
 
         try
@@ -110,7 +110,7 @@ public sealed class MagickImageConverter(TimeProvider? time = null) : IConverter
         }
         catch (Exception ex) when (ex is MagickException or InvalidDataException)
         {
-            return new(false, [], $"{Path.GetFileName(ex.Data["source"] as string)} 无法转换：{ex.Message}");
+            return new(false, [], L.T("{0} 无法转换：{1}", Path.GetFileName(ex.Data["source"] as string), ex.Message));
         }
     }
 
@@ -151,7 +151,7 @@ public sealed class MagickImageConverter(TimeProvider? time = null) : IConverter
             case "svg":
                 if (SvgGuard.FindExternal(File.ReadAllText(source)) is { } external)
                 {
-                    throw new InvalidDataException($"SVG 引用了它以外的内容（{external}），为了安全不转换");
+                    throw new InvalidDataException(L.T("SVG 引用了它以外的内容（{0}），为了安全不转换", external));
                 }
 
                 return new MagickImage(source, new MagickReadSettings { BackgroundColor = MagickColors.None });

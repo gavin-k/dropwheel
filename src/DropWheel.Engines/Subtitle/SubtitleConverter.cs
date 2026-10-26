@@ -30,17 +30,17 @@ public sealed class SubtitleConverter(TimeProvider? time = null) : IConverter
         var reasons = new List<string>();
         if (from is "ass" or "ssa")
         {
-            reasons.Add("样式、位置和特效会丢失");
+            reasons.Add(L.T("样式、位置和特效会丢失"));
         }
 
         if (from == "lrc")
         {
-            reasons.Add("LRC 没有结束时间，按下一行的开始时间推算");
+            reasons.Add(L.T("LRC 没有结束时间，按下一行的开始时间推算"));
         }
 
         if (to == "lrc")
         {
-            reasons.Add("多行字幕会合并成一行，粗斜体丢失");
+            reasons.Add(L.T("多行字幕会合并成一行，粗斜体丢失"));
         }
 
         return reasons.Count > 0 ? new(QualityLevel.Medium, reasons) : null;
@@ -51,7 +51,7 @@ public sealed class SubtitleConverter(TimeProvider? time = null) : IConverter
     {
         if (!Formats.Contains(request.TargetFormatId))
         {
-            return new(false, [], $"不支持输出 {request.TargetFormatId}");
+            return new(false, [], L.T("不支持输出 {0}", request.TargetFormatId));
         }
 
         try
@@ -71,14 +71,14 @@ public sealed class SubtitleConverter(TimeProvider? time = null) : IConverter
         var from = FormatRegistry.FromPath(source)?.Id;
         if (from is null || !Formats.Contains(from))
         {
-            throw new InvalidDataException($"{Path.GetFileName(source)} 不是可转换的文本字幕");
+            throw new InvalidDataException(L.T("{0} 不是可转换的文本字幕", Path.GetFileName(source)));
         }
 
         var text = TextFiles.Decode(await File.ReadAllBytesAsync(source, cancellationToken).ConfigureAwait(false));
         var cues = SubtitleFormats.Parse(from, text);
         if (cues.Count == 0)
         {
-            throw new InvalidDataException($"{Path.GetFileName(source)} 里没有找到任何带时间的字幕");
+            throw new InvalidDataException(L.T("{0} 里没有找到任何带时间的字幕", Path.GetFileName(source)));
         }
 
         var output = SubtitleFormats.Write(request.TargetFormatId, cues);

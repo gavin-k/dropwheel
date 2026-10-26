@@ -277,5 +277,5 @@ internal static class ImageMetadata
         return stripped;
     }
 
-    private static InvalidDataException NotA(string format) => new($"文件内容不是有效的 {format}");
+    private static InvalidDataException NotA(string format) => new(L.T("文件内容不是有效的 {0}", format));
 }

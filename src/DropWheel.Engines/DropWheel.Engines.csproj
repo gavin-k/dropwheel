@@ -11,6 +11,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="../Shared/L.cs" Link="L.cs" />
+    <EmbeddedResource Include="Strings.en.json" LogicalName="Strings.en.json" WithCulture="false" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Magick.NET-Q16-AnyCPU" />
     <PackageReference Include="PDFtoImage" />
     <PackageReference Include="PdfPig" />

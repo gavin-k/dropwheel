@@ -13,21 +13,21 @@ public sealed class CompressImageTool(TimeProvider? time = null) : ImageTool(tim
 
     public override string Id => "tool.compress-image";
 
-    public override string Label => "压缩图片";
+    public override string Label => L.T("压缩图片");
 
-    public override string Hint => "变小才保留";
+    public override string Hint => L.T("变小才保留");
 
     protected override IReadOnlyCollection<string> Formats { get; } = ["jpg", "png", "webp", "tiff"];
 
-    protected override string Suffix => "-压缩";
+    protected override string Suffix => L.T("-压缩");
 
-    protected override string Unchanged => "已经很小，压缩后没有变小";
+    protected override string Unchanged => L.T("已经很小，压缩后没有变小");
 
     protected override string? Unsupported(Core.Conversion.FileFormat? format) => format?.Id switch
     {
-        "bmp" => "BMP 本身不压缩，先转成 PNG 或 JPG",
-        "gif" => "GIF 已是 256 色，再压缩会损坏动画",
-        "avif" => "AVIF 已经压缩得很小",
+        "bmp" => L.T("BMP 本身不压缩，先转成 PNG 或 JPG"),
+        "gif" => L.T("GIF 已是 256 色，再压缩会损坏动画"),
+        "avif" => L.T("AVIF 已经压缩得很小"),
         _ => base.Unsupported(format),
     };
 

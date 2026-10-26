@@ -10,13 +10,13 @@ public sealed class ExtractAudioTool(FfmpegConverter ffmpeg, TimeProvider? time 
 {
     public override string Id => "tool.extract-audio";
 
-    public override string Label => "提取音频";
+    public override string Label => L.T("提取音频");
 
-    public override string Hint => "尽量原样";
+    public override string Hint => L.T("尽量原样");
 
     protected override string Suffix => "";
 
-    protected override string Unchanged => "没有音轨";
+    protected override string Unchanged => L.T("没有音轨");
 
     protected override (string Format, FfmpegJob Job)? Plan(MediaInfo info, string formatId, IReadOnlySet<string> encoders)
     {

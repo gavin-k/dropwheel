@@ -33,11 +33,11 @@ public sealed class SheetConverter(TimeProvider? time = null) : IConverter
         {
             ("xlsx", "csv" or "tsv") => new(QualityLevel.Medium,
             [
-                "只留值：公式取上次算好的结果，日期写成 2026-10-25，小数位数照格式，百分比、货币符号和千位分隔符不保留",
-                "每个工作表一个文件，有几个就放进同名文件夹，隐藏的和空的不导出",
-                "合并单元格的值只在左上角一格，样式、批注和图表不保留",
+                L.T("只留值：公式取上次算好的结果，日期写成 2026-10-25，小数位数照格式，百分比、货币符号和千位分隔符不保留"),
+                L.T("每个工作表一个文件，有几个就放进同名文件夹，隐藏的和空的不导出"),
+                L.T("合并单元格的值只在左上角一格，样式、批注和图表不保留"),
             ]),
-            ("csv" or "tsv", "xlsx") => new(QualityLevel.High, ["数字写成数字，小数位数照原样显示；以 0 开头的编号和超过 15 位的数字按文字保留", "日期、百分比和其他内容都按文字保留"]),
+            ("csv" or "tsv", "xlsx") => new(QualityLevel.High, [L.T("数字写成数字，小数位数照原样显示；以 0 开头的编号和超过 15 位的数字按文字保留"), L.T("日期、百分比和其他内容都按文字保留")]),
             _ => null,
         };
     }
@@ -48,7 +48,7 @@ public sealed class SheetConverter(TimeProvider? time = null) : IConverter
         var to = request.TargetFormatId;
         if (to != "xlsx" && !Delimited.Contains(to))
         {
-            return new(false, [], $"不支持输出 {to}");
+            return new(false, [], L.T("不支持输出 {0}", to));
         }
 
         try
@@ -74,7 +74,7 @@ public sealed class SheetConverter(TimeProvider? time = null) : IConverter
             var sheets = XlsxReader.Read(source, cancellationToken);
             if (sheets.Count == 0)
             {
-                throw new InvalidDataException($"{name} 里没有数据");
+                throw new InvalidDataException(L.T("{0} 里没有数据", name));
             }
 
             var delimiter = to == "tsv" ? '\t' : ',';
@@ -101,13 +101,13 @@ public sealed class SheetConverter(TimeProvider? time = null) : IConverter
 
         if (from is null || !Delimited.Contains(from) || to == from)
         {
-            throw new InvalidDataException($"{name} 转不了 {FormatRegistry.FromExtension(to)?.DisplayName ?? to}");
+            throw new InvalidDataException(L.T("{0} 转不了 {1}", name, FormatRegistry.FromExtension(to)?.DisplayName ?? to));
         }
 
         var rows = DelimitedText.Parse(TextFiles.Decode(await File.ReadAllBytesAsync(source, cancellationToken).ConfigureAwait(false)), from);
         if (rows.All(row => row.All(string.IsNullOrEmpty)))
         {
-            throw new InvalidDataException($"{name} 里没有数据");
+            throw new InvalidDataException(L.T("{0} 里没有数据", name));
         }
 
         if (to != "xlsx")
@@ -121,17 +121,17 @@ public sealed class SheetConverter(TimeProvider? time = null) : IConverter
 
         if (rows.Count > XlsxWriter.MaxRows)
         {
-            throw new InvalidDataException($"{name} 有 {rows.Count} 行，超过 Excel 一个工作表的 {XlsxWriter.MaxRows} 行");
+            throw new InvalidDataException(L.T("{0} 有 {1} 行，超过 Excel 一个工作表的 {2} 行", name, rows.Count, XlsxWriter.MaxRows));
         }
 
         if (rows.Max(row => row.Length) is var widest && widest > XlsxWriter.MaxColumns)
         {
-            throw new InvalidDataException($"{name} 有一行 {widest} 列，超过 Excel 的 {XlsxWriter.MaxColumns} 列");
+            throw new InvalidDataException(L.T("{0} 有一行 {1} 列，超过 Excel 的 {2} 列", name, widest, XlsxWriter.MaxColumns));
         }
 
         if (rows.Any(row => row.Any(field => field.Length > XlsxWriter.MaxCellText)))
         {
-            throw new InvalidDataException($"{name} 有一格超过 {XlsxWriter.MaxCellText} 个字符，Excel 的单元格放不下");
+            throw new InvalidDataException(L.T("{0} 有一格超过 {1} 个字符，Excel 的单元格放不下", name, XlsxWriter.MaxCellText));
         }
 
         return await OutputFiles.WriteAsync(request, source, index, now, temp =>

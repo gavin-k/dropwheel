@@ -46,7 +46,7 @@ public sealed class SidecarProcess(string executablePath)
             psi.ArgumentList.Add(a);
         }
 
-        using var process = Process.Start(psi) ?? throw new Win32Exception($"无法启动 {ExecutablePath}");
+        using var process = Process.Start(psi) ?? throw new Win32Exception(L.T("无法启动 {0}", ExecutablePath));
         try
         {
             process.PriorityClass = ProcessPriorityClass.BelowNormal;

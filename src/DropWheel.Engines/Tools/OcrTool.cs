@@ -34,9 +34,9 @@ public sealed class OcrTool(ITextRecognizer recognizer, TimeProvider? time = nul
 
     public WheelMode Mode => WheelMode.Tools;
 
-    public string Label => "识别文字";
+    public string Label => L.T("识别文字");
 
-    public string Hint => "存成 TXT";
+    public string Hint => L.T("存成 TXT");
 
     public bool AppliesTo(MediaKind kind) => kind is MediaKind.Image or MediaKind.Pdf;
 
@@ -52,12 +52,12 @@ public sealed class OcrTool(ITextRecognizer recognizer, TimeProvider? time = nul
             var format = FormatRegistry.FromPath(path);
             if (format is null || (format.Id != "pdf" && !MagickImageConverter.Reads(format.Id)))
             {
-                return Availability.Unavailable($"不支持 {format?.DisplayName ?? Path.GetFileName(path)}");
+                return Availability.Unavailable(L.T("不支持 {0}", format?.DisplayName ?? Path.GetFileName(path)));
             }
 
             if (!File.Exists(path))
             {
-                return Availability.Unavailable($"找不到 {Path.GetFileName(path)}");
+                return Availability.Unavailable(L.T("找不到 {0}", Path.GetFileName(path)));
             }
         }
 
@@ -87,11 +87,11 @@ public sealed class OcrTool(ITextRecognizer recognizer, TimeProvider? time = nul
 
             if (empty == request.SourcePaths.Count)
             {
-                return new(true, []) { Skipped = true, Detail = "没有认出文字" };
+                return new(true, []) { Skipped = true, Detail = L.T("没有认出文字") };
             }
 
-            var notes = new[] { $"认出 {lines} 行，识别语言 {recognizer.Language}", empty > 0 ? $"另有 {empty} 个没有认出文字" : null };
-            return ConversionResult.Written(written) with { Detail = string.Join("；", notes.OfType<string>()) };
+            var notes = new[] { L.T("认出 {0} 行，识别语言 {1}", lines, recognizer.Language), empty > 0 ? L.T("另有 {0} 个没有认出文字", empty) : null };
+            return ConversionResult.Written(written) with { Detail = string.Join(L.T("；"), notes.OfType<string>()) };
         }
         catch (InvalidDataException ex)
         {
@@ -111,7 +111,7 @@ public sealed class OcrTool(ITextRecognizer recognizer, TimeProvider? time = nul
         }
         catch (InvalidDataException ex)
         {
-            throw new InvalidDataException($"{name} 无法识别：{ex.Message}", ex);
+            throw new InvalidDataException(L.T("{0} 无法识别：{1}", name, ex.Message), ex);
         }
         catch (Exception ex) when (PdfConverter.Unreadable(ex, name) is { } message)
         {
@@ -139,7 +139,7 @@ public sealed class OcrTool(ITextRecognizer recognizer, TimeProvider? time = nul
             }
 
             using var all = image.GetPixels();
-            pixels = all.ToByteArray(PixelMapping.BGRA) ?? throw new InvalidDataException("没有像素");
+            pixels = all.ToByteArray(PixelMapping.BGRA) ?? throw new InvalidDataException(L.T("没有像素"));
             (width, height) = ((int)image.Width, (int)image.Height);
         }
 
@@ -163,7 +163,7 @@ public sealed class OcrTool(ITextRecognizer recognizer, TimeProvider? time = nul
             using (var bgra = rendered.Copy(SKColorType.Bgra8888))
             {
                 (width, height) = (bgra.Width, bgra.Height);
-                pixels = bgra.RowBytes == width * 4 ? bgra.Bytes : throw new InvalidDataException($"第 {page + 1} 页无法渲染");
+                pixels = bgra.RowBytes == width * 4 ? bgra.Bytes : throw new InvalidDataException(L.T("第 {0} 页无法渲染", page + 1));
             }
 
             var text = Lines(await recognizer.ReadAsync(pixels, width, height, cancellationToken).ConfigureAwait(false));

@@ -26,9 +26,9 @@ public sealed class ExtractArchiveTool(SharpCompressArchiveConverter archives, T
 
     public WheelMode Mode => WheelMode.Tools;
 
-    public string Label => "解压";
+    public string Label => L.T("解压");
 
-    public string Hint => "到文件夹";
+    public string Hint => L.T("到文件夹");
 
     public bool AppliesTo(MediaKind kind) => kind == MediaKind.Archive;
 
@@ -38,12 +38,12 @@ public sealed class ExtractArchiveTool(SharpCompressArchiveConverter archives, T
         {
             if (FormatRegistry.FromPath(path) is not { } format || !SharpCompressArchiveConverter.Inputs.Contains(format.Id))
             {
-                return Availability.Unavailable($"{Path.GetFileName(path)} 不是压缩包");
+                return Availability.Unavailable(L.T("{0} 不是压缩包", Path.GetFileName(path)));
             }
 
             if (!File.Exists(path))
             {
-                return Availability.Unavailable($"找不到 {Path.GetFileName(path)}");
+                return Availability.Unavailable(L.T("找不到 {0}", Path.GetFileName(path)));
             }
         }
 
@@ -72,7 +72,7 @@ public sealed class ExtractArchiveTool(SharpCompressArchiveConverter archives, T
                     Flatten(folder, FormatRegistry.StemOf(source));
                 }, cancellationToken));
             }, cancellationToken).ConfigureAwait(false);
-            return ConversionResult.Written(written) with { Detail = written.Count > 0 ? $"{files} 个文件" : null };
+            return ConversionResult.Written(written) with { Detail = written.Count > 0 ? L.T("{0} 个文件", files) : null };
         }
         catch (InvalidDataException ex)
         {
@@ -123,7 +123,7 @@ public sealed class ExtractArchiveTool(SharpCompressArchiveConverter archives, T
 
             if (part == "..")
             {
-                throw new InvalidDataException($"压缩包里有指向包外的路径（{path}），已停止解压");
+                throw new InvalidDataException(L.T("压缩包里有指向包外的路径（{0}），已停止解压", path));
             }
 
             var name = string.Concat(part.Select(c => c < ' ' || "<>:\"\\|?*".Contains(c) ? '_' : c));
@@ -144,7 +144,7 @@ public sealed class ExtractArchiveTool(SharpCompressArchiveConverter archives, T
         var full = Path.GetFullPath(Path.Combine([.. parts]));
         if (!full.StartsWith(Path.TrimEndingDirectorySeparator(root) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
         {
-            throw new InvalidDataException($"压缩包里有指向包外的路径（{path}），已停止解压");
+            throw new InvalidDataException(L.T("压缩包里有指向包外的路径（{0}），已停止解压", path));
         }
 
         return full;

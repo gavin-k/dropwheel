@@ -27,14 +27,14 @@ public sealed class DocumentConverter(TimeProvider? time = null) : IConverter
     public QualityEstimate? Estimate(ConversionRequest request)
     {
         var from = FormatRegistry.FromPath(request.SourcePaths[0])?.Id;
-        string[] structure = ["保留标题、列表、粗体、斜体、链接和表格", "图片、字体、颜色、页眉页脚和脚注不保留，标题的自动编号也不保留", "修订按全部接受处理"];
+        string[] structure = [L.T("保留标题、列表、粗体、斜体、链接和表格"), L.T("图片、字体、颜色、页眉页脚和脚注不保留，标题的自动编号也不保留"), L.T("修订按全部接受处理")];
         return (from, request.TargetFormatId) switch
         {
-            ("docx", "txt") => new(QualityLevel.Medium, ["只留文字，格式、图片、页眉页脚和脚注不保留", "表格一行一行，单元格之间用 Tab 隔开", "修订按全部接受处理"]),
+            ("docx", "txt") => new(QualityLevel.Medium, [L.T("只留文字，格式、图片、页眉页脚和脚注不保留"), L.T("表格一行一行，单元格之间用 Tab 隔开"), L.T("修订按全部接受处理")]),
             ("docx", "md" or "html") => new(QualityLevel.Medium, structure),
-            ("pptx", "txt") => new(QualityLevel.Medium, ["只留文字：每张幻灯片先写标题，再写各个文本框、表格和 SmartArt 的文字，最后是备注", "图片、图表、动画和版式不保留", "隐藏的幻灯片不导出"]),
-            ("pptx", "md" or "html") => new(QualityLevel.Medium, ["每张幻灯片的标题成一级标题，保留项目符号、编号、粗体、斜体、链接和表格，备注放在最后", "图片、图表、动画和版式不保留", "隐藏的幻灯片不导出"]),
-            ("txt", "docx") => new(QualityLevel.High, ["每行一段，用 Word 默认字体"]),
+            ("pptx", "txt") => new(QualityLevel.Medium, [L.T("只留文字：每张幻灯片先写标题，再写各个文本框、表格和 SmartArt 的文字，最后是备注"), L.T("图片、图表、动画和版式不保留"), L.T("隐藏的幻灯片不导出")]),
+            ("pptx", "md" or "html") => new(QualityLevel.Medium, [L.T("每张幻灯片的标题成一级标题，保留项目符号、编号、粗体、斜体、链接和表格，备注放在最后"), L.T("图片、图表、动画和版式不保留"), L.T("隐藏的幻灯片不导出")]),
+            ("txt", "docx") => new(QualityLevel.High, [L.T("每行一段，用 Word 默认字体")]),
             _ => null,
         };
     }
@@ -45,7 +45,7 @@ public sealed class DocumentConverter(TimeProvider? time = null) : IConverter
         var to = request.TargetFormatId;
         if (to != "docx" && !WordOutputs.Contains(to))
         {
-            return new(false, [], $"不支持输出 {to}");
+            return new(false, [], L.T("不支持输出 {0}", to));
         }
 
         try
@@ -71,7 +71,7 @@ public sealed class DocumentConverter(TimeProvider? time = null) : IConverter
             var text = TextFiles.Decode(await File.ReadAllBytesAsync(source, cancellationToken).ConfigureAwait(false));
             if (string.IsNullOrWhiteSpace(text))
             {
-                throw new InvalidDataException($"{name} 里没有文字");
+                throw new InvalidDataException(L.T("{0} 里没有文字", name));
             }
 
             var lines = text.ReplaceLineEndings("\n").Split('\n');
@@ -85,13 +85,13 @@ public sealed class DocumentConverter(TimeProvider? time = null) : IConverter
 
         if (from is not ("docx" or "pptx") || !WordOutputs.Contains(to))
         {
-            throw new InvalidDataException($"{name} 转不了 {FormatRegistry.FromExtension(to)?.DisplayName ?? to}");
+            throw new InvalidDataException(L.T("{0} 转不了 {1}", name, FormatRegistry.FromExtension(to)?.DisplayName ?? to));
         }
 
         var blocks = from == "docx" ? DocxReader.Read(source, cancellationToken) : PptxReader.Read(source, cancellationToken);
         if (!DocxReader.HasText(blocks))
         {
-            throw new InvalidDataException($"{name} 里没有文字");
+            throw new InvalidDataException(L.T("{0} 里没有文字", name));
         }
 
         var (output, encoding) = to switch

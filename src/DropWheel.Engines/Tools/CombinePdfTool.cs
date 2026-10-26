@@ -18,9 +18,9 @@ public sealed class CombinePdfTool(TimeProvider? time = null) : IWheelOperation
 
     public WheelMode Mode => WheelMode.Tools;
 
-    public string Label => "合成 PDF";
+    public string Label => L.T("合成 PDF");
 
-    public string Hint => "按文件名排序";
+    public string Hint => L.T("按文件名排序");
 
     public bool AppliesTo(MediaKind kind) => kind == MediaKind.Image;
 
@@ -28,19 +28,19 @@ public sealed class CombinePdfTool(TimeProvider? time = null) : IWheelOperation
     {
         if (request.SourcePaths.Count < 2)
         {
-            return Availability.Unavailable("至少选两张图片") with { Cause = UnavailableCause.SelectionShape };
+            return Availability.Unavailable(L.T("至少选两张图片")) with { Cause = UnavailableCause.SelectionShape };
         }
 
         foreach (var path in request.SourcePaths)
         {
             if (FormatRegistry.FromPath(path) is not { } format || !ImagePdf.Inputs.Contains(format.Id))
             {
-                return Availability.Unavailable($"不支持 {FormatRegistry.FromPath(path)?.DisplayName ?? Path.GetFileName(path)}");
+                return Availability.Unavailable(L.T("不支持 {0}", FormatRegistry.FromPath(path)?.DisplayName ?? Path.GetFileName(path)));
             }
 
             if (!File.Exists(path))
             {
-                return Availability.Unavailable($"找不到 {Path.GetFileName(path)}");
+                return Availability.Unavailable(L.T("找不到 {0}", Path.GetFileName(path)));
             }
         }
 
@@ -50,11 +50,11 @@ public sealed class CombinePdfTool(TimeProvider? time = null) : IWheelOperation
     public async Task<ConversionResult> RunAsync(ConversionRequest request, IProgress<double> progress, CancellationToken cancellationToken)
     {
         var sources = request.SourcePaths.Order(FileNameOrder.Instance).ToList();
-        var plan = request with { SourcePaths = [sources[0]], TargetFormatId = "pdf", Naming = NamingTemplate.Default + "-合并" };
+        var plan = request with { SourcePaths = [sources[0]], TargetFormatId = "pdf", Naming = NamingTemplate.Default + L.T("-合并") };
         try
         {
             var written = await Task.Run(() => ImagePdf.WriteAsync(plan, sources, 0, _time.GetLocalNow(), progress, cancellationToken), cancellationToken).ConfigureAwait(false);
-            return ConversionResult.Written(written is null ? [] : [written]) with { Detail = written is null ? null : $"{sources.Count} 张图片" };
+            return ConversionResult.Written(written is null ? [] : [written]) with { Detail = written is null ? null : L.T("{0} 张图片", sources.Count) };
         }
         catch (InvalidDataException ex)
         {

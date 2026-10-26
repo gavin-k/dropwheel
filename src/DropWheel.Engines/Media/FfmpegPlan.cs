@@ -81,7 +81,7 @@ public static class FfmpegPlan
             return Audio(info, target, encoders);
         }
 
-        throw new InvalidDataException($"不支持输出 {target}");
+        throw new InvalidDataException(L.T("不支持输出 {0}", target));
     }
 
     /// <summary>The whole command line. Paths get the file: protocol so a name like "a:b" is never taken for a protocol.</summary>
@@ -158,7 +158,7 @@ public static class FfmpegPlan
         var audio = info.Audio;
         if (video is null && audio.Count == 0)
         {
-            throw new InvalidDataException("没有视频或音频轨");
+            throw new InvalidDataException(L.T("没有视频或音频轨"));
         }
 
         var args = new List<string>();
@@ -209,7 +209,7 @@ public static class FfmpegPlan
     /// <exception cref="InvalidDataException">There is no picture.</exception>
     public static FfmpegJob Mute(MediaInfo info, string container)
     {
-        var video = info.Video ?? throw new InvalidDataException("没有视频画面");
+        var video = info.Video ?? throw new InvalidDataException(L.T("没有视频画面"));
         List<string> args = ["-map", $"0:{video.Index}", .. CopyVideoInto(container, video.Codec)];
         return new(Finish(args, container), video.Width, video.Height);
     }
@@ -222,7 +222,7 @@ public static class FfmpegPlan
     /// <exception cref="InvalidDataException">There is no picture, or this build has no encoder for it.</exception>
     public static FfmpegJob Compress(MediaInfo info, IReadOnlySet<string> encoders)
     {
-        var video = info.Video ?? throw new InvalidDataException("没有视频画面");
+        var video = info.Video ?? throw new InvalidDataException(L.T("没有视频画面"));
         var args = new List<string> { "-map", $"0:{video.Index}" };
         foreach (var a in info.Audio)
         {
@@ -277,7 +277,7 @@ public static class FfmpegPlan
 
     private static FfmpegJob Audio(MediaInfo info, string target, IReadOnlySet<string> encoders)
     {
-        var a = info.Audio is [var first, ..] ? first : throw new InvalidDataException("没有音轨");
+        var a = info.Audio is [var first, ..] ? first : throw new InvalidDataException(L.T("没有音轨"));
         List<string> args = ["-map", $"0:{a.Index}"];
         args.AddRange(CopyAudio[target].Contains(a.Codec)
             ? ["-c:a", "copy"]
@@ -287,7 +287,7 @@ public static class FfmpegPlan
 
     private static FfmpegJob Gif(MediaInfo info)
     {
-        var video = info.Video ?? throw new InvalidDataException("没有视频画面");
+        var video = info.Video ?? throw new InvalidDataException(L.T("没有视频画面"));
         int? width = null, height = null;
         if (video is { Width: int w and > 0, Height: int h })
         {
@@ -312,7 +312,7 @@ public static class FfmpegPlan
 
     private static string[] VideoEncoder(string target, MediaTrack video, long? containerBitRate, IReadOnlySet<string> encoders) => target switch
     {
-        "webm" => First(encoders, "WebM 视频",
+        "webm" => First(encoders, L.T("WebM 视频"),
             ["-c:v", "libsvtav1", "-preset", "10", "-crf", "35", "-pix_fmt", "yuv420p"],
             ["-c:v", "libvpx-vp9", "-b:v", "0", "-crf", "33", "-row-mt", "1", "-cpu-used", "4", "-pix_fmt", "yuv420p"]),
         "avi" => First(encoders, "MPEG-4",
@@ -350,12 +350,12 @@ public static class FfmpegPlan
             "wav" => ["-c:a", deep ? "pcm_s24le" : "pcm_s16le"],
             "aiff" => ["-c:a", deep ? "pcm_s24be" : "pcm_s16be"],
             "flac" => ["-c:a", "flac", "-sample_fmt", deep ? "s32" : "s16"],
-            _ => throw new InvalidDataException($"不支持输出 {target}"),
+            _ => throw new InvalidDataException(L.T("不支持输出 {0}", target)),
         };
     }
 
     /// <summary>The first choice whose encoder (the value after -c:x) this build has.</summary>
     private static string[] First(IReadOnlySet<string> encoders, string what, params string[][] choices) =>
         choices.FirstOrDefault(c => encoders.Contains(c[1]))
-        ?? throw new InvalidDataException($"这个 ffmpeg 没有 {what} 编码器");
+        ?? throw new InvalidDataException(L.T("这个 ffmpeg 没有 {0} 编码器", what));
 }

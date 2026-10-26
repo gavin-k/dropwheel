@@ -12,7 +12,7 @@ namespace DropWheel.Core.Tests.Localization;
 /// </summary>
 public sealed partial class CatalogTests
 {
-    public static TheoryData<string> Projects => new() { "src/DropWheel.Core" };
+    public static TheoryData<string> Projects => new() { "src/DropWheel.Core", "src/DropWheel.Engines" };
 
     /// <summary>Chinese literals that are meant to stay Chinese in English too, by project-relative file.</summary>
     private static readonly Dictionary<string, string[]> Untranslated = new();

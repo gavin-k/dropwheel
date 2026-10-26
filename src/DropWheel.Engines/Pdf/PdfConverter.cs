@@ -29,17 +29,17 @@ public sealed class PdfConverter(TimeProvider? time = null) : IConverter
     public QualityEstimate? Estimate(ConversionRequest request)
     {
         var from = FormatRegistry.FromPath(request.SourcePaths[0])?.Id;
-        var pages = $"每页一张 {PdfPages.Dpi} DPI 的图，多页时放进同名文件夹；文字不能再选中";
+        var pages = L.T("每页一张 {0} DPI 的图，多页时放进同名文件夹；文字不能再选中", PdfPages.Dpi);
         return (from, request.TargetFormatId) switch
         {
             ("pdf", "png") => new(QualityLevel.High, [pages]),
-            ("pdf", "jpg") => new(QualityLevel.High, [pages, "JPG 有损压缩"]),
-            ("pdf", "txt") => new(QualityLevel.Medium, ["只提取文字，图片、表格和版式不保留", "扫描件没有文字层，提取不出文字"]),
+            ("pdf", "jpg") => new(QualityLevel.High, [pages, L.T("JPG 有损压缩")]),
+            ("pdf", "txt") => new(QualityLevel.Medium, [L.T("只提取文字，图片、表格和版式不保留"), L.T("扫描件没有文字层，提取不出文字")]),
             ("pdf", "docx") => new(QualityLevel.Medium,
-                ["按段落重建：分栏、表格、页眉页脚不保留，字体换成默认字体", "扫描件没有文字层，提取不出文字；带文字层的扫描件只保留文字", "JPEG 2000 等少数图片格式会丢失"]),
-            ("webp" or "avif", "pdf") => new(QualityLevel.High, ["PDF 不支持 WebP / AVIF 压缩，不透明的图改用 JPG 压缩"]),
-            ("gif", "pdf") => new(QualityLevel.High, ["只取第一帧"]),
-            ("tiff", "pdf") => new(QualityLevel.High, ["多页 TIFF 每页一页"]),
+                [L.T("按段落重建：分栏、表格、页眉页脚不保留，字体换成默认字体"), L.T("扫描件没有文字层，提取不出文字；带文字层的扫描件只保留文字"), L.T("JPEG 2000 等少数图片格式会丢失")]),
+            ("webp" or "avif", "pdf") => new(QualityLevel.High, [L.T("PDF 不支持 WebP / AVIF 压缩，不透明的图改用 JPG 压缩")]),
+            ("gif", "pdf") => new(QualityLevel.High, [L.T("只取第一帧")]),
+            ("tiff", "pdf") => new(QualityLevel.High, [L.T("多页 TIFF 每页一页")]),
             _ => null,
         };
     }
@@ -50,7 +50,7 @@ public sealed class PdfConverter(TimeProvider? time = null) : IConverter
         var to = request.TargetFormatId;
         if (to != "pdf" && !PdfOutputs.Contains(to))
         {
-            return new(false, [], $"不支持输出 {to}");
+            return new(false, [], L.T("不支持输出 {0}", to));
         }
 
         try
@@ -89,9 +89,9 @@ public sealed class PdfConverter(TimeProvider? time = null) : IConverter
     internal static string? Unreadable(Exception ex, string name) => ex switch
     {
         PdfPasswordProtectedException or PdfUnsupportedSecuritySchemeException or PdfDocumentEncryptedException => Encrypted(name),
-        PdfException or PdfDocumentFormatException or MagickException => $"{name} 无法读取：{ex.Message}",
+        PdfException or PdfDocumentFormatException or MagickException => L.T("{0} 无法读取：{1}", name, ex.Message),
         _ => null,
     };
 
-    internal static string Encrypted(string name) => $"{name} 有密码保护，暂不支持加密的 PDF";
+    internal static string Encrypted(string name) => L.T("{0} 有密码保护，暂不支持加密的 PDF", name);
 }

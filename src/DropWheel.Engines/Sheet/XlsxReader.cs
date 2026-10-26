@@ -55,13 +55,13 @@ internal static partial class XlsxReader
             catch (Exception ex) when (ex is XmlException or InvalidDataException)
             {
                 // A part that is not well-formed XML, or an entry the zip reader cannot inflate.
-                throw new InvalidDataException($"{name} 无法读取：{ex.Message}", ex);
+                throw new InvalidDataException(L.T("{0} 无法读取：{1}", name, ex.Message), ex);
             }
         }
 
         if (sheets is null)
         {
-            throw new InvalidDataException($"{name} 不是 Excel 工作簿，或是 Strict Open XML 格式，暂不支持");
+            throw new InvalidDataException(L.T("{0} 不是 Excel 工作簿，或是 Strict Open XML 格式，暂不支持", name));
         }
 
         return [.. sheets.Select(sheet => Table(sheet, name))];
@@ -164,7 +164,7 @@ internal static partial class XlsxReader
     {
         if ((long)sheet.Width * sheet.Height > MaxCells)
         {
-            throw new InvalidDataException($"{fileName} 的工作表「{sheet.Name}」有 {sheet.Height} 行 {sheet.Width} 列，太大了，转不了");
+            throw new InvalidDataException(L.T("{0} 的工作表「{1}」有 {2} 行 {3} 列，太大了，转不了", fileName, sheet.Name, sheet.Height, sheet.Width));
         }
 
         var table = new string[sheet.Height][];

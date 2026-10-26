@@ -39,7 +39,7 @@ internal static class PdfText
 
         if (pages.Count == 0)
         {
-            throw new InvalidDataException($"{Path.GetFileName(source)} 没有可提取的文字（可能是扫描件，需要 OCR）");
+            throw new InvalidDataException(L.T("{0} 没有可提取的文字（可能是扫描件，需要 OCR）", Path.GetFileName(source)));
         }
 
         var all = string.Join("\n\n", pages).ReplaceLineEndings("\r\n");

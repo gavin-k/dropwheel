@@ -57,7 +57,7 @@ internal sealed class PptxReader
 
         if (presentation?.Root?.Name != P + "presentation")
         {
-            throw new InvalidDataException($"{name} 不是 PowerPoint 演示文稿，或是 Strict Open XML 格式，暂不支持");
+            throw new InvalidDataException(L.T("{0} 不是 PowerPoint 演示文稿，或是 Strict Open XML 格式，暂不支持", name));
         }
 
         var blocks = new List<DocBlock>();
@@ -84,7 +84,7 @@ internal sealed class PptxReader
     }
 
     /// <summary>For a part that is not well-formed XML, or an entry the zip reader cannot inflate.</summary>
-    private static InvalidDataException Damaged(string name, Exception ex) => new($"{name} 无法读取：{ex.Message}", ex);
+    private static InvalidDataException Damaged(string name, Exception ex) => new(L.T("{0} 无法读取：{1}", name, ex.Message), ex);
 
     /// <summary>Adds the slide's blocks, after a blank line when it is not the first; whether it has any text.</summary>
     private bool Slide(string part, int number, List<DocBlock> blocks)
@@ -151,12 +151,12 @@ internal sealed class PptxReader
             blocks.Add(new DocParagraph(0, null, []));
         }
 
-        blocks.Add(new DocParagraph(1, null, titled ? DocxReader.Merge(heading) : [new DocRun($"幻灯片 {number}", false, false, null)]));
+        blocks.Add(new DocParagraph(1, null, titled ? DocxReader.Merge(heading) : [new DocRun(L.T("幻灯片 {0}", number), false, false, null)]));
         blocks.AddRange(content);
         var noted = DocxReader.HasText(notes);
         if (noted)
         {
-            blocks.Add(new DocParagraph(2, null, [new DocRun("备注", false, false, null)]));
+            blocks.Add(new DocParagraph(2, null, [new DocRun(L.T("备注"), false, false, null)]));
             blocks.AddRange(notes);
         }
 

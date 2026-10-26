@@ -10,13 +10,13 @@ public sealed class CompressVideoTool(FfmpegConverter ffmpeg, TimeProvider? time
 {
     public override string Id => "tool.compress-video";
 
-    public override string Label => "压缩视频";
+    public override string Label => L.T("压缩视频");
 
-    public override string Hint => "变小才保留";
+    public override string Hint => L.T("变小才保留");
 
-    protected override string Suffix => "-压缩";
+    protected override string Suffix => L.T("-压缩");
 
-    protected override string Unchanged => "已经很小，压缩后没有变小";
+    protected override string Unchanged => L.T("已经很小，压缩后没有变小");
 
     protected override bool OnlyIfSmaller => true;
 

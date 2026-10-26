@@ -11,7 +11,7 @@ namespace DropWheel.Engines.Tools;
 /// </summary>
 public sealed class SplitPdfTool(TimeProvider? time = null) : IWheelOperation
 {
-    private const string OnePage = "只有一页，不用拆分";
+    private static string OnePage => L.T("只有一页，不用拆分");
 
     private readonly TimeProvider _time = time ?? TimeProvider.System;
 
@@ -19,9 +19,9 @@ public sealed class SplitPdfTool(TimeProvider? time = null) : IWheelOperation
 
     public WheelMode Mode => WheelMode.Tools;
 
-    public string Label => "拆分 PDF";
+    public string Label => L.T("拆分 PDF");
 
-    public string Hint => "每页一个";
+    public string Hint => L.T("每页一个");
 
     public bool AppliesTo(MediaKind kind) => kind == MediaKind.Pdf;
 
@@ -65,8 +65,8 @@ public sealed class SplitPdfTool(TimeProvider? time = null) : IWheelOperation
                 return new(true, []) { Skipped = true, Detail = OnePage };
             }
 
-            var notes = new[] { written.Count > 0 ? $"共 {pages} 页" : null, unchanged > 0 ? $"另有 {unchanged} 个{OnePage}" : null };
-            return ConversionResult.Written(written) with { Detail = string.Join("；", notes.OfType<string>()) is { Length: > 0 } d ? d : null };
+            var notes = new[] { written.Count > 0 ? L.T("共 {0} 页", pages) : null, unchanged > 0 ? L.T("另有 {0} 个{1}", unchanged, OnePage) : null };
+            return ConversionResult.Written(written) with { Detail = string.Join(L.T("；"), notes.OfType<string>()) is { Length: > 0 } d ? d : null };
         }
         catch (InvalidDataException ex)
         {

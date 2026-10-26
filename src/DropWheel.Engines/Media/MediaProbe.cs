@@ -41,7 +41,7 @@ public static class MediaProbe
             line => json.AppendLine(line), cancellationToken).ConfigureAwait(false);
         if (result.ExitCode != 0)
         {
-            throw new InvalidDataException($"{Path.GetFileName(path)} 无法识别为音视频文件{Detail(result.StderrTail)}");
+            throw new InvalidDataException(L.T("{0} 无法识别为音视频文件{1}", Path.GetFileName(path), Detail(result.StderrTail)));
         }
 
         return Parse(json.ToString());
@@ -93,7 +93,7 @@ public static class MediaProbe
     }
 
     internal static string Detail(IReadOnlyList<string> stderrTail) =>
-        stderrTail.LastOrDefault(l => !string.IsNullOrWhiteSpace(l)) is { } last ? $"：{last.Trim()}" : "";
+        stderrTail.LastOrDefault(l => !string.IsNullOrWhiteSpace(l)) is { } last ? L.T("：{0}", last.Trim()) : "";
 
     private static int Rotation(JsonElement stream)
     {

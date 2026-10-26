@@ -50,12 +50,12 @@ public abstract class MediaTool(FfmpegConverter ffmpeg, TimeProvider? time) : IW
             var format = FormatRegistry.FromPath(path);
             if (format is null || !Formats.Contains(format.Id))
             {
-                return Availability.Unavailable(Unsupported(format) ?? $"不支持 {format?.DisplayName ?? Path.GetFileName(path)}");
+                return Availability.Unavailable(Unsupported(format) ?? L.T("不支持 {0}", format?.DisplayName ?? Path.GetFileName(path)));
             }
 
             if (!File.Exists(path))
             {
-                return Availability.Unavailable($"找不到 {Path.GetFileName(path)}");
+                return Availability.Unavailable(L.T("找不到 {0}", Path.GetFileName(path)));
             }
         }
 
@@ -85,7 +85,7 @@ public abstract class MediaTool(FfmpegConverter ffmpeg, TimeProvider? time) : IW
                 }
                 catch (InvalidDataException ex)
                 {
-                    throw new InvalidDataException($"{Path.GetFileName(source)} 无法处理：{ex.Message}", ex);
+                    throw new InvalidDataException(L.T("{0} 无法处理：{1}", Path.GetFileName(source), ex.Message), ex);
                 }
 
                 if (planned is not var (format, job))
@@ -127,8 +127,8 @@ public abstract class MediaTool(FfmpegConverter ffmpeg, TimeProvider? time) : IW
                 return new(true, []) { Skipped = true, Detail = Unchanged };
             }
 
-            var notes = new[] { written.Count > 0 ? Detail(before, after) : null, unchanged > 0 ? $"另有 {unchanged} 个{Unchanged}" : null };
-            return ConversionResult.Written(written) with { Detail = string.Join("；", notes.OfType<string>()) is { Length: > 0 } d ? d : null };
+            var notes = new[] { written.Count > 0 ? Detail(before, after) : null, unchanged > 0 ? L.T("另有 {0} 个{1}", unchanged, Unchanged) : null };
+            return ConversionResult.Written(written) with { Detail = string.Join(L.T("；"), notes.OfType<string>()) is { Length: > 0 } d ? d : null };
         }
         catch (InvalidDataException ex)
         {
@@ -136,7 +136,7 @@ public abstract class MediaTool(FfmpegConverter ffmpeg, TimeProvider? time) : IW
         }
         catch (Win32Exception ex)
         {
-            return new(false, [], $"无法启动 ffmpeg：{ex.Message}");
+            return new(false, [], L.T("无法启动 ffmpeg：{0}", ex.Message));
         }
     }
 

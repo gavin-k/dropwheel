@@ -95,12 +95,12 @@ internal sealed partial class DocxReader
             catch (Exception ex) when (ex is XmlException or InvalidDataException)
             {
                 // A part that is not well-formed XML, or an entry the zip reader cannot inflate.
-                throw new InvalidDataException($"{name} 无法读取：{ex.Message}", ex);
+                throw new InvalidDataException(L.T("{0} 无法读取：{1}", name, ex.Message), ex);
             }
 
             if (document?.Root?.Name != W + "document")
             {
-                throw new InvalidDataException($"{name} 不是 Word 文档，或是 Strict Open XML 格式，暂不支持");
+                throw new InvalidDataException(L.T("{0} 不是 Word 文档，或是 Strict Open XML 格式，暂不支持", name));
             }
 
             return document.Root.Element(W + "body") is { } body ? reader.Blocks(body, cancellationToken) : [];
