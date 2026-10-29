@@ -193,13 +193,20 @@ internal sealed class WheelController : IDisposable
     private void OnDropped(IReadOnlyList<string> paths, int sector)
     {
         var session = _session;
-        var slot = session?.Model is { } model && sector >= 0 && sector < model.Slots.Count ? model.Slots[sector] : null;
+        var slot = session?.Model?.SlotAt(sector);
         _ui.TryEnqueue(() =>
         {
             Close($"dropped on sector {sector}");
             if (slot is null)
             {
                 FileLog.Error($"wheel: drop on sector {sector} without a slot");
+                return;
+            }
+
+            if (slot.Operation is null)
+            {
+                // A group sector cannot take a drop (its sector is not enabled, so the shell refused it); this is defensive.
+                FileLog.Info($"wheel: drop on group sector {sector} ({slot.Label}) ignored");
                 return;
             }
 
@@ -308,7 +315,7 @@ internal sealed class WheelController : IDisposable
 
             var model = _builder.Build(paths, session.Mode, session.Settings, session.Query);
             session.Model = model;
-            var enabled = Enumerable.Range(0, WheelModel.SlotCount).Select(i => i < model.Slots.Count && model.Slots[i].Availability.IsAvailable).ToArray();
+            var enabled = Enumerable.Range(0, WheelModel.SlotCount).Select(i => model.SlotAt(i) is { Availability.IsAvailable: true, Operation: not null }).ToArray();
             _host.Show(session.Placement with { EnabledSectors = enabled });
             return model;
         }

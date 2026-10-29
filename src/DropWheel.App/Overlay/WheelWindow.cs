@@ -267,7 +267,7 @@ internal sealed class WheelWindow
         }
     }
 
-    private WheelSlot? Slot(int i) => _model is not null && i >= 0 && i < _model.Slots.Count ? _model.Slots[i] : null;
+    private WheelSlot? Slot(int i) => _model?.SlotAt(i);
 
     private void ShowHub()
     {

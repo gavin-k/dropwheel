@@ -7,8 +7,10 @@ public enum WheelMode { Convert, Tools, Actions }
 
 public enum SlotSource { Recent, Recommended, Fixed, Search }
 
-/// <summary>One of the six sectors.</summary>
-/// <param name="Operation">What runs a Tools or Actions item; null for a Convert item, which the graph resolves.</param>
+/// <summary>One of the six sectors, or an item on the outer ring a group opens as.</summary>
+/// <param name="Index">The sector, 0 to 5 clockwise from the top; for a child, its place on the ring.</param>
+/// <param name="Operation">What runs a Tools or Actions item; null for a Convert item, which the graph resolves, and for a group.</param>
+/// <param name="Children">The items a group opens as, in ring order; null for an item.</param>
 public sealed record WheelSlot(
     int Index,
     string ItemId,
@@ -17,14 +19,18 @@ public sealed record WheelSlot(
     SlotSource Source,
     Availability Availability,
     QualityEstimate? Quality,
-    IWheelOperation? Operation = null)
+    IWheelOperation? Operation = null,
+    IReadOnlyList<WheelSlot>? Children = null)
 {
+    public bool IsGroup => Children is not null;
+
     /// <summary>
     /// What the hub says while the pointer is on this sector, which has no room for it: why the item is off,
-    /// otherwise the expected quality and its first reason; null when there is nothing to add.
+    /// how a group opens, otherwise the expected quality and its first reason; null when there is nothing to add.
     /// </summary>
     public SlotDetail? Detail => !Availability.IsAvailable
         ? new($"{Label} {SubLabel}", Availability.Reason ?? "")
+        : Children is not null ? new(Label, L.T("停一下就会展开"))
         : Quality is { } q ? new(L.T("预期质量{0}", LevelName(q.Level)), q.Reasons.Count > 0 ? q.Reasons[0] : "") : null;
 
     /// <summary>"PNG，推荐，预期质量高：…；…" or "HEIC，匹配，不可用：…": the sector's name for screen readers, every reason included.</summary>
@@ -78,16 +84,20 @@ public sealed record WheelModel(WheelMode Mode, string CenterTitle, string Cente
 {
     public const int SlotCount = 6;
 
+    /// <summary>The slot in sector <paramref name="index"/>, or null for an empty sector; a laid-out wheel can leave sectors empty.</summary>
+    public WheelSlot? SlotAt(int index) => Slots.FirstOrDefault(s => s.Index == index);
+
     /// <summary>Longest search the Convert wheel takes; no format id comes close.</summary>
     public const int MaxQuery = 8;
 }
 
 /// <summary>
 /// Builds the 6-slot wheel. Convert: 3 most-recent + 3 recommended, deduplicated; with a search, the
-/// targets that match it, best match first. Tools and Actions: the operations for that mode and kind in
-/// registration order, so each keeps its place. Unavailable items are kept but greyed.
+/// targets that match it, best match first. Tools and Actions: what the layout puts in each sector, items and
+/// groups, or without a layout the operations for that mode and kind in registration order, so each keeps its
+/// place. Unavailable items are kept but greyed.
 /// </summary>
-public sealed class WheelBuilder(ConversionGraph graph, IRecentItems recent, IRecommender recommender, IReadOnlyList<IWheelOperation>? operations = null)
+public sealed class WheelBuilder(ConversionGraph graph, IRecentItems recent, IRecommender recommender, IReadOnlyList<IWheelOperation>? operations = null, LayoutStore? layout = null)
 {
     /// <param name="query">Letters and digits typed on the Convert wheel; empty for none. Other wheels ignore it.</param>
     public WheelModel Build(IReadOnlyList<string> sourcePaths, WheelMode mode, AppSettings settings, string query = "")
@@ -196,26 +206,62 @@ public sealed class WheelBuilder(ConversionGraph graph, IRecentItems recent, IRe
 
     private WheelModel BuildOperations(IReadOnlyList<string> sourcePaths, WheelMode mode, MediaKind kind, AppSettings settings)
     {
-        var slots = (operations ?? []).Where(o => o.Mode == mode && o.AppliesTo(kind)).Take(WheelModel.SlotCount).Select((op, i) =>
-        {
-            var availability = op.Action is { } action && !settings.Actions.IsEnabled(action)
-                ? Availability.Unavailable(FileActionSettings.DisabledReason) with { Cause = UnavailableCause.DisabledInSettings }
-                : op.TrustKey is { } key && !settings.Tools.IsTrusted(op.Id, key)
-                ? Availability.Unavailable(UserToolSettings.UntrustedReason) with { Cause = UnavailableCause.UntrustedTool }
-                : op.Check(settings.Request(sourcePaths, op.Id));
-            var subLabel = availability.IsAvailable ? op.Hint : availability.Cause switch
-            {
-                UnavailableCause.DisabledInSettings => L.T("未开启"),
-                UnavailableCause.UntrustedTool => L.T("未启用"),
-                _ => L.T("不可用"),
-            };
-            return new WheelSlot(i, op.Id, op.Label, subLabel, SlotSource.Fixed, availability, null, op);
-        }).ToList();
+        var applicable = (operations ?? []).Where(o => o.Mode == mode && o.AppliesTo(kind)).ToList();
+        var slots = layout?.SlotsFor(mode, kind) is { } laidOut
+            ? LaidOut(laidOut, applicable, sourcePaths, settings)
+            : applicable.Take(WheelModel.SlotCount).Select((op, i) => Slot(i, op, sourcePaths, settings)).ToList();
 
         var title = mode == WheelMode.Tools ? L.T("工具") : L.T("动作");
         var subtitle = slots.Count == 0 ? (mode == WheelMode.Tools ? L.T("这类文件还没有工具") : L.T("这类文件还没有动作"))
             : sourcePaths.Count > 1 ? L.T("{0} · {1} 项", title, sourcePaths.Count) : title;
         return new WheelModel(mode, Path.GetFileName(sourcePaths[0]), subtitle, slots);
+    }
+
+    /// <summary>The layout's sectors, each with its real index; an empty sector, or one naming nothing that applies, is left out.</summary>
+    private static List<WheelSlot> LaidOut(IReadOnlyList<LayoutSlot?> laidOut, List<IWheelOperation> applicable, IReadOnlyList<string> sourcePaths, AppSettings settings)
+    {
+        var slots = new List<WheelSlot>();
+        for (var i = 0; i < Math.Min(laidOut.Count, WheelModel.SlotCount); i++)
+        {
+            switch (laidOut[i])
+            {
+                case { Item: { } id } when applicable.FirstOrDefault(o => o.Id == id) is { } op:
+                    slots.Add(Slot(i, op, sourcePaths, settings));
+                    break;
+                case { Group: { } group }:
+                    var children = group.Items
+                        .Select(id => applicable.FirstOrDefault(o => o.Id == id))
+                        .OfType<IWheelOperation>()
+                        .Take(LayoutGroup.Capacity)
+                        .Select((op, j) => Slot(j, op, sourcePaths, settings))
+                        .ToList();
+                    if (children.Count > 0)
+                    {
+                        var availability = children.Any(c => c.Availability.IsAvailable) ? Availability.Available : Availability.Unavailable(L.T("里面的项现在都用不了"));
+                        slots.Add(new WheelSlot(i, "group:" + group.Name.Zh, group.Name.Pick(), L.T("{0} 项", children.Count), SlotSource.Fixed, availability, null, null, children));
+                    }
+
+                    break;
+            }
+        }
+
+        return slots;
+    }
+
+    private static WheelSlot Slot(int index, IWheelOperation op, IReadOnlyList<string> sourcePaths, AppSettings settings)
+    {
+        var availability = op.Action is { } action && !settings.Actions.IsEnabled(action)
+            ? Availability.Unavailable(FileActionSettings.DisabledReason) with { Cause = UnavailableCause.DisabledInSettings }
+            : op.TrustKey is { } key && !settings.Tools.IsTrusted(op.Id, key)
+            ? Availability.Unavailable(UserToolSettings.UntrustedReason) with { Cause = UnavailableCause.UntrustedTool }
+            : op.Check(settings.Request(sourcePaths, op.Id));
+        var subLabel = availability.IsAvailable ? op.Hint : availability.Cause switch
+        {
+            UnavailableCause.DisabledInSettings => L.T("未开启"),
+            UnavailableCause.UntrustedTool => L.T("未启用"),
+            _ => L.T("不可用"),
+        };
+        return new WheelSlot(index, op.Id, op.Label, subLabel, SlotSource.Fixed, availability, null, op);
     }
 }
 

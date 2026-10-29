@@ -117,8 +117,8 @@ The catalog (Task 1b) needs `CommandResolver` (Task 2) and `ScriptTool` (Task 3)
 - Modify (App): `WheelWindow.Slot`, `WheelController.Rebuild` / `OnDropped`
 - Test: `tests/DropWheel.Core.Tests/Wheel/LayoutStoreTests.cs`, `WheelBuilderTests`
 
-- [ ] Tests: no layout keeps registration order; first install seeds built-ins; place by index; unknown id ignored; placement applied once; full wheel folds the target slot into a group; group full → unplaced; round trip.
-- [ ] Implement; `./build.sh`; commit `feat(wheel): lay out tools and actions from layout.json with groups`.
+- [x] Tests: no layout keeps registration order; first install seeds built-ins; place by index; unknown id ignored; placement applied once; full wheel folds the target slot into a group; group full → unplaced; round trip.
+- [x] Implement; `./build.sh`; commit `feat(wheel): lay out tools and actions from layout.json with groups`.
 
 ### Task 6: Outer ring
 

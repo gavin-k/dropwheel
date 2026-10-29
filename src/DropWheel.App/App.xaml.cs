@@ -56,6 +56,7 @@ public partial class App : Application
     private DockWindow? _dock;
     private NetworkWatch? _network;
     private UserToolCatalog? _catalog;
+    private LayoutStore? _layout;
     private HashSet<string>? _knownTools;
 
     public App()
@@ -131,13 +132,19 @@ public partial class App : Application
             _queue = new JobQueue(graph, new UndoLedger(files), prompt: desktop);
             IReadOnlyList<IWheelOperation> operations = [.. FileActions.Create(files, desktop), .. EngineTools.Create(archives, ffmpeg, recognizer: recognizer)];
             var catalog = _catalog = new UserToolCatalog(Path.Combine(dataDir, "tools"), new SidecarProcessRunner(), CommandResolver.FromEnvironment());
+            var layout = _layout = new LayoutStore(Path.Combine(dataDir, "layout.json"));
+            if (layout.LoadProblem is { } layoutProblem)
+            {
+                FileLog.Error($"layout: {layoutProblem}");
+            }
+
             var recent = new RecentItems(path: Path.Combine(dataDir, "recent.json"));
             foreach (var problem in new[] { settings.LoadProblem, recent.LoadProblem }.OfType<string>())
             {
                 FileLog.Error(problem);
             }
 
-            var builder = new WheelBuilder(graph, recent, new DefaultRecommender(graph), new LiveOperations(operations, catalog));
+            var builder = new WheelBuilder(graph, recent, new DefaultRecommender(graph), new LiveOperations(operations, catalog), layout);
 
             var tapper = new ModifierTapper(settings.Current.Keys, TimeProvider.System);
             var winKey = new WinKeyGate(settings.Current.Keys);
@@ -174,7 +181,7 @@ public partial class App : Application
                 (L.T("退出 DropWheel"), Shutdown),
             ]);
             _tray.Selected += () => queueWindow.Show();
-            catalog.Changed += snapshot => ui.TryEnqueue(() => OnToolsChanged(snapshot));
+            catalog.Changed += snapshot => ui.TryEnqueue(() => OnToolsChanged(snapshot, layout, operations));
             catalog.Reload();
             catalog.Watch();
             _wheel.LooksFlat += () => _tray?.Notify(L.T("轮盘显示成了一整块白色"),
@@ -277,7 +284,7 @@ public partial class App : Application
     /// After the tools folder was read: logs what it holds, and once past the first read tells the user about a
     /// tool that was not there before, which is greyed until they switch it on in Settings.
     /// </summary>
-    private void OnToolsChanged(CatalogSnapshot snapshot)
+    private void OnToolsChanged(CatalogSnapshot snapshot, LayoutStore layout, IReadOnlyList<IWheelOperation> builtIns)
     {
         FileLog.Info($"tools: {snapshot.Tools.Count} loaded from {_catalog?.Directory}" + (snapshot.Tools.Count > 0 ? ": " + string.Join(", ", snapshot.Tools.Select(t => t.Id)) : ""));
         foreach (var result in snapshot.Problems)
@@ -286,6 +293,12 @@ public partial class App : Application
             {
                 FileLog.Info($"tools: {Path.GetFileName(result.Folder)}: {(problem.IsWarning ? "warning" : "error")} {problem.Code}: {problem.Message}");
             }
+        }
+
+        foreach (var tool in snapshot.Tools.Where(t => !layout.Current.Installed.Contains(t.Id)))
+        {
+            var placed = layout.Install(tool.Manifest, builtIns);
+            FileLog.Info($"layout: {tool.Id} {(placed ? "placed" : "left unplaced: its sector holds a full group")}");
         }
 
         var ids = snapshot.Tools.Select(t => t.Id).ToHashSet();
