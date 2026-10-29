@@ -30,10 +30,10 @@ internal static class Program
 
         XamlCheckProcessRequirements();
         WinRT.ComWrappersSupport.InitializeComWrappers();
-        Application.Start(_ =>
+        Application.Start(static _ =>
         {
             SynchronizationContext.SetSynchronizationContext(new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread()));
-            _ = new App();
+            new App();
         });
         return 0;
     }
@@ -44,8 +44,8 @@ internal static class Program
     /// </summary>
     private static int RunTools(string[] args)
     {
-        var handle = PInvoke.GetStdHandle(STD_HANDLE.STD_OUTPUT_HANDLE);
-        if (handle.IsNull || handle.Value == -1)
+        IntPtr handle = PInvoke.GetStdHandle(STD_HANDLE.STD_OUTPUT_HANDLE);
+        if (handle == IntPtr.Zero || handle == new IntPtr(-1))
         {
             PInvoke.AttachConsole(PInvoke.ATTACH_PARENT_PROCESS);
         }

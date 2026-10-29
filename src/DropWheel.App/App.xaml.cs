@@ -240,10 +240,10 @@ public partial class App : Application
     private async Task PreviewAsync(WheelBuilder builder, AppSettings settings, bool withHost)
     {
         var bounds = Microsoft.UI.Windowing.DisplayArea.Primary.OuterBounds;
-        var (x, y, scale) = WheelController.Place((bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2));
+        var (x, y, scale) = WheelController.Place((bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2), WheelWindow.SizeFor(ring: false));
         _wheel!.ShowAt(x, y, scale);
         _wheel.SetModel(builder.Build(["preview.jpg"], WheelMode.Convert, settings));
-        _wheel.SetHovered(0);
+        _wheel.SetHovered(new WheelHit(WheelRing.Sector, 0));
         if (withHost)
         {
             _host!.Show(new WheelPlacement(x, y, scale, [true, true, true, true, true, true]));
