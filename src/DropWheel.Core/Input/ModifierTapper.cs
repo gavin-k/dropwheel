@@ -22,13 +22,28 @@ public sealed class ModifierTapper(KeyBindings bindings, TimeProvider time)
     private long _pressedAt;
     private bool _pressedWhileDragging;
     private bool _spent;
+    private readonly Dictionary<int, Modifiers> _physical = [];
 
     /// <summary>Raised on the calling thread when a bound combo is tapped (or held, for <see cref="InvokeStyle.Hold"/>).</summary>
     public event Action<WheelMode>? Invoked;
 
     /// <summary>Feed a modifier transition. <paramref name="isDown"/> is true on key-down, including auto-repeat.</summary>
-    public void OnModifier(Modifiers key, bool isDown, bool dragging)
+    /// <param name="physicalKey">The Shell's left/right virtual-key code; zero for a logical transition.</param>
+    public void OnModifier(Modifiers key, bool isDown, bool dragging, int physicalKey = 0)
     {
+        var identity = physicalKey == 0 ? (int)key : physicalKey;
+        if (isDown)
+        {
+            if (!_physical.TryAdd(identity, key) || _physical.Values.Count(k => k == key) > 1)
+            {
+                return;
+            }
+        }
+        else if (!_physical.Remove(identity) || _physical.ContainsValue(key))
+        {
+            return;
+        }
+
         var current = _bindings;
         if (isDown)
         {

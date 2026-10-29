@@ -224,7 +224,7 @@ public sealed unsafe class DragMonitor(ModifierTapper tapper, WinKeyGate winKeys
                 }
                 else
                 {
-                    tapper.OnModifier(modifier, down, dragging);
+                    tapper.OnModifier(modifier, down, dragging, (int)vk);
                     if (modifier == Modifiers.Win && winKeys.Swallow(down, dragging))
                     {
                         return new LRESULT(1);

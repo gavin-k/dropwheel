@@ -32,6 +32,22 @@ public class ModifierTapperTests
     }
 
     [Theory]
+    [InlineData(0xA0, 0xA1)]
+    [InlineData(0xA1, 0xA0)]
+    public void Both_physical_shift_keys_must_be_released(int first, int second)
+    {
+        var tapper = Tapper();
+        tapper.OnModifier(Modifiers.Shift, true, true, first);
+        tapper.OnModifier(Modifiers.Shift, true, true, second);
+        tapper.OnModifier(Modifiers.Shift, true, true, first); // auto-repeat
+        After(80);
+        tapper.OnModifier(Modifiers.Shift, false, true, first);
+        _invoked.Should().BeEmpty();
+        tapper.OnModifier(Modifiers.Shift, false, true, second);
+        _invoked.Should().Equal(WheelMode.Convert);
+    }
+
+    [Theory]
     [InlineData(300, true)]
     [InlineData(301, false)]
     public void Tap_must_finish_inside_the_window(int heldMs, bool expected)
