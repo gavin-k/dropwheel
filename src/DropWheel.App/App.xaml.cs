@@ -100,7 +100,7 @@ public partial class App : Application
                 FileLog.Info($"log: deleted {pruned} daily log(s) older than {LogRetention.KeepDays} days");
             }
 
-            var dataDir = ArgValue(commandLine, "--data-dir") ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DropWheel");
+            var dataDir = DataDir(commandLine);
             var settings = new SettingsStore(Path.Combine(dataDir, "settings.json"));
             // Before anything builds text: the libraries' text is fixed when it is built, some of it when a type first loads.
             Loc.Current = settings.Current.LanguageFor(CultureInfo.CurrentUICulture);
@@ -251,6 +251,10 @@ public partial class App : Application
         await Task.Delay(TimeSpan.FromSeconds(4)).ConfigureAwait(true);
         Shutdown();
     }
+
+    /// <summary>Where settings, layout and the tools folder live: <c>--data-dir</c>, else %LOCALAPPDATA%\DropWheel.</summary>
+    internal static string DataDir(string[] args) =>
+        ArgValue(args, "--data-dir") ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DropWheel");
 
     private static string? ArgValue(string[] args, string name) =>
         Array.IndexOf(args, name) is var i and >= 0 && i + 1 < args.Length ? args[i + 1] : null;

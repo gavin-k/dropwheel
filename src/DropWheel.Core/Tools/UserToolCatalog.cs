@@ -102,6 +102,59 @@ public sealed class UserToolCatalog : IDisposable
         _debounce?.Change(Debounce, Timeout.InfiniteTimeSpan);
     }
 
+    /// <summary>
+    /// Reads one folder with the checks the whole folder makes, against the other tool folders next to it; the
+    /// command line's <c>--validate-tool</c>. Nothing is written and <see cref="Current"/> is not touched.
+    /// </summary>
+    public ToolReadResult Validate(string folder)
+    {
+        var full = Path.GetFullPath(folder);
+        if (!System.IO.Directory.Exists(full))
+        {
+            return new(full, null, [new(ToolProblem.Json, L.T("没有这个文件夹"))]);
+        }
+
+        var seen = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var sibling in Siblings(full))
+        {
+            if (ToolManifestReader.Read(sibling) is { Manifest: { } other, HasErrors: false })
+            {
+                seen[other.Id] = sibling;
+            }
+        }
+
+        return Check(ToolManifestReader.Read(full), seen);
+    }
+
+    /// <summary>Every tool folder with its report, warnings and all, in name order; the command line's <c>--list-tools</c>. Nothing is written.</summary>
+    public ToolListing Inspect()
+    {
+        var reports = new List<ToolReport>();
+        var seen = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var folder in Folders())
+        {
+            var result = Check(ToolManifestReader.Read(folder), seen);
+            if (result.Manifest is { } manifest && !result.HasErrors)
+            {
+                seen[manifest.Id] = folder;
+            }
+
+            reports.Add(ToolReport.From(result));
+        }
+
+        return new(Directory, reports);
+    }
+
+    private IEnumerable<string> Folders() => System.IO.Directory.Exists(Directory)
+        ? System.IO.Directory.EnumerateDirectories(Directory).Where(f => !Path.GetFileName(f).StartsWith('.')).Order(StringComparer.OrdinalIgnoreCase)
+        : [];
+
+    /// <summary>The other tool folders next to <paramref name="folder"/>, when it is in the tools folder.</summary>
+    private IEnumerable<string> Siblings(string folder) =>
+        string.Equals(Path.GetDirectoryName(folder), Path.GetFullPath(Directory), StringComparison.OrdinalIgnoreCase)
+            ? Folders().Where(f => !string.Equals(f, folder, StringComparison.OrdinalIgnoreCase))
+            : [];
+
     private CatalogSnapshot Read()
     {
         if (!System.IO.Directory.Exists(Directory))
@@ -112,13 +165,8 @@ public sealed class UserToolCatalog : IDisposable
         var tools = new List<ScriptTool>();
         var problems = new List<ToolReadResult>();
         var seen = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var folder in System.IO.Directory.EnumerateDirectories(Directory).Order(StringComparer.OrdinalIgnoreCase))
+        foreach (var folder in Folders())
         {
-            if (Path.GetFileName(folder).StartsWith('.'))
-            {
-                continue;
-            }
-
             var result = Check(ToolManifestReader.Read(folder), seen);
             if (result.Problems.Count > 0)
             {

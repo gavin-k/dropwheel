@@ -137,4 +137,6 @@ The catalog (Task 1b) needs `CommandResolver` (Task 2) and `ScriptTool` (Task 3)
 
 ### Task 8: `--validate-tool` / `--list-tools` — `Program.cs`, `DISABLE_XAML_GENERATED_MAIN`, `AttachConsole`; commit `feat(app): validate and list tools from the command line`.
 
+- [x] Done: `ToolCommandLine.Run` (Core, 7 tests), `UserToolCatalog.Validate/Inspect` (no side effects), `Program.cs` attaches the parent console only when stdout is not redirected.
+
 ### Task 9: Skill, schema, docs, packaging — `skills/dropwheel-tool/SKILL.md` + examples, `docs/tool-manifest.schema.json`, `docs/adr/0005-user-tools-manifest-and-trust.md`, docs updates, csproj Content, `FileSystemWriteVirtualization` disabled; commit `docs(tools): ship the dropwheel-tool skill and manifest schema`.

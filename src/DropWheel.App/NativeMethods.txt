@@ -78,3 +78,9 @@ WIN32_ERROR
 
 // Diagnostics: whether mouse input comes as WM_POINTER, which a Win32 drag loop never reads
 IsMouseInPointerEnabled
+
+// Program.cs: --validate-tool and --list-tools print to the console DropWheel was started from
+AttachConsole
+ATTACH_PARENT_PROCESS
+GetStdHandle
+STD_HANDLE

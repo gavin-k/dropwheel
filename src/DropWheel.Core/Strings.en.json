@@ -128,5 +128,6 @@
   "未启用": "Not switched on",
   "停一下就会展开": "Pause to open it",
   "里面的项现在都用不了": "Nothing in it can run right now",
-  "{0} 项": "{0} {0|item|items}"
+  "{0} 项": "{0} {0|item|items}",
+  "没有这个文件夹": "No such folder"
 }
