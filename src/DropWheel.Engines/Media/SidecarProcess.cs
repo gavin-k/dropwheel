@@ -22,12 +22,16 @@ public sealed class SidecarProcess(string executablePath)
     /// drained to the end, so a chatty process never blocks on a full pipe. On cancellation the process tree is
     /// killed and awaited before the exception propagates, so the caller can delete what it was writing.
     /// </summary>
+    /// <param name="environment">Variables added to the process's environment.</param>
+    /// <param name="onStarted">Called with the running process, before any output is read; a user tool goes into the kill-on-close job here.</param>
     /// <exception cref="Win32Exception">The executable could not be started.</exception>
     public async Task<SidecarResult> RunAsync(
         IReadOnlyList<string> arguments,
         Action<string>? onStdoutLine,
         CancellationToken cancellationToken,
-        string? workingDirectory = null)
+        string? workingDirectory = null,
+        IReadOnlyDictionary<string, string>? environment = null,
+        Action<Process>? onStarted = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var psi = new ProcessStartInfo(ExecutablePath)
@@ -46,7 +50,13 @@ public sealed class SidecarProcess(string executablePath)
             psi.ArgumentList.Add(a);
         }
 
+        foreach (var variable in environment ?? new Dictionary<string, string>())
+        {
+            psi.Environment[variable.Key] = variable.Value;
+        }
+
         using var process = Process.Start(psi) ?? throw new Win32Exception(L.T("无法启动 {0}", ExecutablePath));
+        onStarted?.Invoke(process);
         try
         {
             process.PriorityClass = ProcessPriorityClass.BelowNormal;
