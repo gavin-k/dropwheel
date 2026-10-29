@@ -8,5 +8,7 @@ namespace DropWheel.Core.Tools;
 /// </summary>
 public sealed record LocalizedText(string Zh, string? En = null)
 {
-    public string Pick() => Loc.Current == UiLanguage.English && !string.IsNullOrEmpty(En) ? En : Zh;
+    public string Pick() => Pick(Loc.Current);
+
+    public string Pick(UiLanguage language) => language == UiLanguage.English && !string.IsNullOrEmpty(En) ? En : Zh;
 }

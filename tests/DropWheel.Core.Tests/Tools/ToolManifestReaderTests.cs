@@ -47,19 +47,10 @@ public sealed class ToolManifestReaderTests : IDisposable
         var name = Read(Minimal).Manifest!.Name;
         name.Should().Be(new LocalizedText("复制一份"));
 
-        var was = Loc.Current;
-        try
-        {
-            Loc.Current = UiLanguage.English;
-            name.Pick().Should().Be("复制一份");
-            new LocalizedText("复制一份", "Copy").Pick().Should().Be("Copy");
-            Loc.Current = UiLanguage.Chinese;
-            new LocalizedText("复制一份", "Copy").Pick().Should().Be("复制一份");
-        }
-        finally
-        {
-            Loc.Current = was;
-        }
+        // Not through Loc.Current: that is process-wide, and the other test classes run alongside this one.
+        name.Pick(UiLanguage.English).Should().Be("复制一份");
+        new LocalizedText("复制一份", "Copy").Pick(UiLanguage.English).Should().Be("Copy");
+        new LocalizedText("复制一份", "Copy").Pick(UiLanguage.Chinese).Should().Be("复制一份");
     }
 
     [Fact]
