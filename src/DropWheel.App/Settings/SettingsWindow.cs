@@ -429,14 +429,16 @@ internal sealed class SettingsWindow
 
         foreach (var result in snapshot.Problems.Where(r => r.HasErrors))
         {
-            _tools.Children.Add(new InfoBar
+            var bar = new InfoBar
             {
                 IsOpen = true,
                 IsClosable = false,
                 Severity = InfoBarSeverity.Error,
                 Title = L.T("{0} 没有加载", Path.GetFileName(result.Folder)),
                 Message = string.Join(" ", result.Problems.Select(p => p.Message)),
-            });
+            };
+            AutomationProperties.SetName(bar, bar.Title); // for the acceptance driver
+            _tools.Children.Add(bar);
         }
 
         if (_tools.Children.Count == 0)
