@@ -46,7 +46,7 @@ public sealed class SheetConverterTests : IDisposable
             new X.Fonts(new X.Font()) { Count = 1 },
             new X.Fills(new X.Fill(new X.PatternFill { PatternType = X.PatternValues.None }), new X.Fill(new X.PatternFill { PatternType = X.PatternValues.Gray125 })) { Count = 2 },
             new X.Borders(new X.Border()) { Count = 1 },
-            new X.CellFormats(Xf(0), Xf(14), Xf(164), Xf(10), Xf(165), Xf(166), Xf(2), Xf(1), Xf(167)) { Count = 9 });
+            new X.CellFormats(Xf(0), Xf(14), Xf(164), Xf(10), Xf(165), Xf(166), Xf(2), Xf(1), Xf(167), Xf(46)) { Count = 10 });
         var list = workbook.Workbook.AppendChild(new X.Sheets());
         uint id = 1;
         foreach (var (sheetName, hidden, rows) in sheets)
@@ -276,6 +276,16 @@ public sealed class SheetConverterTests : IDisposable
         var csv = await Run(xlsx.OutputPaths.Single(), "csv");
         csv.Succeeded.Should().BeTrue(csv.Error);
         File.ReadAllText(csv.OutputPaths.Single()).Should().Be(content);
+    }
+
+    [Fact]
+    public async Task Built_in_and_custom_elapsed_times_keep_the_number_of_days()
+    {
+        var source = Workbook("duration.xlsx", ("Sheet1", false, [Row(1, Number("A1", "1.5", 9), Number("B1", "1.5", 4))]));
+        var result = await Run(source, "csv");
+
+        result.Succeeded.Should().BeTrue(result.Error);
+        File.ReadAllText(result.OutputPaths.Single()).Should().Be("1.5,1.5\r\n");
     }
 
     [Fact]

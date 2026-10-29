@@ -31,7 +31,7 @@ internal static partial class XlsxReader
 
     /// <summary>Excel's built-in number formats that show a date, a time or both; ids 27 to 58 are the East Asian ones.</summary>
     private static readonly HashSet<int> DateFormats = [14, 15, 16, 17, 22, 27, 28, 29, 30, 31, 36, 50, 51, 52, 53, 54, 57, 58];
-    private static readonly HashSet<int> TimeFormats = [18, 19, 20, 21, 22, 32, 33, 34, 35, 45, 46, 47, 55, 56];
+    private static readonly HashSet<int> TimeFormats = [18, 19, 20, 21, 22, 32, 33, 34, 35, 45, 47, 55, 56];
 
     /// <summary>Excel's built-in number formats that fix the decimals: 0, 0.00, #,##0, #,##0.00 and the accounting ones.</summary>
     private static readonly Dictionary<int, int> FixedFormats = new() { [1] = 0, [2] = 2, [3] = 0, [4] = 2, [37] = 0, [38] = 0, [39] = 2, [40] = 2 };
