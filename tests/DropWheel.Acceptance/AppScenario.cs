@@ -122,6 +122,7 @@ internal static partial class AppScenario
                 Attempt(checks, "settings", () => ChangeSettings(checks, log, profile, folder, exe, explorer));
                 Attempt(checks, "same name", () => SameName(checks, log, app.Id, folder, explorer));
                 Attempt(checks, "frame check", () => FrameChecked(checks, log));
+                Attempt(checks, "slow tool", () => SlowTool(checks, log, profile, explorer));
             }
         }
         finally

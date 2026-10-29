@@ -23,7 +23,7 @@ internal static partial class AppScenario
     /// release on the group sector runs nothing, moving to another sector closes the ring; switched on in
     /// 设置 › 我的工具 it copies a JPG next to the source through the ring and leaves no scratch folder; a change
     /// to its command greys it again; a broken folder gets a .problems.json and a note in settings; an edit to
-    /// layout.json is picked up; and a tool still running when the app quits is ended with it.
+    /// layout.json is picked up. A tool still running when the app quits is <see cref="SlowTool"/>, run last.
     /// </summary>
     private static void UserTools(Checks checks, AppLog log, string exe, string profile, bool explorer)
     {
@@ -178,8 +178,20 @@ internal static partial class AppScenario
                 log.WaitFor(3000, "wheel: closed");
             }
         }
+    }
 
-        // A tool that keeps running: its pwsh must go when the app does (checked in Quit).
+    /// <summary>
+    /// A tool that keeps running, dropped on last of all so that nothing else has to wait behind it: the queue runs
+    /// one job at a time, so a sleeping tool would hold up every conversion after it. Its pwsh must go when the app
+    /// does, which <see cref="Quit"/> checks.
+    /// </summary>
+    private static void SlowTool(Checks checks, AppLog log, string profile, bool explorer)
+    {
+        var tools = Path.Combine(profile, "tools");
+        var dir = Path.Combine(Path.GetTempPath(), "DropWheelAcceptance", "usertools");
+        Directory.CreateDirectory(dir);
+        var jpg = Path.Combine(dir, $"slow-{DateTime.Now:HHmmss}.jpg");
+        WriteJpeg(jpg, 640, 400);
         var sleeper = Path.Combine(tools, "sleeper");
         Directory.CreateDirectory(sleeper);
         log.Mark();
@@ -189,7 +201,7 @@ internal static partial class AppScenario
               "placement": { "group": { "zh": "示例", "en": "Examples" } }, "undo": "none" }
             """);
         var two = log.WaitFor(5000, "tools: 2 loaded", SleeperId);
-        window = two is null ? default : OpenSettings(checks, log);
+        var window = two is null ? default : OpenSettings(checks, log);
         if (!window.IsNull)
         {
             log.Mark();
