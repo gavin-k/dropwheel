@@ -197,7 +197,7 @@ public sealed class JobQueue : IAsyncDisposable
                 job.Outputs = result.OutputPaths;
                 job.Undo = result.Undo ?? (result.OutputPaths.Count > 0 ? new UndoPlan.RecycleOutputs(result.OutputPaths) : new UndoPlan.None());
                 job.Progress = 1;
-                _undo.Record(job);
+                _undo.Record(job, request.Written);
                 Finish(job, JobState.Done, detail: result.Detail);
             }
         }

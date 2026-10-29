@@ -7,6 +7,7 @@ namespace DropWheel.Core.Jobs;
 public sealed class UndoLedger(IFileOperations files)
 {
     private readonly List<Job> _entries = [];
+    private readonly Dictionary<Guid, Dictionary<string, OutputSnapshot?>> _snapshots = [];
 
     /// <summary>What it reverses through; jobs recycle the items they replace through it too.</summary>
     public IFileOperations Files => files;
@@ -24,15 +25,20 @@ public sealed class UndoLedger(IFileOperations files)
         }
     }
 
-    public void Record(Job job)
+    public void Record(Job job) => Record(job, job.Request.Written);
+
+    internal void Record(Job job, IReadOnlyDictionary<string, OutputSnapshot> written)
     {
         if (job.Undo is UndoPlan.None)
         {
             return;
         }
 
+        var paths = job.Undo is UndoPlan.MoveBack m ? m.Moves.Select(x => x.To) : ((UndoPlan.RecycleOutputs)job.Undo).Paths;
+        var snapshots = paths.ToDictionary(p => p, p => written.GetValueOrDefault(p) ?? OutputSnapshot.Capture(p), StringComparer.OrdinalIgnoreCase);
         lock (_gate)
         {
+            _snapshots[job.Id] = snapshots;
             _entries.Add(job);
         }
     }
@@ -40,16 +46,27 @@ public sealed class UndoLedger(IFileOperations files)
     /// <summary>Reverses <paramref name="job"/> once. Returns false if it was never recorded or is already undone.</summary>
     public async Task<bool> UndoAsync(Job job, CancellationToken cancellationToken = default)
     {
+        Dictionary<string, OutputSnapshot?> snapshots;
         lock (_gate)
         {
             if (!_entries.Remove(job))
             {
                 return false;
             }
+
+            snapshots = _snapshots[job.Id];
         }
 
         try
         {
+            foreach (var (path, snapshot) in snapshots)
+            {
+                if (snapshot is null || !snapshot.Matches(path))
+                {
+                    throw new IOException(L.T("{0} 已变化或无法核实，未撤销", Path.GetFileName(path)));
+                }
+            }
+
             await (job.Undo switch
             {
                 UndoPlan.RecycleOutputs r => files.RecycleAsync(r.Paths, cancellationToken),
@@ -65,6 +82,11 @@ public sealed class UndoLedger(IFileOperations files)
             }
 
             throw;
+        }
+
+        lock (_gate)
+        {
+            _snapshots.Remove(job.Id);
         }
 
         return true;

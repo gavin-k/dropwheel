@@ -4,9 +4,19 @@ using FluentAssertions;
 
 namespace DropWheel.Core.Tests;
 
-public class JobQueueTests
+public sealed class JobQueueTests : IDisposable
 {
     private readonly RecordingFiles _files = new();
+    private readonly string _dir = Directory.CreateTempSubdirectory("dropwheel-queue-").FullName;
+
+    public void Dispose() => Directory.Delete(_dir, recursive: true);
+
+    private string Output(string name)
+    {
+        var path = Path.Combine(_dir, name);
+        File.WriteAllText(path, "generated");
+        return path;
+    }
 
     private (JobQueue Queue, List<(Guid Id, JobState State)> Changes) Create(Func<ConversionRequest, IProgress<double>, CancellationToken, Task<ConversionResult>> run)
     {
@@ -50,7 +60,8 @@ public class JobQueueTests
     [Fact]
     public async Task Undo_recycles_outputs_once()
     {
-        var (queue, _) = Create((_, _, _) => Task.FromResult(new ConversionResult(true, ["/in/a.png"])));
+        var output = Output("a.png");
+        var (queue, _) = Create((_, _, _) => Task.FromResult(new ConversionResult(true, [output])));
         await using var _q = queue;
         var job = queue.Enqueue(Jpg(), "x");
         await queue.WhenIdleAsync();
@@ -59,13 +70,14 @@ public class JobQueueTests
         (await queue.UndoAsync(job.Id)).Should().BeFalse();
 
         job.State.Should().Be(JobState.Undone);
-        _files.Recycled.Should().Equal("/in/a.png");
+        _files.Recycled.Should().Equal(output);
     }
 
     [Fact]
     public async Task Failed_undo_leaves_the_job_done_and_retryable()
     {
-        var (queue, _) = Create((_, _, _) => Task.FromResult(new ConversionResult(true, ["/in/a.png"])));
+        var output = Output("a.png");
+        var (queue, _) = Create((_, _, _) => Task.FromResult(new ConversionResult(true, [output])));
         await using var _q = queue;
         var job = queue.Enqueue(Jpg(), "x");
         await queue.WhenIdleAsync();
@@ -74,6 +86,65 @@ public class JobQueueTests
         await queue.Invoking(q => q.UndoAsync(job.Id)).Should().ThrowAsync<IOException>();
         job.State.Should().Be(JobState.Done);
         (await queue.UndoAsync(job.Id)).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Undo_refuses_a_same_name_replacement_and_leaves_the_job_done()
+    {
+        var output = Output("a.png");
+        var (queue, _) = Create((_, _, _) => Task.FromResult(new ConversionResult(true, [output])));
+        await using var _q = queue;
+        var job = queue.Enqueue(Jpg(), "x");
+        await queue.WhenIdleAsync();
+        File.Move(output, output + ".original");
+        File.WriteAllText(output, "user content");
+
+        await queue.Invoking(q => q.UndoAsync(job.Id)).Should().ThrowAsync<IOException>();
+        job.State.Should().Be(JobState.Done);
+        _files.Recycled.Should().BeEmpty();
+        File.ReadAllText(output).Should().Be("user content");
+    }
+
+    [Fact]
+    public async Task Undo_refuses_a_recreated_identical_file_even_with_preserved_windows_timestamps()
+    {
+        var output = Output("a.png");
+        var created = File.GetCreationTimeUtc(output);
+        var modified = File.GetLastWriteTimeUtc(output);
+        var (queue, _) = Create((_, _, _) => Task.FromResult(new ConversionResult(true, [output])));
+        await using var _q = queue;
+        var job = queue.Enqueue(Jpg(), "x");
+        await queue.WhenIdleAsync();
+        File.Move(output, output + ".original");
+        File.WriteAllText(output, "generated");
+        File.SetLastWriteTimeUtc(output, modified);
+        if (OperatingSystem.IsWindows())
+        {
+            File.SetCreationTimeUtc(output, created);
+        }
+
+        await queue.Invoking(q => q.UndoAsync(job.Id)).Should().ThrowAsync<IOException>();
+        _files.Recycled.Should().BeEmpty();
+        File.ReadAllText(output).Should().Be("generated");
+    }
+
+    [Fact]
+    public async Task Undo_uses_the_fingerprint_from_commit_not_from_job_completion()
+    {
+        var source = Path.Combine(_dir, "a.jpg");
+        var (queue, _) = Create(async (r, _, ct) =>
+        {
+            var output = await OutputFiles.WriteAsync(r, source, 0, DateTimeOffset.Now,
+                temp => File.WriteAllTextAsync(temp, "ours", ct));
+            File.WriteAllText(output!, "user");
+            return ConversionResult.Written([output!]);
+        });
+        await using var _q = queue;
+        var job = queue.Enqueue(new([source], "png", _dir), "x");
+        await queue.WhenIdleAsync();
+
+        await queue.Invoking(q => q.UndoAsync(job.Id)).Should().ThrowAsync<IOException>();
+        _files.Recycled.Should().BeEmpty();
     }
 
     [Fact]
@@ -130,8 +201,10 @@ public class JobQueueTests
     [Fact]
     public async Task A_move_back_plan_is_kept_and_undo_moves_the_items_back()
     {
-        var moves = new[] { new FileMove("/in/a.jpg", "/out/a.jpg"), new FileMove("/in/b", "/out/b") };
-        var (queue, _) = Create((_, _, _) => Task.FromResult(new ConversionResult(true, ["/out/a.jpg", "/out/b"]) { Undo = new UndoPlan.MoveBack(moves) }));
+        var a = Output("a.jpg");
+        var b = Output("b");
+        var moves = new[] { new FileMove("/in/a.jpg", a), new FileMove("/in/b", b) };
+        var (queue, _) = Create((_, _, _) => Task.FromResult(new ConversionResult(true, [a, b]) { Undo = new UndoPlan.MoveBack(moves) }));
         await using var _q = queue;
         var job = queue.Enqueue(Jpg(), "x");
         await queue.WhenIdleAsync();
@@ -140,7 +213,7 @@ public class JobQueueTests
         (await queue.UndoAsync(job.Id)).Should().BeTrue();
 
         _files.Recycled.Should().BeEmpty();
-        _files.Moved.Should().Equal(new FileMove("/out/a.jpg", "/in/a.jpg"), new FileMove("/out/b", "/in/b"));
+        _files.Moved.Should().Equal(new FileMove(a, "/in/a.jpg"), new FileMove(b, "/in/b"));
     }
 
     [Fact]

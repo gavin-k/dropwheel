@@ -85,5 +85,6 @@
   "，": ", ",
   "，跳过 {0} 项": ", skipped {0} {0|item|items}",
   "；": "; ",
+  "{0} 已变化或无法核实，未撤销": "{0} has changed or could not be verified; undo was refused",
   "不能压缩符号链接或联接：{0}": "Cannot compress a symbolic link or junction: {0}"
 }
