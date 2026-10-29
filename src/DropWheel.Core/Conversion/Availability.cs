@@ -31,4 +31,6 @@ public enum UnavailableCause
     QuotaExhausted,
     /// <summary>Source analysis says the result would be unreliable (PDF → XLSX with no tables).</summary>
     UnreliableResult,
+    /// <summary>A user tool that runs a script the user has not yet enabled in Settings › 我的工具.</summary>
+    UntrustedTool,
 }

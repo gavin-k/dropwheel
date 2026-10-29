@@ -114,5 +114,11 @@
   "{0} 必须是文字，或带 zh / en 的对象": "{0} must be text, or an object with zh / en",
   "{0} 必须是非空文字": "{0} must be non-empty text",
   "{0} 必须是整数": "{0} must be an integer",
-  "{0} 必须是 true 或 false": "{0} must be true or false"
+  "{0} 必须是 true 或 false": "{0} must be true or false",
+  "无法启动 {0}": "Can't start {0}",
+  "{0} 没有扩展名": "{0} has no extension",
+  "{0} 没有写出文件": "{0} did not write a file",
+  "{0} 超过 {1} 秒没有完成": "{0} did not finish within {1} seconds",
+  "{0} 失败：{1}": "{0} failed: {1}",
+  "{0} 失败（退出码 {1}）": "{0} failed (exit code {1})"
 }
