@@ -108,6 +108,32 @@ public sealed class ExtractArchiveToolTests : IDisposable
     }
 
     [Fact]
+    public async Task Colliding_sanitized_names_fail_without_publishing_partial_files()
+    {
+        var source = Zip("collision.zip", ("a?.txt", "FIRST"), ("a*.txt", "SECOND"));
+
+        var result = await Run(source);
+
+        result.Succeeded.Should().BeFalse();
+        result.Error.Should().Contain("冲突");
+        Directory.GetFileSystemEntries(_dir).Should().Equal(source);
+    }
+
+    [Theory]
+    [InlineData("a?/one.txt", "a*/two.txt")]
+    [InlineData("a.txt", "A.txt")]
+    [InlineData("a.txt", "a.txt")]
+    public async Task Directory_aliases_case_collisions_and_duplicate_entries_are_refused(string first, string second)
+    {
+        var source = Zip("collision.zip", (first, "FIRST"), (second, "SECOND"));
+        var result = await Run(source);
+
+        result.Succeeded.Should().BeFalse();
+        result.Error.Should().Contain("冲突");
+        Directory.GetFileSystemEntries(_dir).Should().Equal(source);
+    }
+
+    [Fact]
     public async Task An_existing_folder_gets_a_number()
     {
         var source = Zip("pack.zip", ("a.txt", "a"));

@@ -62,9 +62,10 @@ public sealed class ExtractArchiveTool(SharpCompressArchiveConverter archives, T
                 var plan = request with { TargetFormatId = FormatRegistry.FromPath(source)!.Id, Naming = NamingTemplate.Default };
                 return OutputFiles.WriteFolderAsync(plan, source, i, now, folder => Task.Run(() =>
                 {
+                    var names = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
                     archives.ReadEntries(source, within, _ => { }, (entry, path, open) =>
                     {
-                        if (Unpack(folder, entry, path, open))
+                        if (Unpack(folder, entry, path, open, names))
                         {
                             files++;
                         }
@@ -81,9 +82,9 @@ public sealed class ExtractArchiveTool(SharpCompressArchiveConverter archives, T
     }
 
     /// <returns>Whether it wrote a file, rather than a folder.</returns>
-    private static bool Unpack(string root, IEntry entry, string path, Func<Stream> open)
+    private static bool Unpack(string root, IEntry entry, string path, Func<Stream> open, Dictionary<string, string> names)
     {
-        var target = Inside(root, path);
+        var target = Inside(root, path, names);
         if (entry.IsDirectory)
         {
             Directory.CreateDirectory(target);
@@ -91,8 +92,13 @@ public sealed class ExtractArchiveTool(SharpCompressArchiveConverter archives, T
         }
 
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+        if (File.Exists(target) || Directory.Exists(target))
+        {
+            throw new InvalidDataException(L.T("压缩包内的名称处理后冲突：{0}，已停止解压", path));
+        }
+
         using (var data = open())
-        using (var file = new FileStream(target, FileMode.Create, FileAccess.Write, FileShare.None, BufferSize))
+        using (var file = new FileStream(target, FileMode.CreateNew, FileAccess.Write, FileShare.None, BufferSize))
         {
             data.CopyTo(file, BufferSize);
         }
@@ -111,9 +117,10 @@ public sealed class ExtractArchiveTool(SharpCompressArchiveConverter archives, T
     /// "CON" gets a "_" in front.
     /// </summary>
     /// <exception cref="InvalidDataException">The path climbs out of the root ("zip slip").</exception>
-    internal static string Inside(string root, string path)
+    private static string Inside(string root, string path, Dictionary<string, string> names)
     {
         var parts = new List<string> { root };
+        var original = "";
         foreach (var part in path.Split('/', StringSplitOptions.RemoveEmptyEntries))
         {
             if (part == ".")
@@ -139,6 +146,14 @@ public sealed class ExtractArchiveTool(SharpCompressArchiveConverter archives, T
             }
 
             parts.Add(name);
+            original += "/" + part;
+            var key = Path.Combine([.. parts]);
+            if (names.TryGetValue(key, out var previous) && previous != original)
+            {
+                throw new InvalidDataException(L.T("压缩包内的名称处理后冲突：{0}，已停止解压", path));
+            }
+
+            names[key] = original;
         }
 
         var full = Path.GetFullPath(Path.Combine([.. parts]));

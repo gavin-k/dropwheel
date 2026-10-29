@@ -144,5 +144,6 @@
   "透明部分变成白色": "Transparent areas turn white",
   "隐藏的幻灯片不导出": "Hidden slides are left out",
   "：{0}": ": {0}",
-  "；": "; "
+  "；": "; ",
+  "压缩包内的名称处理后冲突：{0}，已停止解压": "Archive names collide after sanitizing: {0}; extraction stopped"
 }
