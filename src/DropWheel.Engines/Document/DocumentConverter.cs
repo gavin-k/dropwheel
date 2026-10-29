@@ -80,7 +80,7 @@ public sealed class DocumentConverter(TimeProvider? time = null) : IConverter
             {
                 TextDocx.Write(kept, temp, cancellationToken);
                 return Task.CompletedTask;
-            }).ConfigureAwait(false);
+            }, cancellationToken: cancellationToken).ConfigureAwait(false);
         }
 
         if (from is not ("docx" or "pptx") || !WordOutputs.Contains(to))
@@ -102,6 +102,6 @@ public sealed class DocumentConverter(TimeProvider? time = null) : IConverter
             _ => (DocxExport.Html(blocks, Path.GetFileNameWithoutExtension(source)), Utf8),
         };
         return await OutputFiles.WriteAsync(request, source, index, now,
-            temp => File.WriteAllTextAsync(temp, output, encoding, cancellationToken)).ConfigureAwait(false);
+            temp => File.WriteAllTextAsync(temp, output, encoding, cancellationToken), cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 }

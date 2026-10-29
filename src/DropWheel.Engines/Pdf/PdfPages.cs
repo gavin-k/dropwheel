@@ -54,7 +54,7 @@ internal static class PdfPages
             {
                 Save(page, temp, format);
                 return Task.CompletedTask;
-            }, page.Width, page.Height).ConfigureAwait(false);
+            }, page.Width, page.Height, cancellationToken: cancellationToken).ConfigureAwait(false);
         }
 
         var stem = FormatRegistry.StemOf(source);
@@ -69,7 +69,7 @@ internal static class PdfPages
             }
 
             return Task.CompletedTask;
-        }).ConfigureAwait(false);
+        }, cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>"report-07.pdf": the page number padded to as many digits as the last page needs, at least two.</summary>

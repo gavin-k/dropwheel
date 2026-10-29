@@ -138,7 +138,7 @@ public sealed class FfmpegConverter : IConverter
         var info = await MediaProbe.ProbeAsync(tools.Ffprobe, source, cancellationToken).ConfigureAwait(false);
         var job = FfmpegPlan.Build(info, request.TargetFormatId, encoders);
         return await OutputFiles.WriteAsync(request, source, index, _time.GetLocalNow(),
-            temp => EncodeAsync(tools, source, job, info.Duration, temp, progress, cancellationToken), job.Width, job.Height).ConfigureAwait(false);
+            temp => EncodeAsync(tools, source, job, info.Duration, temp, progress, cancellationToken), job.Width, job.Height, cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Runs <paramref name="job"/> on <paramref name="source"/>, reporting progress against its <paramref name="duration"/>.</summary>

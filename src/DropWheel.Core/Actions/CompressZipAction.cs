@@ -42,7 +42,7 @@ public sealed class CompressZipAction(TimeProvider? time = null) : IWheelOperati
         // {date} would be expanded; that is rare enough to accept.
         var plan = request with { SourcePaths = [first], TargetFormatId = "zip", Naming = NameOf(first) };
         var written = await OutputFiles.WriteAsync(plan, first, 0, _time.GetLocalNow(),
-            temp => Task.Run(() => Pack(request.SourcePaths, temp, progress, cancellationToken), cancellationToken)).ConfigureAwait(false);
+            temp => Task.Run(() => Pack(request.SourcePaths, temp, progress, cancellationToken), cancellationToken), cancellationToken: cancellationToken).ConfigureAwait(false);
         return ConversionResult.Written(written is null ? [] : [written]);
     }
 

@@ -84,7 +84,7 @@ public sealed class SheetConverter(TimeProvider? time = null) : IConverter
                 {
                     Save(temp, only.Rows, delimiter, only.Width);
                     return Task.CompletedTask;
-                }).ConfigureAwait(false);
+                }, cancellationToken: cancellationToken).ConfigureAwait(false);
             }
 
             return await OutputFiles.WriteFolderAsync(request, source, index, now, folder =>
@@ -96,7 +96,7 @@ public sealed class SheetConverter(TimeProvider? time = null) : IConverter
                 }
 
                 return Task.CompletedTask;
-            }).ConfigureAwait(false);
+            }, cancellationToken: cancellationToken).ConfigureAwait(false);
         }
 
         if (from is null || !Delimited.Contains(from) || to == from)
@@ -116,7 +116,7 @@ public sealed class SheetConverter(TimeProvider? time = null) : IConverter
             {
                 Save(temp, rows, to == "tsv" ? '\t' : ',', width: 0);
                 return Task.CompletedTask;
-            }).ConfigureAwait(false);
+            }, cancellationToken: cancellationToken).ConfigureAwait(false);
         }
 
         if (rows.Count > XlsxWriter.MaxRows)
@@ -138,7 +138,7 @@ public sealed class SheetConverter(TimeProvider? time = null) : IConverter
         {
             XlsxWriter.Write(rows, XlsxWriter.SheetName(FormatRegistry.StemOf(source)), temp, cancellationToken);
             return Task.CompletedTask;
-        }).ConfigureAwait(false);
+        }, cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>With a BOM like every text file this app writes, so Excel and Notepad on an older Windows read it as UTF-8.</summary>

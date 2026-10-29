@@ -82,7 +82,7 @@ public sealed class OcrTool(ITextRecognizer recognizer, TimeProvider? time = nul
 
                 lines += text.Count(line => line.Length > 0);
                 var all = string.Join("\r\n", text) + "\r\n";
-                return await OutputFiles.WriteAsync(plan, source, i, now, temp => File.WriteAllTextAsync(temp, all, Utf8WithBom, cancellationToken)).ConfigureAwait(false);
+                return await OutputFiles.WriteAsync(plan, source, i, now, temp => File.WriteAllTextAsync(temp, all, Utf8WithBom, cancellationToken), cancellationToken: cancellationToken).ConfigureAwait(false);
             }, cancellationToken), cancellationToken).ConfigureAwait(false);
 
             if (empty == request.SourcePaths.Count)

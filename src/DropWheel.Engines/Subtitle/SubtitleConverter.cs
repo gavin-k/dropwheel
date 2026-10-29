@@ -83,6 +83,6 @@ public sealed class SubtitleConverter(TimeProvider? time = null) : IConverter
 
         var output = SubtitleFormats.Write(request.TargetFormatId, cues);
         return await OutputFiles.WriteAsync(request, source, index, _time.GetLocalNow(),
-            temp => File.WriteAllTextAsync(temp, output, TextFiles.Utf8WithBom, cancellationToken)).ConfigureAwait(false);
+            temp => File.WriteAllTextAsync(temp, output, TextFiles.Utf8WithBom, cancellationToken), cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 }

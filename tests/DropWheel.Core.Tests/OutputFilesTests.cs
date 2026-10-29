@@ -218,6 +218,41 @@ public sealed class OutputFilesTests : IDisposable
         File.ReadAllText(Path.Combine(target, "notes.txt")).Should().Be("user");
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Cancel_after_writing_does_not_commit_a_file_or_folder(bool folder)
+    {
+        using var cancel = new CancellationTokenSource();
+        var source = Source("a.pdf");
+        var request = new ConversionRequest([source], "png", "");
+        Task Write(string temp)
+        {
+            File.WriteAllText(folder ? Path.Combine(temp, "page.png") : temp, "ours");
+            cancel.Cancel();
+            return Task.CompletedTask;
+        }
+
+        var act = () => folder
+            ? OutputFiles.WriteFolderAsync(request, source, 0, Now, Write, cancel.Token)
+            : OutputFiles.WriteAsync(request, source, 0, Now, Write, cancellationToken: cancel.Token);
+        await act.Should().ThrowAsync<OperationCanceledException>();
+        Names().Should().Equal("a.pdf");
+    }
+
+    [Fact]
+    public async Task Cancel_on_the_last_progress_report_rolls_back_the_batch()
+    {
+        using var cancel = new CancellationTokenSource();
+        var source = Source("a.srt");
+        var request = new ConversionRequest([source], "vtt", "");
+        var act = () => OutputFiles.ForEachSourceAsync(request, new InlineProgress(_ => cancel.Cancel()),
+            (path, i, _) => OutputFiles.WriteAsync(request, path, i, Now, temp => File.WriteAllTextAsync(temp, "ours"), cancellationToken: cancel.Token), cancel.Token);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
+        Names().Should().Equal("a.srt");
+    }
+
     [Fact]
     public async Task Progress_within_a_source_is_scaled_into_the_batch()
     {

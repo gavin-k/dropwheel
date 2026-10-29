@@ -44,6 +44,6 @@ internal static class PdfText
 
         var all = string.Join("\n\n", pages).ReplaceLineEndings("\r\n");
         return await OutputFiles.WriteAsync(request, source, index, now,
-            temp => File.WriteAllTextAsync(temp, all + "\r\n", TextFiles.Utf8WithBom, cancellationToken)).ConfigureAwait(false);
+            temp => File.WriteAllTextAsync(temp, all + "\r\n", TextFiles.Utf8WithBom, cancellationToken), cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 }

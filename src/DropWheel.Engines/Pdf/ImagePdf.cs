@@ -83,7 +83,7 @@ public static class ImagePdf
                 }
 
                 return Task.CompletedTask;
-            }, width, height).ConfigureAwait(false);
+            }, width, height, cancellationToken: cancellationToken).ConfigureAwait(false);
         }
         finally
         {

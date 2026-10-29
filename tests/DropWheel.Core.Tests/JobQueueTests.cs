@@ -135,7 +135,7 @@ public sealed class JobQueueTests : IDisposable
         var (queue, _) = Create(async (r, _, ct) =>
         {
             var output = await OutputFiles.WriteAsync(r, source, 0, DateTimeOffset.Now,
-                temp => File.WriteAllTextAsync(temp, "ours", ct));
+                temp => File.WriteAllTextAsync(temp, "ours", ct), cancellationToken: ct);
             File.WriteAllText(output!, "user");
             return ConversionResult.Written([output!]);
         });
@@ -145,6 +145,31 @@ public sealed class JobQueueTests : IDisposable
 
         await queue.Invoking(q => q.UndoAsync(job.Id)).Should().ThrowAsync<IOException>();
         _files.Recycled.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Cancel_after_commit_but_before_runner_completion_rolls_back_and_marks_canceled()
+    {
+        var committed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finish = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var source = Path.Combine(_dir, "a.jpg");
+        var (queue, _) = Create(async (r, _, ct) =>
+        {
+            var output = await OutputFiles.WriteAsync(r, source, 0, DateTimeOffset.Now,
+                temp => File.WriteAllTextAsync(temp, "ours", ct), cancellationToken: ct);
+            committed.SetResult();
+            await finish.Task;
+            return ConversionResult.Written([output!]);
+        });
+        await using var _q = queue;
+        var job = queue.Enqueue(new([source], "png", _dir), "x");
+        await committed.Task;
+        queue.Cancel(job.Id).Should().BeTrue();
+        finish.SetResult();
+        await queue.WhenIdleAsync();
+
+        job.State.Should().Be(JobState.Canceled);
+        Directory.GetFileSystemEntries(_dir).Should().BeEmpty();
     }
 
     [Fact]

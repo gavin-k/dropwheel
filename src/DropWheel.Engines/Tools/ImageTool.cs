@@ -83,7 +83,7 @@ public abstract class ImageTool(TimeProvider? time) : IWheelOperation
                 before += new FileInfo(source).Length;
                 after += rendered.Data.Length;
                 var plan = request with { TargetFormatId = formatId, Naming = NamingTemplate.Default + Suffix };
-                return OutputFiles.Write(plan, source, i, now, temp => File.WriteAllBytes(temp, rendered.Data), rendered.Width, rendered.Height);
+                return OutputFiles.Write(plan, source, i, now, temp => File.WriteAllBytes(temp, rendered.Data), rendered.Width, rendered.Height, cancellationToken: cancellationToken);
             }, cancellationToken), cancellationToken).ConfigureAwait(false);
 
             if (unchanged == request.SourcePaths.Count)

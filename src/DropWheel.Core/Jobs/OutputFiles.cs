@@ -41,6 +41,7 @@ public static class OutputFiles
                 }
 
                 progress.Report((i + 1.0) / count);
+                cancellationToken.ThrowIfCancellationRequested();
             }
 
             return written;
@@ -121,16 +122,17 @@ public static class OutputFiles
         DateTimeOffset now,
         Func<string, Task> write,
         int? width = null,
-        int? height = null) =>
-        PlaceAsync(request, source, index, now, write, folder: false, width, height);
+        int? height = null,
+        CancellationToken cancellationToken = default) =>
+        PlaceAsync(request, source, index, now, write, folder: false, width, height, cancellationToken);
 
     /// <summary>
     /// Same as <see cref="WriteAsync"/> for an output that is a folder of files, such as the pages of a PDF.
     /// <paramref name="write"/> fills an empty temporary folder, which is then renamed into place, so the
     /// folder never shows up half full and a failed write leaves nothing behind.
     /// </summary>
-    public static Task<string?> WriteFolderAsync(ConversionRequest request, string source, int index, DateTimeOffset now, Func<string, Task> write) =>
-        PlaceAsync(request, source, index, now, write, folder: true, width: null, height: null);
+    public static Task<string?> WriteFolderAsync(ConversionRequest request, string source, int index, DateTimeOffset now, Func<string, Task> write, CancellationToken cancellationToken = default) =>
+        PlaceAsync(request, source, index, now, write, folder: true, width: null, height: null, cancellationToken);
 
     private static async Task<string?> PlaceAsync(
         ConversionRequest request,
@@ -140,8 +142,10 @@ public static class OutputFiles
         Func<string, Task> write,
         bool folder,
         int? width,
-        int? height)
+        int? height,
+        CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var sequence = request.SourcePaths.Count > 1 ? index + 1 : (int?)null;
         var policy = request.Conflict;
         string? Plan() => OutputPlanner.PathFor(request with { Conflict = policy }, source, now, Exists, sequence, width, height, folder);
@@ -174,6 +178,7 @@ public static class OutputFiles
 
             await write(temp).ConfigureAwait(false);
             var snapshot = OutputSnapshot.Capture(temp);
+            cancellationToken.ThrowIfCancellationRequested();
             if (policy == ConflictPolicy.OverwriteToRecycleBin && Exists(target))
             {
                 await request.Conflicts!.ReplaceAsync(target).ConfigureAwait(false);
@@ -183,6 +188,7 @@ public static class OutputFiles
             {
                 try
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     if (folder)
                     {
                         Directory.Move(temp, target);
@@ -216,12 +222,12 @@ public static class OutputFiles
     private static bool Exists(string path) => File.Exists(path) || Directory.Exists(path);
 
     /// <summary>Same as <see cref="WriteAsync"/> for a writer that is synchronous.</summary>
-    public static string? Write(ConversionRequest request, string source, int index, DateTimeOffset now, Action<string> write, int? width = null, int? height = null) =>
+    public static string? Write(ConversionRequest request, string source, int index, DateTimeOffset now, Action<string> write, int? width = null, int? height = null, CancellationToken cancellationToken = default) =>
         WriteAsync(request, source, index, now, temp =>
         {
             write(temp);
             return Task.CompletedTask;
-        }, width, height).GetAwaiter().GetResult();
+        }, width, height, cancellationToken).GetAwaiter().GetResult();
 
     private static void TryDelete(string path)
     {

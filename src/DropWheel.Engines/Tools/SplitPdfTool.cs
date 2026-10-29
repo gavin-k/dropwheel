@@ -55,7 +55,7 @@ public sealed class SplitPdfTool(TimeProvider? time = null) : IWheelOperation
                     }
 
                     return Task.CompletedTask;
-                }).ConfigureAwait(false);
+                }, cancellationToken: cancellationToken).ConfigureAwait(false);
                 pages += folder is null ? 0 : count;
                 return folder;
             }, cancellationToken), cancellationToken).ConfigureAwait(false);

@@ -71,7 +71,7 @@ public sealed class ExtractArchiveTool(SharpCompressArchiveConverter archives, T
                         }
                     }, cancellationToken);
                     Flatten(folder, FormatRegistry.StemOf(source));
-                }, cancellationToken));
+                }, cancellationToken), cancellationToken: cancellationToken);
             }, cancellationToken).ConfigureAwait(false);
             return ConversionResult.Written(written) with { Detail = written.Count > 0 ? L.T("{0} 个文件", files) : null };
         }

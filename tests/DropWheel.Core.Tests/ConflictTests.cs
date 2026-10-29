@@ -195,8 +195,8 @@ public sealed class ConflictTests : IDisposable
         var jpg = File("a.jpg");
         var old = File("a.png", "old");
         var graph = new ConversionGraph();
-        graph.Register(new TestConverter([new("jpg", "png")], async (r, _, _) =>
-            ConversionResult.Written([(await OutputFiles.WriteAsync(r, r.SourcePaths[0], 0, Now, temp => System.IO.File.WriteAllTextAsync(temp, "new")))!])));
+        graph.Register(new TestConverter([new("jpg", "png")], async (r, _, ct) =>
+            ConversionResult.Written([(await OutputFiles.WriteAsync(r, r.SourcePaths[0], 0, Now, temp => System.IO.File.WriteAllTextAsync(temp, "new", ct), cancellationToken: ct))!])));
         await using var queue = new JobQueue(graph, new UndoLedger(_files), prompt: _prompt);
         _prompt.Answers.Enqueue(new(ConflictPolicy.OverwriteToRecycleBin));
 
@@ -220,9 +220,9 @@ public sealed class ConflictTests : IDisposable
         var jpg = File("a.jpg");
         File("a.png", "old");
         var graph = new ConversionGraph();
-        graph.Register(new TestConverter([new("jpg", "png")], async (r, _, _) =>
+        graph.Register(new TestConverter([new("jpg", "png")], async (r, _, ct) =>
         {
-            await OutputFiles.WriteAsync(r, r.SourcePaths[0], 0, Now, temp => System.IO.File.WriteAllTextAsync(temp, "new"));
+            await OutputFiles.WriteAsync(r, r.SourcePaths[0], 0, Now, temp => System.IO.File.WriteAllTextAsync(temp, "new", ct), cancellationToken: ct);
             throw new IOException("disk full");
         }));
         await using var queue = new JobQueue(graph, new UndoLedger(_files));

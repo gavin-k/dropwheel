@@ -98,7 +98,7 @@ public sealed class SharpCompressArchiveConverter : IConverter
     }
 
     private string? Convert(ConversionRequest request, string source, int index, IProgress<double> progress, CancellationToken cancellationToken) =>
-        OutputFiles.Write(request, source, index, _time.GetLocalNow(), temp => Repack(source, temp, request.TargetFormatId, progress, cancellationToken));
+        OutputFiles.Write(request, source, index, _time.GetLocalNow(), temp => Repack(source, temp, request.TargetFormatId, progress, cancellationToken), cancellationToken: cancellationToken);
 
     private void Repack(string source, string temp, string to, IProgress<double> progress, CancellationToken cancellationToken)
     {

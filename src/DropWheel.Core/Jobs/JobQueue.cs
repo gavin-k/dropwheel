@@ -184,6 +184,12 @@ public sealed class JobQueue : IAsyncDisposable
             var result = await runner.RunAsync(request, progress, cts.Token).ConfigureAwait(false);
             job.Replaced = conflicts.Replaced;
 
+            if (cts.IsCancellationRequested && request.Written.Count > 0)
+            {
+                OutputFiles.Rollback(request, request.Written.Keys);
+                cts.Token.ThrowIfCancellationRequested();
+            }
+
             if (!result.Succeeded)
             {
                 Finish(job, JobState.Failed, error: result.Error ?? L.T("转换失败。"));

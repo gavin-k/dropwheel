@@ -106,6 +106,19 @@ public sealed class FileActionsTests : IDisposable
     }
 
     [Fact]
+    public async Task Zip_canceled_after_its_last_block_leaves_no_output()
+    {
+        var source = File("last.txt", "one block");
+        using var cancel = new CancellationTokenSource();
+        var action = Action("action.zip");
+        var act = () => action.RunAsync(AppSettings.Default.Request([source], action.Id),
+            new InlineProgress(_ => cancel.Cancel()), cancel.Token);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
+        Directory.GetFiles(_dir).Should().Equal(source);
+    }
+
+    [Fact]
     public async Task Zip_does_not_follow_directory_or_file_links()
     {
         var source = Folder("selected");

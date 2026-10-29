@@ -53,7 +53,7 @@ internal static class PdfDocx
         {
             Write(source, temp, progress, cancellationToken);
             return Task.CompletedTask;
-        });
+        }, cancellationToken: cancellationToken);
 
     private static void Write(string source, string temp, IProgress<double> progress, CancellationToken cancellationToken)
     {

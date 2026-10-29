@@ -107,7 +107,7 @@ public abstract class MediaTool(FfmpegConverter ffmpeg, TimeProvider? time) : IW
                         {
                             throw new NotSmallerException();
                         }
-                    }, job.Width, job.Height).ConfigureAwait(false);
+                    }, job.Width, job.Height, cancellationToken: cancellationToken).ConfigureAwait(false);
                     if (output is not null)
                     {
                         (before, after) = (before + size, after + length);

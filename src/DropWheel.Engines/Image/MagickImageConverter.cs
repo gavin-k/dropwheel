@@ -105,7 +105,7 @@ public sealed class MagickImageConverter(TimeProvider? time = null) : IConverter
         try
         {
             var written = await OutputFiles.ForEachSourceAsync(request, progress,
-                (source, i, _) => Task.Run(() => Convert(request, source, i, format), cancellationToken), cancellationToken).ConfigureAwait(false);
+                (source, i, _) => Task.Run(() => Convert(request, source, i, format, cancellationToken), cancellationToken), cancellationToken).ConfigureAwait(false);
             return ConversionResult.Written(written);
         }
         catch (Exception ex) when (ex is MagickException or InvalidDataException)
@@ -115,7 +115,7 @@ public sealed class MagickImageConverter(TimeProvider? time = null) : IConverter
     }
 
     /// <returns>The written path, or <c>null</c> when the conflict policy skipped this source.</returns>
-    private string? Convert(ConversionRequest request, string source, int index, MagickFormat format)
+    private string? Convert(ConversionRequest request, string source, int index, MagickFormat format, CancellationToken cancellationToken)
     {
         try
         {
@@ -134,7 +134,7 @@ public sealed class MagickImageConverter(TimeProvider? time = null) : IConverter
                 FitIcon(image);
             }
 
-            return OutputFiles.Write(request, source, index, _time.GetLocalNow(), temp => image.Write(temp, format), (int)image.Width, (int)image.Height);
+            return OutputFiles.Write(request, source, index, _time.GetLocalNow(), temp => image.Write(temp, format), (int)image.Width, (int)image.Height, cancellationToken: cancellationToken);
         }
         catch (Exception ex) when (ex is MagickException or InvalidDataException)
         {

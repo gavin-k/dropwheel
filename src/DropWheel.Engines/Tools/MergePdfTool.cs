@@ -46,7 +46,7 @@ public sealed class MergePdfTool(TimeProvider? time = null) : IWheelOperation
                 var pages = documents.SelectMany((d, i) => Enumerable.Range(1, d.NumberOfPages).Select(n => (d, sources[i], n)));
                 var done = 0;
                 var written = OutputFiles.Write(plan, sources[0], 0, _time.GetLocalNow(),
-                    temp => PdfCopy.Write(temp, pages, () => progress.Report((double)++done / total), cancellationToken));
+                    temp => PdfCopy.Write(temp, pages, () => progress.Report((double)++done / total), cancellationToken), cancellationToken: cancellationToken);
                 return ConversionResult.Written(written is null ? [] : [written]) with { Detail = written is null ? null : L.T("{0} 个文件，共 {1} 页", sources.Count, total) };
             }, cancellationToken).ConfigureAwait(false);
         }
