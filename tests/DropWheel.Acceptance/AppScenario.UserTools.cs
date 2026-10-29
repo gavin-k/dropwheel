@@ -67,7 +67,7 @@ internal static partial class AppScenario
         }
 
         (code, json) = ToolCommand(exe, "--list-tools", "--data-dir", profile);
-        checks.Check("--list-tools lists it", code == 0 && json.Contains($"\"id\":\"{HelloId}\"", StringComparison.Ordinal), $"exit {code}; {Shorten(json)}");
+        checks.Check("--list-tools lists it", code == 0 && System.Text.RegularExpressions.Regex.IsMatch(json, $"\"id\":\\s*\"{System.Text.RegularExpressions.Regex.Escape(HelloId)}\""), $"exit {code}; {Shorten(json)}");
 
         // Greyed until switched on: the ring opens on a rest, shows the child off, and a release on the group runs nothing.
         var jpg = Path.Combine(dir, $"ut-{DateTime.Now:HHmmss}.jpg");
@@ -76,7 +76,7 @@ internal static partial class AppScenario
         {
             if (r1 is not null)
             {
-                checks.Check("the new tool is in the ring and off until it is switched on", r1.Children.Contains($"{HelloId}(off)"), r1.Line);
+                checks.Check("the new tool is in the ring and off until it is switched on", IsOff(r1, HelloId), r1.Line);
                 Input.LeftUp();
                 var enqueued = log.WaitFor(1500, "wheel: enqueued");
                 var closed = log.WaitFor(3000, "wheel: closed");
@@ -132,7 +132,7 @@ internal static partial class AppScenario
         using (var r3 = OpenRing(checks, log, jpg, explorer, "once switched on"))
         {
             var child = r3 is null ? -1 : ChildIndex(r3, HelloId);
-            checks.Check("once switched on the tool is live in the ring", r3 is not null && child >= 0 && !r3.Children.Contains($"{HelloId}(off)"), r3?.Line ?? "no ring");
+            checks.Check("once switched on the tool is live in the ring", r3 is not null && child >= 0 && !IsOff(r3, HelloId), r3?.Line ?? "no ring");
             if (r3 is not null && child >= 0)
             {
                 log.Mark();
@@ -170,7 +170,7 @@ internal static partial class AppScenario
         var reloaded = log.WaitFor(5000, "tools: 1 loaded", HelloId);
         using (var r4 = reloaded is null ? null : OpenRing(checks, log, jpg, explorer, "after its command changed"))
         {
-            checks.Check("a change to the tool's command greys it again", r4 is not null && r4.Children.Contains($"{HelloId}(off)"),
+            checks.Check("a change to the tool's command greys it again", r4 is not null && IsOff(r4, HelloId),
                 $"{reloaded ?? "no reload line within 5 s"}; {r4?.Line ?? "no ring"}");
             if (r4 is not null)
             {
@@ -289,6 +289,9 @@ internal static partial class AppScenario
 
         return -1;
     }
+
+    /// <summary>Whether the ring lists the item greyed, as "N=id(off)".</summary>
+    private static bool IsOff(Ring ring, string id) => ring.Children.Any(c => c.EndsWith($"={id}(off)", StringComparison.Ordinal));
 
     private static Point ChildPoint(Ring ring, int child)
     {
