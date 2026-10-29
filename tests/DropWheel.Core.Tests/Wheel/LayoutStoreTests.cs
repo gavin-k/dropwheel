@@ -4,6 +4,7 @@ using DropWheel.Core.Tests.Tools;
 using DropWheel.Core.Tools;
 using DropWheel.Core.Wheel;
 using FluentAssertions;
+using Microsoft.Extensions.Time.Testing;
 
 namespace DropWheel.Core.Tests.Wheel;
 
@@ -188,6 +189,83 @@ public sealed class LayoutStoreTests : IDisposable
         store.SlotsFor(WheelMode.Tools, MediaKind.Image).Should().BeNull();
         store.LoadProblem.Should().BeNull();
         changes.Should().Be(2);
+    }
+
+    [Fact]
+    public void A_watched_reload_keeps_the_last_layout_and_retries_after_the_file_is_unlocked()
+    {
+        var clock = new FakeTimeProvider();
+        using var store = new LayoutStore(File_, clock);
+        store.Install(Manifest("user.first"), BuiltIns);
+        var previous = store.Current;
+        var changes = 0;
+        store.Changed += _ => changes++;
+        store.Watch();
+
+        File.WriteAllText(File_, """{ "version": 1, "wheels": { "tools": { "image": [ { "item": "tool.ocr" } ] } }, "installed": ["user.first"] }""");
+        File.SetLastWriteTimeUtc(File_, File.GetLastWriteTimeUtc(File_).AddSeconds(2));
+        var edited = File.ReadAllText(File_);
+        using (var held = new FileStream(File_, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            store.Reload().Should().BeFalse();
+            clock.Advance(TimeSpan.FromMilliseconds(300));
+            store.Current.Should().BeSameAs(previous);
+            store.LoadProblem.Should().NotBeNull();
+            changes.Should().Be(0);
+        }
+
+        // Releasing the lock does not write the file or give the watcher another change to reload.
+        clock.Advance(TimeSpan.FromMilliseconds(300));
+
+        Ids(store.SlotsFor(WheelMode.Tools, MediaKind.Image)).Should().Equal("tool.ocr");
+        store.LoadProblem.Should().BeNull();
+        changes.Should().Be(1);
+        File.ReadAllText(File_).Should().Be(edited);
+        store.Reload().Should().BeFalse();
+    }
+
+    [Fact]
+    public void Disposing_the_watcher_cancels_a_pending_reload_retry()
+    {
+        var clock = new FakeTimeProvider();
+        using var store = new LayoutStore(File_, clock);
+        store.Install(Manifest("user.first"), BuiltIns);
+        var previous = store.Current;
+        store.Watch();
+        File.WriteAllText(File_, """{ "version": 1, "wheels": {}, "installed": [] }""");
+        File.SetLastWriteTimeUtc(File_, File.GetLastWriteTimeUtc(File_).AddSeconds(2));
+
+        using (var held = new FileStream(File_, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            store.Reload().Should().BeFalse();
+            store.Dispose();
+        }
+
+        clock.Advance(TimeSpan.FromSeconds(1));
+        store.Current.Should().BeSameAs(previous);
+    }
+
+    [Fact]
+    public void A_failed_install_does_not_mark_the_external_layout_as_loaded()
+    {
+        using var store = new LayoutStore(File_);
+        store.Install(Manifest("user.first"), BuiltIns);
+        var previous = store.Current;
+        File.WriteAllText(File_, """{ "version": 1, "wheels": { "tools": { "image": [ { "item": "tool.ocr" } ] } }, "installed": ["user.first"] }""");
+        File.SetLastWriteTimeUtc(File_, File.GetLastWriteTimeUtc(File_).AddSeconds(2));
+        var edited = File.ReadAllText(File_);
+
+        using (var held = new FileStream(File_, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            var install = () => store.Install(Manifest("user.second"), BuiltIns);
+            install.Should().Throw<IOException>();
+            store.Current.Should().BeSameAs(previous);
+        }
+
+        File.ReadAllText(File_).Should().Be(edited);
+        store.Install(Manifest("user.second"), BuiltIns).Should().BeTrue();
+        Ids(store.SlotsFor(WheelMode.Tools, MediaKind.Image)).Should().Equal("tool.ocr", "user.second", null, null, null, null);
+        Ids(new LayoutStore(File_).SlotsFor(WheelMode.Tools, MediaKind.Image)).Should().Equal(Ids(store.SlotsFor(WheelMode.Tools, MediaKind.Image)));
     }
 
     [Fact]

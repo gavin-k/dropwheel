@@ -29,7 +29,7 @@ public sealed class LayoutStore : IDisposable
 
     public WheelLayout Current { get; private set; }
 
-    /// <summary>Why the file on disk was not used, or null; of the last load.</summary>
+    /// <summary>Why the file on disk was not used, or null; of the last load attempt.</summary>
     public string? LoadProblem { get; private set; }
 
     public event Action<WheelLayout>? Changed;
@@ -60,14 +60,24 @@ public sealed class LayoutStore : IDisposable
         return next;
     }
 
-    /// <summary>Reads the file again when it changed on disk; true when <see cref="Current"/> moved.</summary>
+    /// <summary>Reads outside edits; on I/O failure keeps the current layout and retries if watching.</summary>
     public bool Reload()
     {
         bool moved;
         WheelLayout current;
         lock (_gate)
         {
-            moved = ReloadLocked();
+            try
+            {
+                moved = ReloadLocked();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                LoadProblem = ex.Message;
+                _debounce?.Change(Debounce, Timeout.InfiniteTimeSpan);
+                return false;
+            }
+
             current = Current;
         }
 
@@ -105,7 +115,11 @@ public sealed class LayoutStore : IDisposable
     public void Dispose()
     {
         _watcher?.Dispose();
-        _debounce?.Dispose();
+        lock (_gate)
+        {
+            _debounce?.Dispose();
+            _debounce = null;
+        }
     }
 
     public IReadOnlyList<LayoutSlot?>? SlotsFor(WheelMode mode, MediaKind kind) => Current.SlotsFor(mode, kind);
@@ -132,7 +146,13 @@ public sealed class LayoutStore : IDisposable
         return [.. operations.Where(o => Enum.GetValues<MediaKind>().Any(kind => o.AppliesTo(kind) && !layout.IsPlaced(o.Mode, kind, o.Id))).Select(o => o.Id).Distinct()];
     }
 
-    private void OnChange(object sender, EventArgs e) => _debounce?.Change(Debounce, Timeout.InfiniteTimeSpan);
+    private void OnChange(object sender, EventArgs e)
+    {
+        lock (_gate)
+        {
+            _debounce?.Change(Debounce, Timeout.InfiniteTimeSpan);
+        }
+    }
 
     private bool ReloadLocked()
     {
@@ -147,10 +167,12 @@ public sealed class LayoutStore : IDisposable
 
     private WheelLayout Load()
     {
-        _stamp = Stamp();
+        var stamp = Stamp();
         var (loaded, problem) = JsonFile.Load(_path, SettingsJson.Default.WheelLayout, WheelLayout.Empty);
+        var repaired = loaded.Repair();
+        _stamp = stamp;
         LoadProblem = problem;
-        return loaded.Repair();
+        return repaired;
     }
 
     /// <summary>When the file was last written, or the fixed value File gives a missing one.</summary>
