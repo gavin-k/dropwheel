@@ -72,7 +72,7 @@ public interface IConverter
 }
 ```
 
-sidecar 引擎（ffmpeg / soffice）通过 `SidecarProcess` 统一启动：低于正常优先级，工作目录为系统临时目录，stdout 逐行回调（ffmpeg 用 `-progress pipe:1` 报进度），stderr 只留最后 20 行用于报错。取消时结束整个进程树，`OutputFiles` 删掉这一批已写出的临时文件和输出。
+sidecar 引擎（ffmpeg / soffice）通过 `SidecarProcess` 统一启动：低于正常优先级，工作目录为系统临时目录，stdout 逐行回调（ffmpeg 用 `-progress pipe:1` 报进度），stderr 只留最后 20 行用于报错。取消时结束整个进程树，`OutputFiles` 清理临时文件；批量回滚只删除指纹仍匹配的输出。指纹包含时间、文件内容及整个目录树，生成后被替换、修改或加入新文件的输出保留。
 
 ## 隐私与离线
 

@@ -22,6 +22,8 @@ public sealed record ConversionRequest(
     /// derived with <c>with</c> keeps it, so derive rather than build a new one.
     /// </summary>
     public JobConflicts? Conflicts { get; init; }
+
+    internal Dictionary<string, OutputSnapshot> Written { get; init; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
 /// <param name="OutputPaths">What the job produced. The task window opens their folder, and undo recycles them unless <see cref="Undo"/> says otherwise.</param>

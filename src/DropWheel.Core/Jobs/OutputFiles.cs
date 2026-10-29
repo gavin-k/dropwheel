@@ -4,7 +4,7 @@ namespace DropWheel.Core.Jobs;
 
 /// <summary>
 /// How every engine writes its outputs. Each output is rendered into a temporary file (or folder) next to its
-/// target and moved into place without overwriting, and a batch is all or nothing.
+/// target and moved into place without overwriting. Failed batches remove only unchanged outputs.
 ///
 /// The temporary name ends in ".dropwheel-tmp" rather than the real extension, so Explorer does not start
 /// a thumbnail handler on a half-written file and lock it before the move. Writers therefore have to name
@@ -17,7 +17,7 @@ public static class OutputFiles
     /// <summary>
     /// Converts each source in turn with <paramref name="convert"/> (source, index, progress within that
     /// source) and reports overall progress. If a source fails or the job is canceled, outputs this run
-    /// already wrote are deleted, since they did not exist before it, and the exception propagates.
+    /// already wrote are deleted only when their fingerprints still match; changed items are kept.
     /// </summary>
     /// <returns>The written paths; sources the conflict policy skipped have none.</returns>
     public static async Task<IReadOnlyList<string>> ForEachSourceAsync(
@@ -47,12 +47,59 @@ public static class OutputFiles
         }
         catch
         {
-            foreach (var path in written)
+            Rollback(request, written);
+            throw;
+        }
+    }
+
+    internal static void Rollback(ConversionRequest request, IEnumerable<string> paths)
+    {
+        foreach (var path in paths)
+        {
+            if (!request.Written.TryGetValue(path, out var snapshot) || !snapshot.Matches(path))
             {
-                TryDelete(path);
+                continue;
             }
 
-            throw;
+            var held = Path.Combine(Path.GetDirectoryName(path)!, $".{Guid.NewGuid():N}{TempSuffix}");
+            try
+            {
+                Move(path, held);
+                // Verify after claiming the path too: a replacement may have arrived before the move.
+                if (snapshot.Matches(held))
+                {
+                    TryDelete(held);
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+            }
+            finally
+            {
+                try
+                {
+                    if (Exists(held))
+                    {
+                        Move(held, path);
+                    }
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // Keep the held item if its old name was taken; never overwrite that new item.
+                }
+            }
+        }
+    }
+
+    private static void Move(string from, string to)
+    {
+        if (Directory.Exists(from))
+        {
+            Directory.Move(from, to);
+        }
+        else
+        {
+            File.Move(from, to, overwrite: false);
         }
     }
 
@@ -126,6 +173,7 @@ public static class OutputFiles
             }
 
             await write(temp).ConfigureAwait(false);
+            var snapshot = OutputSnapshot.Capture(temp);
             if (policy == ConflictPolicy.OverwriteToRecycleBin && Exists(target))
             {
                 await request.Conflicts!.ReplaceAsync(target).ConfigureAwait(false);
@@ -145,6 +193,11 @@ public static class OutputFiles
                     }
 
                     request.Conflicts?.Wrote(target);
+                    if (snapshot is not null)
+                    {
+                        request.Written[target] = snapshot;
+                    }
+
                     return target;
                 }
                 catch (IOException) when (Exists(target) && policy == ConflictPolicy.AutoNumber && attempt < 5)

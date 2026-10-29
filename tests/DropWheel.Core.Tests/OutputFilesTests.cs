@@ -100,10 +100,11 @@ public sealed class OutputFilesTests : IDisposable
         var sources = new[] { Source("a.srt"), Source("b.srt"), Source("c.srt") };
         var progress = new List<double>();
 
-        var act = () => OutputFiles.ForEachSourceAsync(new(sources, "vtt", ""), new InlineProgress(progress.Add), (source, i, _) =>
+        var request = new ConversionRequest(sources, "vtt", "");
+        var act = () => OutputFiles.ForEachSourceAsync(request, new InlineProgress(progress.Add), (source, i, _) =>
             i == 2
                 ? throw new InvalidDataException("bad cue")
-                : Task.FromResult(OutputFiles.Write(new(sources, "vtt", ""), source, i, Now, temp => File.WriteAllText(temp, "x"))),
+                : Task.FromResult(OutputFiles.Write(request, source, i, Now, temp => File.WriteAllText(temp, "x"))),
             CancellationToken.None);
 
         await act.Should().ThrowAsync<InvalidDataException>();
@@ -172,6 +173,49 @@ public sealed class OutputFilesTests : IDisposable
 
         await act.Should().ThrowAsync<InvalidDataException>();
         Names().Should().Equal("report.pdf");
+    }
+
+    [Fact]
+    public async Task Rollback_preserves_a_replacement_with_the_same_size_and_timestamp()
+    {
+        var sources = new[] { Source("a.srt"), Source("b.srt") };
+        var request = new ConversionRequest(sources, "vtt", "");
+        var target = Path.Combine(_dir, "a.vtt");
+        var act = () => OutputFiles.ForEachSourceAsync(request, new InlineProgress(_ => { }), (source, i, _) =>
+        {
+            if (i == 0)
+            {
+                return Task.FromResult(OutputFiles.Write(request, source, i, Now, temp => File.WriteAllText(temp, "ours")));
+            }
+
+            var modified = File.GetLastWriteTimeUtc(target);
+            File.WriteAllText(target, "user");
+            File.SetLastWriteTimeUtc(target, modified);
+            throw new InvalidDataException("second source failed");
+        }, CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidDataException>();
+        File.ReadAllText(target).Should().Be("user");
+    }
+
+    [Fact]
+    public async Task Rollback_preserves_new_files_added_to_an_output_folder()
+    {
+        var request = new ConversionRequest([Source("a.pdf"), Source("b.pdf")], "png", "");
+        var target = Path.Combine(_dir, "a");
+        var act = () => OutputFiles.ForEachSourceAsync(request, new InlineProgress(_ => { }), (source, i, _) =>
+        {
+            if (i == 0)
+            {
+                return OutputFiles.WriteFolderAsync(request, source, i, Now, temp => File.WriteAllTextAsync(Path.Combine(temp, "page.png"), "ours"));
+            }
+
+            File.WriteAllText(Path.Combine(target, "notes.txt"), "user");
+            throw new InvalidDataException("second source failed");
+        }, CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidDataException>();
+        File.ReadAllText(Path.Combine(target, "notes.txt")).Should().Be("user");
     }
 
     [Fact]

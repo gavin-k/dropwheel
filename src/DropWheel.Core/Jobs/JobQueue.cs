@@ -180,7 +180,8 @@ public sealed class JobQueue : IAsyncDisposable
                 Raise(job);
             });
             // The request the job keeps has no Conflicts, so a retry starts with fresh answers.
-            var result = await runner.RunAsync(job.Request with { Conflicts = conflicts }, progress, cts.Token).ConfigureAwait(false);
+            var request = job.Request with { Conflicts = conflicts, Written = new(StringComparer.OrdinalIgnoreCase) };
+            var result = await runner.RunAsync(request, progress, cts.Token).ConfigureAwait(false);
             job.Replaced = conflicts.Replaced;
 
             if (!result.Succeeded)
