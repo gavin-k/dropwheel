@@ -40,9 +40,9 @@
 **Interfaces:**
 - Produces: `ConversionRequest.OutputExtension : string?` (init); when set, `OutputPlanner.PathFor` uses it as the extension and `{fmt}` token without consulting `FormatRegistry`.
 
-- [ ] Write `OutputPlannerTests.A_raw_output_extension_bypasses_the_format_registry`: request `TargetFormatId = "user.x"`, `OutputExtension = "bak"` → path `Dir/a.bak`.
-- [ ] Write `OutputFilesTests.Write_with_a_raw_extension_lands_next_to_the_source`.
-- [ ] Run, expect fail (`ArgumentException` unknown format).
+- [x] Write `OutputPlannerTests.A_raw_output_extension_bypasses_the_format_registry`: request `TargetFormatId = "user.x"`, `OutputExtension = "bak"` → path `Dir/a.bak`.
+- [x] Write `OutputFilesTests.Write_with_a_raw_extension_lands_next_to_the_source`.
+- [x] Run, expect fail (`ArgumentException` unknown format).
 - [x] Implement; run `./build.sh`; commit `feat(jobs): plan outputs by a raw extension`.
 
 ### Task 1a: Manifest model and reader
@@ -128,8 +128,8 @@ The catalog (Task 1b) needs `CommandResolver` (Task 2) and `ScriptTool` (Task 3)
 - Modify (App): `WheelController.cs` (dwell 200 ms, ring close 150 ms), `WheelWindow.cs` (`SetRing`, `SizeFor`)
 - Test: `WheelGeometryTests`, `SectorGateTests`
 
-- [ ] Tests: children centred on parent clockwise; child centres hit themselves; ring band is no hit without a ring; ring hit reported only while open.
-- [ ] Implement; `./build.sh`; commit `feat(wheel): open a group as an outer ring`.
+- [x] Tests: children centred on parent clockwise; child centres hit themselves; ring band is no hit without a ring; ring hit reported only while open.
+- [x] Implement; `./build.sh`; commit `feat(wheel): open a group as an outer ring`.
 
 ### Task 7: Settings › 我的工具 — `SettingsWindow` section, strings in `Strings.en.json`; commit `feat(settings): list user tools with a trust switch`.
 

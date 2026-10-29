@@ -36,6 +36,10 @@ internal sealed class WheelController : IDisposable
     private static readonly TimeSpan IdleGrace = TimeSpan.FromMilliseconds(300);
     private static readonly TimeSpan WatchdogPeriod = TimeSpan.FromMilliseconds(250);
 
+    /// <summary>How long the pointer rests on a group sector before its ring opens, and how long it is off the group and its ring before the ring closes.</summary>
+    private static readonly TimeSpan DwellDelay = TimeSpan.FromMilliseconds(200);
+    private static readonly TimeSpan RingCloseDelay = TimeSpan.FromMilliseconds(150);
+
     private readonly DispatcherQueue _ui;
     private readonly DragMonitor _monitor;
     private readonly DropTargetHost _host;
@@ -49,8 +53,12 @@ internal sealed class WheelController : IDisposable
     private readonly TypeAhead _typeAhead;
     private readonly DispatcherQueueTimer _idleGrace;
     private readonly DispatcherQueueTimer _watchdog;
+    private readonly DispatcherQueueTimer _dwell;
+    private readonly DispatcherQueueTimer _ringClose;
+    private readonly LayoutStore? _layout;
     private volatile Session? _session;
     private int _buttonUpReadings;
+    private int _pendingGroup = -1;
 
     public WheelController(
         DispatcherQueue ui,
@@ -63,7 +71,8 @@ internal sealed class WheelController : IDisposable
         SettingsStore settings,
         ModifierTapper tapper,
         LongPress longPress,
-        TypeAhead typeAhead)
+        TypeAhead typeAhead,
+        LayoutStore? layout = null)
     {
         _ui = ui;
         _monitor = monitor;
@@ -76,6 +85,7 @@ internal sealed class WheelController : IDisposable
         _tapper = tapper;
         _longPress = longPress;
         _typeAhead = typeAhead;
+        _layout = layout;
 
         _idleGrace = ui.CreateTimer();
         _idleGrace.Interval = IdleGrace;
@@ -84,6 +94,14 @@ internal sealed class WheelController : IDisposable
         _watchdog = ui.CreateTimer();
         _watchdog.Interval = WatchdogPeriod;
         _watchdog.Tick += (_, _) => CheckButton();
+        _dwell = ui.CreateTimer();
+        _dwell.Interval = DwellDelay;
+        _dwell.IsRepeating = false;
+        _dwell.Tick += (_, _) => OpenRing();
+        _ringClose = ui.CreateTimer();
+        _ringClose.Interval = RingCloseDelay;
+        _ringClose.IsRepeating = false;
+        _ringClose.Tick += (_, _) => CloseRing("pointer left it");
 
         _tapper.Invoked += OnTapped;
         _longPress.Invoked += OnHeld;
@@ -117,6 +135,8 @@ internal sealed class WheelController : IDisposable
         _host.Canceled -= OnCanceled;
         _idleGrace.Stop();
         _watchdog.Stop();
+        _dwell.Stop();
+        _ringClose.Stop();
     }
 
     // ---- hook thread ------------------------------------------------------------------------------
@@ -175,7 +195,7 @@ internal sealed class WheelController : IDisposable
 
     private void OnNoted(string note) => FileLog.Info($"wheel: {note}");
 
-    private void OnHovered(int sector) => _ui.TryEnqueue(() => _wheel.SetHovered(sector));
+    private void OnHovered(WheelHit hit) => _ui.TryEnqueue(() => Hover(hit));
 
     private void OnHubReached()
     {
@@ -190,23 +210,23 @@ internal sealed class WheelController : IDisposable
         });
     }
 
-    private void OnDropped(IReadOnlyList<string> paths, int sector)
+    private void OnDropped(IReadOnlyList<string> paths, WheelHit hit)
     {
         var session = _session;
-        var slot = session?.Model?.SlotAt(sector);
+        var slot = SlotUnder(session, hit);
         _ui.TryEnqueue(() =>
         {
-            Close($"dropped on sector {sector}");
+            Close($"dropped on {hit}");
             if (slot is null)
             {
-                FileLog.Error($"wheel: drop on sector {sector} without a slot");
+                FileLog.Error($"wheel: drop on {hit} without a slot");
                 return;
             }
 
             if (slot.Operation is null)
             {
-                // A group sector cannot take a drop (its sector is not enabled, so the shell refused it); this is defensive.
-                FileLog.Info($"wheel: drop on group sector {sector} ({slot.Label}) ignored");
+                // A group sector is never enabled, so the host refuses the drop before it gets here; defensive.
+                FileLog.Info($"wheel: drop on group {hit} ({slot.Label}) ignored");
                 return;
             }
 
@@ -225,6 +245,22 @@ internal sealed class WheelController : IDisposable
 
     private void OnCanceled() => _ui.TryEnqueue(() => Close("canceled"));
 
+    /// <summary>The slot a hit lands on: a sector's, or an item of the ring open at the time.</summary>
+    private static WheelSlot? SlotUnder(Session? session, WheelHit hit)
+    {
+        if (session?.Model is not { } model)
+        {
+            return null;
+        }
+
+        return hit.Ring switch
+        {
+            WheelRing.Sector => model.SlotAt(hit.Index),
+            WheelRing.Child => model.SlotAt(session.OpenGroup)?.Children is { } children && hit.Index >= 0 && hit.Index < children.Count ? children[hit.Index] : null,
+            _ => null,
+        };
+    }
+
     // ---- UI thread --------------------------------------------------------------------------------
 
     /// <param name="by">What opened it, for the log: "tap" or "long press".</param>
@@ -237,16 +273,19 @@ internal sealed class WheelController : IDisposable
 
         // Near an edge the wheel is shifted away from the pointer and may open with a sector under it.
         // Then the sectors wait until the pointer has been on the hub, so an immediate release cancels.
-        var (x, y, scale) = Place(point);
+        // A wheel with groups is placed by its ring's footprint, so an open ring stays on screen too.
+        var ring = _layout?.HasGroups(mode) == true;
+        var (x, y, scale) = Place(point, WheelWindow.SizeFor(ring));
         var onHub = WheelGeometry.OnHub((point.X - x) / scale, (point.Y - y) / scale);
         var placement = new WheelPlacement(x, y, scale, new bool[WheelModel.SlotCount], onHub);
         _session = new Session(mode, placement, tappedAt, by, _settings.Current);
         _typeAhead.Listening = mode == WheelMode.Convert;
+        _pendingGroup = -1;
 
         // Order matters: the host has to end up above the wheel. If the wheel were on top, OLE would see
         // the drag leave the host and the host would report a cancel.
         _wheel.SetHubHint(!onHub);
-        _wheel.ShowAt(x, y, scale);
+        _wheel.ShowAt(x, y, scale, ring);
         _host.Show(placement);
         _buttonUpReadings = 0;
         _watchdog.Start();
@@ -257,6 +296,8 @@ internal sealed class WheelController : IDisposable
     {
         _idleGrace.Stop();
         _watchdog.Stop();
+        _dwell.Stop();
+        _ringClose.Stop();
         if (_session is null)
         {
             return;
@@ -300,6 +341,84 @@ internal sealed class WheelController : IDisposable
     }
 
     /// <summary>
+    /// The pointer is somewhere new. Resting on a group sector opens its ring after <see cref="DwellDelay"/>;
+    /// leaving the group and its ring for anywhere but the hub closes the ring after <see cref="RingCloseDelay"/>,
+    /// so a pointer cutting across the gap between them does not shut it; the hub closes it at once.
+    /// </summary>
+    private void Hover(WheelHit hit)
+    {
+        var session = _session;
+        if (session is null)
+        {
+            return;
+        }
+
+        _wheel.SetHovered(hit);
+        var group = hit.Ring == WheelRing.Sector && session.Model?.SlotAt(hit.Index) is { IsGroup: true } ? hit.Index : -1;
+        var stays = hit.Ring == WheelRing.Child || (hit.Ring == WheelRing.Sector && hit.Index == session.OpenGroup);
+        _dwell.Stop();
+        _ringClose.Stop();
+        if (hit.Ring == WheelRing.Hub)
+        {
+            CloseRing("pointer on the hub");
+            return;
+        }
+
+        if (group >= 0 && group != session.OpenGroup)
+        {
+            _pendingGroup = group;
+            _dwell.Start();
+        }
+
+        if (session.OpenGroup >= 0 && !stays)
+        {
+            _ringClose.Start();
+        }
+    }
+
+    private void OpenRing()
+    {
+        var session = _session;
+        var index = _pendingGroup;
+        if (session is null || session.Model?.SlotAt(index) is not { Children: { } children } slot)
+        {
+            return;
+        }
+
+        lock (session.Gate)
+        {
+            session.OpenGroup = index;
+            session.Ring = new RingPlacement(index, [.. children.Select(c => c.Availability.IsAvailable)]);
+            ShowHost(session);
+        }
+
+        _wheel.SetRing(index, children);
+        FileLog.Info($"wheel: ring open on sector {index} ({slot.Label}): {string.Join(",", children.Select(c => $"{c.Index}={c.ItemId}{(c.Availability.IsAvailable ? "" : "(off)")}"))}");
+    }
+
+    private void CloseRing(string why)
+    {
+        var session = _session;
+        if (session is null || session.OpenGroup < 0)
+        {
+            return;
+        }
+
+        lock (session.Gate)
+        {
+            session.OpenGroup = -1;
+            session.Ring = null;
+            ShowHost(session);
+        }
+
+        _wheel.SetRing(-1, null);
+        FileLog.Info($"wheel: ring closed ({why})");
+    }
+
+    /// <summary>Tells the host what is live now: the enabled sectors and the open ring. Under the session's lock.</summary>
+    private void ShowHost(Session session) => _host.Show(session.Placement with { EnabledSectors = session.Enabled, Ring = session.Ring });
+
+    /// <summary>
     /// Builds the session's model for its files and search and tells the host which sectors are live. Null
     /// before the files are known. Any thread; the lock keeps the model and the host's sectors from two
     /// builds from interleaving.
@@ -315,8 +434,15 @@ internal sealed class WheelController : IDisposable
 
             var model = _builder.Build(paths, session.Mode, session.Settings, session.Query);
             session.Model = model;
-            var enabled = Enumerable.Range(0, WheelModel.SlotCount).Select(i => model.SlotAt(i) is { Availability.IsAvailable: true, Operation: not null }).ToArray();
-            _host.Show(session.Placement with { EnabledSectors = enabled });
+
+            // A group sector is never enabled: a release on it cancels, and its ring is where the drop goes.
+            session.Enabled = Enumerable.Range(0, WheelModel.SlotCount).Select(i => model.SlotAt(i) is { Availability.IsAvailable: true, Operation: not null }).ToArray();
+            if (session.OpenGroup >= 0)
+            {
+                session.Ring = model.SlotAt(session.OpenGroup)?.Children is { } children ? new RingPlacement(session.OpenGroup, [.. children.Select(c => c.Availability.IsAvailable)]) : null;
+            }
+
+            ShowHost(session);
             return model;
         }
     }
@@ -336,8 +462,8 @@ internal sealed class WheelController : IDisposable
         }
     }
 
-    /// <summary>Centre on the pointer, pulled inside the work area of the pointer's monitor.</summary>
-    internal static (int X, int Y, double Scale) Place((int X, int Y) point)
+    /// <summary>Centre on the pointer, pulled inside the work area of the pointer's monitor by the window's size in DIPs.</summary>
+    internal static (int X, int Y, double Scale) Place((int X, int Y) point, double sizeDip)
     {
         var monitor = PInvoke.MonitorFromPoint(new System.Drawing.Point(point.X, point.Y), MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST);
         var scale = PInvoke.GetDpiForMonitor(monitor, MONITOR_DPI_TYPE.MDT_EFFECTIVE_DPI, out var dpi, out _).Succeeded ? dpi / 96.0 : 1.0;
@@ -347,7 +473,7 @@ internal sealed class WheelController : IDisposable
             return (point.X, point.Y, scale);
         }
 
-        var half = (int)Math.Ceiling(WheelWindow.Size * scale / 2);
+        var half = (int)Math.Ceiling(sizeDip * scale / 2);
         var work = info.rcWork;
         return (
             Math.Clamp(point.X, work.left + half, Math.Max(work.left + half, work.right - half)),
@@ -367,6 +493,14 @@ internal sealed class WheelController : IDisposable
 
         /// <summary>The files, once DragEnter said which.</summary>
         public volatile IReadOnlyList<string>? Paths;
+
+        /// <summary>Which sectors take a drop, from the last build; see <see cref="Rebuild"/>.</summary>
+        public IReadOnlyList<bool> Enabled { get; set; } = placement.EnabledSectors;
+
+        /// <summary>The sector whose ring is open, or -1, and the ring the host hit-tests. UI thread writes, under <see cref="Gate"/>.</summary>
+        public volatile int OpenGroup = -1;
+
+        public volatile RingPlacement? Ring;
 
         /// <summary>Guards <see cref="Query"/> and each rebuild of <see cref="Model"/>.</summary>
         public Lock Gate { get; } = new();

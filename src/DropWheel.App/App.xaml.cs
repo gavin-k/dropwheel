@@ -168,7 +168,7 @@ public partial class App : Application
             };
             var onboarding = _onboarding = new OnboardingWindow(settings, _queue, ui, settingsWindow.Show);
             _wheel = new WheelWindow(white: commandLine.Contains("--white-wheel"));
-            var controller = _controller = new WheelController(ui, _monitor, _host, _wheel, builder, _queue, recent, settings, tapper, longPress, typeAhead);
+            var controller = _controller = new WheelController(ui, _monitor, _host, _wheel, builder, _queue, recent, settings, tapper, longPress, typeAhead, layout);
             _dock = new DockWindow(ui, _monitor, () => controller.IsOpen);
 
             _host.Start();

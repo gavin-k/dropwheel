@@ -27,8 +27,8 @@ internal static class HostScenario
         using var host = new DropTargetHost();
         host.Start();
         host.Entered += p => { entered = p; events.Enqueue($"entered {p.Count}"); };
-        host.Hovered += s => { hovered = s; events.Enqueue($"hover {s}"); };
-        host.Dropped += (p, s) => { dropped = p; droppedSector = s; events.Enqueue($"drop {s}"); };
+        host.Hovered += h => { hovered = h.Ring == WheelRing.Sector ? h.Index : -1; events.Enqueue($"hover {h}"); };
+        host.Dropped += (p, h) => { dropped = p; droppedSector = h.Ring == WheelRing.Sector ? h.Index : -1; events.Enqueue($"drop {h}"); };
         host.Canceled += () => { Interlocked.Increment(ref canceled); events.Enqueue("cancel"); };
 
         void Reset()

@@ -14,12 +14,18 @@ namespace DropWheel.Shell;
 /// <summary>Where the wheel is on screen. Centre in physical pixels; <paramref name="Scale"/> is the monitor DPI / 96.</summary>
 /// <param name="EnabledSectors">Six flags, sector 0 at 12 o'clock, clockwise (see <see cref="WheelGeometry"/>).</param>
 /// <param name="StartsOnHub">False when the wheel was shifted away from the pointer; see <see cref="SectorGate"/>.</param>
-public sealed record WheelPlacement(int CenterX, int CenterY, double Scale, IReadOnlyList<bool> EnabledSectors, bool StartsOnHub = true)
+/// <param name="Ring">The ring open on a group sector, if one is; its items are hit-tested too.</param>
+public sealed record WheelPlacement(int CenterX, int CenterY, double Scale, IReadOnlyList<bool> EnabledSectors, bool StartsOnHub = true, RingPlacement? Ring = null)
 {
-    /// <summary>The sector under a screen point, enabled or not, or -1; also -1 while <paramref name="gate"/> is shut.</summary>
-    public int SectorAt(int x, int y, SectorGate gate, out bool opened) => gate.SectorAt((x - CenterX) / Scale, (y - CenterY) / Scale, out opened);
+    /// <summary>What is under a screen point, enabled or not; no sector or ring item while <paramref name="gate"/> is shut.</summary>
+    public WheelHit HitAt(int x, int y, SectorGate gate, out bool opened) => gate.HitAt((x - CenterX) / Scale, (y - CenterY) / Scale, Ring, out opened);
 
-    public bool IsEnabled(int sector) => sector >= 0 && sector < EnabledSectors.Count && EnabledSectors[sector];
+    public bool IsEnabled(WheelHit hit) => hit.Ring switch
+    {
+        WheelRing.Sector => hit.Index >= 0 && hit.Index < EnabledSectors.Count && EnabledSectors[hit.Index],
+        WheelRing.Child => Ring?.IsEnabled(hit.Index) == true,
+        _ => false,
+    };
 }
 
 /// <summary>
@@ -55,14 +61,14 @@ public sealed unsafe class DropTargetHost : IDisposable
     /// </summary>
     public event Action<string>? Noted;
 
-    /// <summary>The sector under the pointer changed, enabled or not, so a disabled one can say why; -1 means none.</summary>
-    public event Action<int>? Hovered;
+    /// <summary>The sector or ring item under the pointer changed, enabled or not, so a disabled one can say why.</summary>
+    public event Action<WheelHit>? Hovered;
 
     /// <summary>The pointer reached the hub of a wheel that opened off-centre, so sectors respond from now on.</summary>
     public event Action? HubReached;
 
-    /// <summary>Files were released on an enabled sector.</summary>
-    public event Action<IReadOnlyList<string>, int>? Dropped;
+    /// <summary>Files were released on an enabled sector or ring item.</summary>
+    public event Action<IReadOnlyList<string>, WheelHit>? Dropped;
 
     /// <summary>The drag left without dropping on a sector: released elsewhere, Esc, or the source gave up.</summary>
     public event Action? Canceled;
@@ -332,7 +338,7 @@ public sealed unsafe class DropTargetHost : IDisposable
     private sealed class Target(DropTargetHost host) : IDropTarget
     {
         private List<string> _paths = [];
-        private int _hovered = -1;
+        private WheelHit _hovered = WheelHit.None;
         private bool _inside;
         private SectorGate? _gate;
 
@@ -340,7 +346,7 @@ public sealed unsafe class DropTargetHost : IDisposable
         public void Reset()
         {
             _paths = [];
-            _hovered = -1;
+            _hovered = WheelHit.None;
             _inside = false;
             _gate = null;
         }
@@ -349,7 +355,7 @@ public sealed unsafe class DropTargetHost : IDisposable
         {
             _paths = host.FilePaths(pDataObj);
             _inside = true;
-            _hovered = -1;
+            _hovered = WheelHit.None;
             host.Entered?.Invoke(_paths);
             *pdwEffect = Effect(pt, *pdwEffect);
         }
@@ -369,12 +375,12 @@ public sealed unsafe class DropTargetHost : IDisposable
         public void Drop(IDataObject pDataObj, MODIFIERKEYS_FLAGS grfKeyState, POINTL pt, DROPEFFECT* pdwEffect)
         {
             *pdwEffect = Effect(pt, *pdwEffect);
-            var sector = _hovered;
+            var hit = _hovered;
             var paths = _paths.Count > 0 ? _paths : host.FilePaths(pDataObj);
             Reset();
             if (*pdwEffect == DROPEFFECT.DROPEFFECT_COPY && paths.Count > 0)
             {
-                host.Dropped?.Invoke(paths, sector);
+                host.Dropped?.Invoke(paths, hit);
             }
             else
             {
@@ -389,25 +395,26 @@ public sealed unsafe class DropTargetHost : IDisposable
         /// </summary>
         private DROPEFFECT Effect(POINTL pt, DROPEFFECT allowed)
         {
-            var sector = -1;
+            var hit = WheelHit.None;
             var enabled = false;
             if (host._placement is { } placement)
             {
                 // One gate per showing: Show is called again with the enabled sectors once the files are
-                // known, and that must not shut a gate the pointer already opened.
+                // known, and again with a ring when a group opens, and that must not shut a gate the
+                // pointer already opened.
                 _gate ??= new SectorGate(placement.StartsOnHub);
-                sector = placement.SectorAt(pt.x, pt.y, _gate, out var opened);
-                enabled = placement.IsEnabled(sector);
+                hit = placement.HitAt(pt.x, pt.y, _gate, out var opened);
+                enabled = placement.IsEnabled(hit);
                 if (opened)
                 {
                     host.HubReached?.Invoke();
                 }
             }
 
-            if (sector != _hovered)
+            if (hit != _hovered)
             {
-                _hovered = sector;
-                host.Hovered?.Invoke(sector);
+                _hovered = hit;
+                host.Hovered?.Invoke(hit);
             }
 
             return enabled && _paths.Count > 0 && (allowed & DROPEFFECT.DROPEFFECT_COPY) != 0

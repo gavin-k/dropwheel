@@ -22,7 +22,8 @@ namespace DropWheel.App.Overlay;
 /// <summary>
 /// The wheel the user sees: a transparent, top-most, never-activated WinUI window with an acrylic disc
 /// and six sectors drawn from <see cref="WheelGeometry"/>, the same numbers the drop target hit-tests
-/// with. It never receives the drag itself; the Shell's DropTargetHost sits above it. Created once,
+/// with, and, when a group sector opens, its items on a ring around the disc (<see cref="SetRing"/>).
+/// It never receives the drag itself; the Shell's DropTargetHost sits above it. Created once,
 /// shown and hidden per drag. After the first frame of a show it checks, now and then, that the screen
 /// shows the wheel and not a flat white block (<see cref="FrameCheck"/>). UI thread only.
 /// </summary>
@@ -48,19 +49,31 @@ internal sealed class WheelWindow
     private static readonly Color OnAccent = Color.FromArgb(255, 0x1A, 0x0D, 0x04);
     private static readonly Color SectorFill = Color.FromArgb(0x1F, 0xFF, 0xFF, 0xFF);
     private static readonly Color SectorStroke = Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF);
+    private static readonly Color SectorOpen = Color.FromArgb(0x59, 0xFB, 0x92, 0x3C);
+
+    /// <summary>The ring has no acrylic of its own: a dark, nearly solid fill keeps its text readable over any desktop.</summary>
+    private static readonly Color ChildFill = Color.FromArgb(0xE0, 0x20, 0x20, 0x20);
+    private static readonly Color ChildOff = Color.FromArgb(0xA0, 0x20, 0x20, 0x20);
 
     private readonly Window _window;
     private readonly AppWindow _appWindow;
     private readonly Path[] _sectors = new Path[WheelModel.SlotCount];
     private readonly TextBlock[] _labels = new TextBlock[WheelModel.SlotCount];
     private readonly TextBlock[] _subLabels = new TextBlock[WheelModel.SlotCount];
+    private readonly Path[] _children = new Path[LayoutGroup.Capacity];
+    private readonly StackPanel[] _childPanels = new StackPanel[LayoutGroup.Capacity];
+    private readonly TextBlock[] _childLabels = new TextBlock[LayoutGroup.Capacity];
+    private readonly TextBlock[] _childSubLabels = new TextBlock[LayoutGroup.Capacity];
+    private readonly Canvas _canvas;
     private readonly TextBlock _title;
     private readonly TextBlock _subtitle;
     private readonly TextBlock _hint;
     private readonly FrameWatch _frames = new(TimeProvider.System);
     private WheelModel? _model;
     private bool _hubFirst;
-    private int _hovered = -1;
+    private WheelHit _hovered = WheelHit.None;
+    private int _ringParent = -1;
+    private IReadOnlyList<WheelSlot>? _ringChildren;
     private long _shownAt;
     private RectInt32 _bounds;
     private int _generation; // moves on at every show, hide and close, so a frame check knows the wheel stayed put
@@ -86,7 +99,10 @@ internal sealed class WheelWindow
         _ = PInvoke.SetWindowLong(hwnd, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE, (int)exStyle);
         _window.SystemBackdrop = new TransparentBackdrop();
 
-        var canvas = new Canvas { Width = Size, Height = Size };
+        // The canvas is always the ring's size and is centred in the window, which is the ring's size only for
+        // a wheel with groups; a Canvas never clips its children, so the sectors stay whole either way.
+        var canvas = _canvas = new Canvas { Width = RingSize, Height = RingSize };
+        var frame = new Canvas { Children = { canvas } };
         var discSize = 2 * (WheelGeometry.OuterRadius + DiscPadding);
         var disc = new SystemBackdropElement
         {
@@ -114,6 +130,20 @@ internal sealed class WheelWindow
             var (x, y) = WheelGeometry.SectorCenter(i);
             Place(label, Center + x - 42, Center + y - 20);
             canvas.Children.Add(label);
+        }
+
+        for (var i = 0; i < LayoutGroup.Capacity; i++)
+        {
+            _children[i] = new Path { StrokeThickness = 1, Stroke = new SolidColorBrush(SectorStroke), Visibility = Visibility.Collapsed };
+            AutomationProperties.SetAutomationId(_children[i], $"Child{i}");
+            canvas.Children.Add(_children[i]);
+
+            _childLabels[i] = new TextBlock { FontSize = 14, FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+            _childSubLabels[i] = new TextBlock { FontSize = 10, HorizontalAlignment = HorizontalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+            var panel = _childPanels[i] = new StackPanel { Width = 80, Height = 40, IsHitTestVisible = false, VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed };
+            panel.Children.Add(_childLabels[i]);
+            panel.Children.Add(_childSubLabels[i]);
+            canvas.Children.Add(panel);
         }
 
         _title = new TextBlock
@@ -148,7 +178,7 @@ internal sealed class WheelWindow
         Place(hole, Center - WheelGeometry.InnerRadius, Center - WheelGeometry.InnerRadius);
         canvas.Children.Add(hole);
 
-        _window.Content = new Grid { Children = { disc, canvas } };
+        _window.Content = new Grid { Children = { disc, frame } };
         if (white)
         {
             ((Grid)_window.Content).Children.Add(new Border { Background = new SolidColorBrush(Colors.White) });
@@ -158,23 +188,34 @@ internal sealed class WheelWindow
         SetHubHint(false);
     }
 
-    /// <summary>Window width and height in DIPs.</summary>
+    /// <summary>Window width and height in DIPs for a wheel without groups: the disc and a margin.</summary>
     public static double Size => 2 * (WheelGeometry.OuterRadius + DiscPadding + Margin);
 
-    private static double Center => Size / 2;
+    /// <summary>Window width and height in DIPs for a wheel with groups: room for the ring around the disc.</summary>
+    public static double RingSize => 2 * (WheelGeometry.RingOuterRadius + WheelGeometry.RingMargin);
+
+    public static double SizeFor(bool ring) => ring ? RingSize : Size;
+
+    private static double Center => RingSize / 2;
 
     /// <summary>Raised when a frame check finds a flat white block, once until a later check finds the wheel drawn.</summary>
     public event Action? LooksFlat;
 
     /// <summary>
-    /// Shows the wheel centred on a screen point (physical pixels) without activating it. Returns once
-    /// the window is in the z-order, so the drop target host can be raised above it afterwards.
+    /// Shows the wheel centred on a screen point (physical pixels) without activating it, sized for the
+    /// ring when <paramref name="ring"/> says the wheel has groups. Returns once the window is in the
+    /// z-order, so the drop target host can be raised above it afterwards.
     /// </summary>
-    public void ShowAt(int centerX, int centerY, double scale)
+    public void ShowAt(int centerX, int centerY, double scale, bool ring = false)
     {
-        var px = (int)Math.Ceiling(Size * scale);
-        _bounds = new RectInt32(centerX - px / 2, centerY - px / 2, px, px);
-        _appWindow.MoveAndResize(_bounds);
+        var dip = SizeFor(ring);
+        var px = (int)Math.Ceiling(dip * scale);
+        var discPx = (int)Math.Ceiling(Size * scale);
+        Place(_canvas, (dip - RingSize) / 2, (dip - RingSize) / 2);
+        _appWindow.MoveAndResize(new RectInt32(centerX - px / 2, centerY - px / 2, px, px));
+
+        // The frame check looks at the disc only: around it the window is transparent and shows the desktop.
+        _bounds = new RectInt32(centerX - discPx / 2, centerY - discPx / 2, discPx, discPx);
         _generation++;
         _shownAt = Stopwatch.GetTimestamp();
         CompositionTarget.Rendered += OnFirstFrame;
@@ -186,6 +227,7 @@ internal sealed class WheelWindow
         CompositionTarget.Rendered -= OnFirstFrame;
         _generation++;
         _appWindow.Hide();
+        SetRing(-1, null);
         SetModel(null);
     }
 
@@ -223,7 +265,7 @@ internal sealed class WheelWindow
         _model = model;
         if (model is null)
         {
-            _hovered = -1;
+            _hovered = WheelHit.None;
         }
 
         ShowHub();
@@ -248,30 +290,87 @@ internal sealed class WheelWindow
     }
 
     /// <summary>
-    /// The pointer moved onto <paramref name="sector"/>, -1 for none. Only an enabled sector lights up, but
-    /// any sector with something to say (see <see cref="WheelSlot.Detail"/>) says it in the hub.
+    /// The pointer moved onto a sector or a ring item. Only an enabled one lights up, but any with
+    /// something to say (see <see cref="WheelSlot.Detail"/>) says it in the hub.
     /// </summary>
-    public void SetHovered(int sector)
+    public void SetHovered(WheelHit hit)
     {
         var previous = _hovered;
-        _hovered = sector;
+        _hovered = hit;
         ShowHub();
+        Repaint(previous);
+        Repaint(hit);
+    }
+
+    /// <summary>
+    /// Opens the ring on sector <paramref name="parent"/> with the group's items, or closes it with -1 and null.
+    /// The items sit on the ring centred on the sector, in the group's order.
+    /// </summary>
+    public void SetRing(int parent, IReadOnlyList<WheelSlot>? children)
+    {
+        var previous = _ringParent;
+        _ringParent = children is { Count: > 0 } ? parent : -1;
+        _ringChildren = _ringParent >= 0 ? children : null;
+        var count = _ringChildren?.Count ?? 0;
+        for (var i = 0; i < LayoutGroup.Capacity; i++)
+        {
+            var shown = i < count;
+            _children[i].Visibility = _childPanels[i].Visibility = shown ? Visibility.Visible : Visibility.Collapsed;
+            if (!shown)
+            {
+                continue;
+            }
+
+            var child = _ringChildren![i];
+            _children[i].Data = RingWedge(_ringParent, count, i);
+            _childLabels[i].Text = child.Label;
+            _childSubLabels[i].Text = child.SubLabel ?? "";
+            AutomationProperties.SetName(_children[i], child.AccessibleName);
+            var (x, y) = WheelGeometry.ChildCenter(_ringParent, count, i);
+            Place(_childPanels[i], Center + x - 40, Center + y - 20);
+            PaintChild(i);
+        }
+
         if (previous >= 0)
         {
             Paint(previous);
         }
 
-        if (sector >= 0)
+        if (_ringParent >= 0)
         {
-            Paint(sector);
+            Paint(_ringParent);
         }
+
+        ShowHub();
     }
 
     private WheelSlot? Slot(int i) => _model?.SlotAt(i);
 
+    private WheelSlot? Child(int i) => _ringChildren is { } children && i >= 0 && i < children.Count ? children[i] : null;
+
+    private WheelSlot? Under(WheelHit hit) => hit.Ring switch
+    {
+        WheelRing.Sector => Slot(hit.Index),
+        WheelRing.Child => Child(hit.Index),
+        _ => null,
+    };
+
+    private void Repaint(WheelHit hit)
+    {
+        switch (hit.Ring)
+        {
+            case WheelRing.Sector when hit.Index >= 0 && hit.Index < WheelModel.SlotCount:
+                Paint(hit.Index);
+                break;
+            case WheelRing.Child when hit.Index >= 0 && hit.Index < LayoutGroup.Capacity:
+                PaintChild(hit.Index);
+                break;
+        }
+    }
+
     private void ShowHub()
     {
-        var detail = Slot(_hovered)?.Detail;
+        var detail = Under(_hovered)?.Detail;
         _title.Text = detail?.Head ?? _model?.CenterTitle ?? "";
         _subtitle.Text = detail?.Body ?? _model?.CenterSubtitle ?? L.T("读取文件…");
         _hint.Text = _hubFirst ? L.T("先移到圆心") : _model?.HasMore == true ? L.T("打字搜索 · Esc 取消") : L.T("Esc 取消");
@@ -282,11 +381,23 @@ internal sealed class WheelWindow
     {
         var slot = Slot(i);
         var enabled = slot?.Availability.IsAvailable == true;
-        var hovered = enabled && i == _hovered;
-        _sectors[i].Fill = new SolidColorBrush(hovered ? Accent : enabled ? SectorFill : Colors.Transparent);
+        var hovered = enabled && _hovered == WheelHit.Sector(i);
+        var open = i == _ringParent;
+        _sectors[i].Fill = new SolidColorBrush(hovered ? Accent : open ? SectorOpen : enabled ? SectorFill : Colors.Transparent);
         _labels[i].Foreground = new SolidColorBrush(hovered ? OnAccent : Text);
         _subLabels[i].Foreground = new SolidColorBrush(hovered ? OnAccent : Text3);
-        _labels[i].Opacity = _subLabels[i].Opacity = enabled ? 1 : 0.45;
+        _labels[i].Opacity = _subLabels[i].Opacity = enabled || open ? 1 : 0.45;
+    }
+
+    private void PaintChild(int i)
+    {
+        var child = Child(i);
+        var enabled = child?.Availability.IsAvailable == true;
+        var hovered = enabled && _hovered == WheelHit.Child(i);
+        _children[i].Fill = new SolidColorBrush(hovered ? Accent : enabled ? ChildFill : ChildOff);
+        _childLabels[i].Foreground = new SolidColorBrush(hovered ? OnAccent : Text);
+        _childSubLabels[i].Foreground = new SolidColorBrush(hovered ? OnAccent : Text3);
+        _childLabels[i].Opacity = _childSubLabels[i].Opacity = enabled ? 1 : 0.45;
     }
 
     private void OnFirstFrame(object? sender, RenderedEventArgs e)
@@ -341,14 +452,19 @@ internal sealed class WheelWindow
         }
     }
 
-    private static PathGeometry Wedge(int index)
+    private static PathGeometry Wedge(int index) =>
+        Band(WheelGeometry.StartAngle(index), WheelGeometry.SectorSweep, WheelGeometry.InnerRadius, WheelGeometry.OuterRadius);
+
+    private static PathGeometry RingWedge(int parent, int count, int index) =>
+        Band(WheelGeometry.ChildStartAngle(parent, count, index), WheelGeometry.ChildSweep, WheelGeometry.RingInnerRadius, WheelGeometry.RingOuterRadius);
+
+    /// <summary>A piece of ring from <paramref name="start"/> degrees over <paramref name="sweep"/>, between two radii.</summary>
+    private static PathGeometry Band(double start, double sweep, double inner, double outer)
     {
-        // A hair of gap between sectors so the stroke reads as a divider.
+        // A hair of gap between pieces so the stroke reads as a divider.
         const double GapDeg = 0.8;
-        var a0 = WheelGeometry.StartAngle(index) + GapDeg;
-        var a1 = WheelGeometry.StartAngle(index) + WheelGeometry.SectorSweep - GapDeg;
-        var outer = WheelGeometry.OuterRadius;
-        var inner = WheelGeometry.InnerRadius;
+        var a0 = start + GapDeg;
+        var a1 = start + sweep - GapDeg;
         var figure = new PathFigure { StartPoint = At(outer, a0), IsClosed = true };
         figure.Segments.Add(new ArcSegment { Point = At(outer, a1), Size = new Size(outer, outer), SweepDirection = SweepDirection.Clockwise });
         figure.Segments.Add(new LineSegment { Point = At(inner, a1) });
