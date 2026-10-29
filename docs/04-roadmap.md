@@ -75,6 +75,16 @@
 - 2026-10-25 演示文稿：文档引擎加上 PPTX，不用 Office 就能把演示文稿转成 TXT、Markdown 和 HTML。按 presentation.xml 的顺序读幻灯片，隐藏的跳过；标题占位符成一级标题，没有标题的写「幻灯片 N」；其余形状按叠放顺序读，组合和 mc:AlternateContent 都打开；项目符号和编号沿段落、文本框、版式占位符、母版占位符、母版文本样式的顺序继承，编号认起始值；表格照 Word 文档的写法输出，合并进去的单元格留空；SmartArt 从数据部件取文字；备注放在「备注」小标题下。日期、页脚、页码、图片、图表和动画不读，预期质量给「中」并写明。加密的、旧版 .ppt、Strict Open XML、损坏的和没有文字的都报错并说明原因。轮盘上 PPTX 推荐 TXT、MD、HTML。证据：Mac 上 Core 测试 213 个通过（新增 1 个）、Engines 测试 267 个通过（新增 8 个：一份 6 张幻灯片的演示文稿逐字比对 TXT 和 Markdown，含隐藏的幻灯片、从母版继承的多级项目符号、从 3 开始和重新开始的编号、换行、链接、组合、表格、SmartArt 和备注；HTML 查列表、表格和链接；另有预期质量，以及只有隐藏幻灯片和页码有字、加密、不是 zip、Strict、XML 损坏几种失败）；Win11 ARM64 VM 和 Win10 x64 真机上 `app --explorer` 验收 187 项全过（新增 4 项：拖 PPTX 时轮盘依次是 TXT、MD、HTML，转换完成，这次拖动里 Shift 唤出轮盘的耗时，Markdown 逐字对上且没有 BOM），转换在 VM 上用了 88 毫秒、真机上 71 毫秒。验收用的 PPTX 是手写的最小包，没有主题和备注母版，PowerPoint 自己打不开，只证明轮盘这条路走得通。本机 6 份真实课件（47 到 88 张）转 Markdown 和 TXT 都成功，每次 12 到 81 毫秒，一级标题数和幻灯片数对得上，表格、备注和多级项目符号看过是对的。没有和 PowerPoint 自己导出的大纲比对过；同级出现一段没编号的段落后编号从头数，是推断，没在 PowerPoint 里核对。
 - 2026-10-25 中英文界面：轮盘、动作、各引擎的提示和报错、托盘菜单、设置、任务窗口、停靠栏、入门指南和重名对话框都有了英文。源码里照旧写中文，中文就是键，每个程序集嵌一份 Strings.en.json，四个项目共 359 条；英文的单复数写成 {0|file|files}。设置里新增「语言」：跟随 Windows（默认）、简体中文、English，存进 settings.json 的 language，退出再打开才生效。跟随 Windows 时，显示语言是中文就用简体中文，繁体中文也一样，其他语言都用英文。启动时按选择设置 Windows App SDK 的 PrimaryLanguageOverride，好让 WinUI 自带的文字也跟着变；不打包运行时它不接受空值，所以跟随 Windows 只在已有值时才清空。证据：Mac 上 Core 测试 258 个通过，其中目录测试逐个项目检查：每处 L.T 都有英文，没有用不到的英文，占位符一致，源码里没有漏在目录外的中文。Win11 ARM64 VM 和 Win10 x64 真机上 `app --explorer` 验收各 192 项全过，日志无错误。没有设置文件时按 Windows 显示语言选，两台都是 zh-CN，日志记 Chinese；指定 English 启动时，任务窗口标题是 DropWheel Tasks，里面有 Settings 按钮；设置里先后选 English 和简体中文，都当场保存，窗口仍是中文。其余验收场景都把语言固定成中文，按中文名字找窗口和按钮。上一轮两台都在这一项失败：跟随 Windows 时给 PrimaryLanguageOverride 写了空值，不打包的程序拒绝（0x80004005），改成只在已有值时清空后通过。没有测：英文版 Windows，WinUI 自带控件的文字是否真的跟着变，MSIX 安装后的行为；英文没有请母语者审校。
 
+## M1.5 · 工具平台（用自己的 AI 造工具）
+
+方向见 [ADR-0005](adr/0005-user-tools-manifest-and-trust.md) 和 `skills/dropwheel-tool/SKILL.md`：AI 住在用户自己的 agent（Claude Code、Codex、Cursor）里，DropWheel 只发布一份 skill、清单 schema 和目录约定，自己不内置模型、不要 API key，运行时照旧离线。工具轮盘和动作轮盘全部可排布，二级结构用外环展开；转换轮盘以后再说。
+
+- [x] ① 清单、加载、脚本运行、skill、布局文件、外环（2026-10-29）：`%LOCALAPPDATA%\DropWheel\tools\<slug>\tool.json` 描述一个脚本型工具，目录热加载，每个文件夹旁写 `.problems.json`；脚本拿到临时路径写输出，DropWheel 搬进位，命名模板、重名策略、撤销沿用；stdout 协议 `progress` / `detail` / `skip`；超时和取消结束进程树，Job Object 让 DropWheel 退出时子进程一起结束。新工具灰显，设置 › 我的工具 看过命令行再打开开关，命令一改重新灰显。`layout.json` 按（轮盘，文件类型）记每个扇区放什么，扇区可以是 ≤ 6 项的分组，停 200 ms 外环展开，松手在分组扇区算取消；轮盘满了把目标扇区折成分组，所以图片的工具轮盘六格已满也能装新工具。`DropWheel.exe --validate-tool <folder>` / `--list-tools` 输出 JSON 给 agent 自检。证据：Mac 上 Core 测试 359 个、Engines 测试 280 个通过。**还没有在 Windows 上编译和跑过**：App / Shell 的改动（设置页、外环渲染、命令行入口）、MSIX 关闭写虚拟化后 agent 能否看到 `.problems.json`、关闭 DropWheel 时子进程是否被结束，都要在 VM 和真机上验。
+- [ ] ② 动效系统：开 150 ms（scale .92→1）、关淡出 100 ms、悬停 100 ms、外环子项依次扇出、换轮盘交叉淡入；`AnimationsEnabled == false` 全部归零；读 `Tokens.xaml` 的 `DwMotion*`。
+- [ ] ③ 图标 + 可视化排布编辑器：内置项各配 Segoe Fluent 码点，清单 `icon` 生效；设置页里拖扇区排布、拖到已有项上成组、未放置托盘，写回 `layout.json`。
+- [ ] ④ 配方型工具：`kind: recipe`，只拼内置引擎，质量可预估、可撤销；skill 改为「优先配方，引擎做不到才写脚本」。
+- [ ] 以后：转换轮盘固定槽位；`output.mode: replace`（原地替换 + 可撤销）；嵌套分组；键盘导航；MCP / CLI 让 agent 反过来调用 DropWheel 的引擎。
+
 ## M2 · Beta 与分发
 
 - [ ] `IExplorerCommand` 右键菜单（C++），稀疏包

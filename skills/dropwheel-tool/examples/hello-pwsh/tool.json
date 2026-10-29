@@ -1,0 +1,19 @@
+{
+  "$schema": "https://github.com/gavin-k/dropwheel/schemas/tool-manifest/v1",
+  "schema": 1,
+  "id": "user.hello-pwsh",
+  "name": { "zh": "复制一份", "en": "Make a copy" },
+  "hint": { "zh": "原样复制，名字加 -copy", "en": "Same file, named -copy" },
+  "wheel": "tools",
+  "appliesTo": ["image"],
+  "kind": "script",
+  "script": {
+    "command": "pwsh",
+    "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{toolDir}\\hello.ps1", "{input}", "{output}"],
+    "perFile": true,
+    "output": { "mode": "new-file", "extension": "same", "suffix": "-copy" },
+    "timeoutSeconds": 60
+  },
+  "placement": { "group": { "zh": "示例", "en": "Examples" } },
+  "undo": "recycle"
+}

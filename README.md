@@ -13,13 +13,17 @@
 
 拖动任意文件，在拖动过程中**轻点一下修饰键**（默认 `Shift`），屏幕上弹出一个 6 扇区的**转换轮盘**；移到目标格式上松手，文件就在本机转换完成，输出到同一文件夹。
 
-- **本地离线**：读取、转换、写入全部在本机完成，文件不上传，也不联网检查更新；设置页显示这次启动以来的网络请求次数。
+- **本地离线**：读取、转换、写入全部在本机完成，文件不上传，也不联网检查更新；设置页显示这次启动以来的网络请求次数。你自己装的脚本工具是另一个进程，它上不上网 DropWheel 看不见，也不在这个计数里。
 - **多种唤出方式**：修饰键轻点 / 资源管理器右键 / 触屏长按 / 拖到屏幕边缘停靠栏 / 全局快捷键。
 - **三种轮盘**：`Shift` 转换 · `Ctrl+Alt` 工具（压缩、缩放、OCR、拆分…）· `Win` 动作（复制路径、移动…）。转换轮盘上直接打字，搜索全部格式。
 - **一等公民**：任务队列、撤销（输出移入回收站）、命名规则模板、重名策略。
 - **松手前看到预期质量**：PDF → DOCX 等复杂转换先告诉你结果大概会怎样、为什么。
 - **不抢资源管理器的键**：默认「轻点唤出」，按住 Ctrl / Shift / Alt 松手仍是系统原生的复制 / 移动 / 快捷方式。全部键位可自定义。
 - **Fluent**：WinUI 3，Mica / 亚克力，浅色 + 深色，WCAG AA，支持 `prefers-reduced-motion`，所有轮盘操作均有键盘等价操作。
+
+## 用你自己的 AI 造工具
+
+DropWheel 不内置模型。把 [`skills/dropwheel-tool`](skills/dropwheel-tool/SKILL.md) 交给你在用的 agent（Claude Code、Codex、Cursor 都行），说一句「做个去 EXIF 再复制一份的工具」，它会把 `tool.json` 和脚本写进 `%LOCALAPPDATA%\DropWheel\tools\<slug>\`，再用 `DropWheel.exe --validate-tool` 自检；DropWheel 正在运行时会自动加载。新工具先是灰的，在 设置 › 我的工具 里看过命令行、打开开关才会跑；命令一改又会灰掉。工具轮盘和动作轮盘每个扇区放什么都记在 `layout.json` 里，扇区可以是一个分组，指针停上去在外环展开；想换位置可以让 agent 改这个文件。清单格式见 [`docs/tool-manifest.schema.json`](docs/tool-manifest.schema.json)，取舍见 [ADR-0005](docs/adr/0005-user-tools-manifest-and-trust.md)。这部分还没有在 Windows 上实测，见路线图 M1.5。
 
 ## 设计稿
 
@@ -68,6 +72,7 @@ dropwheel/
 │  ├─ DropWheel.Shell/       Win32 集成：钩子、拖拽侦测、OLE 放置目标、托盘、全局快捷键
 │  ├─ DropWheel.Engines/     各类转换引擎适配器（图片 / 媒体 / PDF / 文档 / 压缩 / 字幕 / OCR）
 │  └─ DropWheel.ContextMenu/ IExplorerCommand COM DLL（C++）
+├─ skills/dropwheel-tool/  给 agent 的 skill：清单字段、脚本协议、两个样例工具
 ├─ tests/
 ├─ installer/             MSIX 清单、winget 清单模板、WiX MSI
 └─ .github/workflows/     CI

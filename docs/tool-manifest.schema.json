@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gavin-k/dropwheel/schemas/tool-manifest/v1",
+  "title": "DropWheel tool manifest",
+  "description": "tool.json for a user tool in %LOCALAPPDATA%\\DropWheel\\tools\\<slug>\\. See skills/dropwheel-tool/SKILL.md and docs/adr/0005-user-tools-manifest-and-trust.md.",
+  "type": "object",
+  "required": ["schema", "id", "name", "wheel", "script"],
+  "additionalProperties": true,
+  "properties": {
+    "$schema": { "type": "string" },
+    "schema": { "const": 1 },
+    "id": {
+      "type": "string",
+      "pattern": "^user\\.[a-z0-9-]+$",
+      "description": "Unique across the tools folder. Becomes the operation id DropWheel records in jobs."
+    },
+    "name": { "$ref": "#/$defs/text", "description": "Shown on the wheel sector." },
+    "hint": { "$ref": "#/$defs/text", "description": "One line shown in the wheel's centre while hovering." },
+    "icon": { "type": "string", "description": "Reserved; ignored by schema 1." },
+    "wheel": { "enum": ["tools", "actions"] },
+    "appliesTo": {
+      "type": ["array", "null"],
+      "uniqueItems": true,
+      "items": { "enum": ["image", "video", "audio", "pdf", "document", "slides", "sheet", "subtitle", "archive"] },
+      "description": "Omit or null for every kind of file, including unknown files and folders."
+    },
+    "kind": { "enum": ["script"], "default": "script" },
+    "script": {
+      "type": "object",
+      "required": ["command", "args"],
+      "additionalProperties": true,
+      "properties": {
+        "command": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Absolute path, a path relative to the tool folder, or a bare name found in the tool folder or on PATH (PATHEXT applies). pwsh falls back to Windows PowerShell with a warning."
+        },
+        "args": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Passed as is, no shell. Placeholders: {input} {inputs} {output} {outputDir} {toolDir}. {output} and {outputDir} need output.mode new-file; {input} needs perFile true, {inputs} needs perFile false."
+        },
+        "perFile": { "type": "boolean", "default": true },
+        "output": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "mode": { "enum": ["new-file", "none"], "default": "new-file" },
+            "extension": {
+              "type": "string",
+              "pattern": "^(same|[A-Za-z0-9]+)$",
+              "default": "same",
+              "description": "Without the dot."
+            },
+            "suffix": { "type": "string", "default": "", "description": "Appended to the source's stem; no characters Windows forbids in file names." }
+          }
+        },
+        "timeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 86400, "default": 600 }
+      }
+    },
+    "placement": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "A hint applied once, when the tool is first seen; afterwards layout.json rules.",
+      "properties": {
+        "group": { "$ref": "#/$defs/text" },
+        "index": { "type": "integer", "minimum": 0, "maximum": 5 }
+      }
+    },
+    "undo": { "enum": ["recycle", "none"], "default": "recycle" }
+  },
+  "$defs": {
+    "text": {
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "zh": { "type": "string", "minLength": 1 },
+            "en": { "type": "string", "minLength": 1 }
+          },
+          "anyOf": [{ "required": ["zh"] }, { "required": ["en"] }]
+        }
+      ]
+    }
+  }
+}

@@ -34,6 +34,12 @@
     <Manifest Include="$(ApplicationManifest)" />
   </ItemGroup>
 
+  <!-- The skill an agent reads to write a tool, next to the exe so Settings can point at it; the schema rides along. -->
+  <ItemGroup>
+    <Content Include="../../skills/dropwheel-tool/**" Link="skills/dropwheel-tool/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../../docs/tool-manifest.schema.json" Link="skills/dropwheel-tool/tool-manifest.schema.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <!--
     ffmpeg sidecar (LGPL, kept out of process, see ADR-0003), fetched into tools/sidecars by scripts/fetch-sidecars.{sh,ps1}.
     Ships as sidecars/ffmpeg next to DropWheel.exe. Without it the app still builds and greys out audio and video targets.
