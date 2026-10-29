@@ -267,6 +267,18 @@ public sealed class SheetConverterTests : IDisposable
     }
 
     [Fact]
+    public async Task Literal_ooxml_escape_sequences_survive_a_csv_xlsx_round_trip()
+    {
+        const string content = "_x0041_,_x005F_,_x000D_,_x005F_x0041_,ordinary_xtext\r\n";
+        var source = Csv("literal.csv", content);
+        var xlsx = await Run(source, "xlsx");
+        xlsx.Succeeded.Should().BeTrue(xlsx.Error);
+        var csv = await Run(xlsx.OutputPaths.Single(), "csv");
+        csv.Succeeded.Should().BeTrue(csv.Error);
+        File.ReadAllText(csv.OutputPaths.Single()).Should().Be(content);
+    }
+
+    [Fact]
     public async Task Csv_to_xlsx_keeps_ids_long_numbers_and_dates_as_text_and_validates()
     {
         var source = Csv("季度[1].csv", "编号,数量,金额,卡号,日期,比例,备注\r\n007,12,-3.5,1234567890123456,2026-10-25,50%,\"a,b\"\r\n,,,,,,\"第一行\n第二行\"\r\n");

@@ -122,7 +122,7 @@ internal static partial class XlsxWriter
                         xml.WriteStartElement("is", S);
                         xml.WriteStartElement("t", S);
                         xml.WriteAttributeString("xml", "space", null, "preserve");
-                        xml.WriteString(value);
+                        xml.WriteString(value.Replace("_x", "_x005F_x", StringComparison.Ordinal));
                         xml.WriteEndElement();
                         xml.WriteEndElement();
                     }
