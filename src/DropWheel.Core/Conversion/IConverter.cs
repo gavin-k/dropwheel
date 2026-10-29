@@ -18,6 +18,12 @@ public sealed record ConversionRequest(
     public ConflictPolicy Conflict { get; init; } = ConflictPolicy.AutoNumber;
 
     /// <summary>
+    /// The output's extension without the dot, for a runner whose <see cref="TargetFormatId"/> is an operation id
+    /// rather than a format: output planning then uses it as is instead of looking the id up in the registry.
+    /// </summary>
+    public string? OutputExtension { get; init; }
+
+    /// <summary>
     /// Settles taken names under the replace and Ask policies. The job queue sets it for each run; a request
     /// derived with <c>with</c> keeps it, so derive rather than build a new one.
     /// </summary>

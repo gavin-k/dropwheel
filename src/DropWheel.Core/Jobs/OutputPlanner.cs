@@ -22,13 +22,15 @@ public static class OutputPlanner
         int? height = null,
         bool folder = false)
     {
-        var target = FormatRegistry.FromExtension(request.TargetFormatId)
-            ?? throw new ArgumentException($"Unknown target format '{request.TargetFormatId}'.", nameof(request));
+        var extension = !string.IsNullOrEmpty(request.OutputExtension)
+            ? request.OutputExtension.TrimStart('.')
+            : (FormatRegistry.FromExtension(request.TargetFormatId)
+                ?? throw new ArgumentException($"Unknown target format '{request.TargetFormatId}'.", nameof(request))).Id;
         var directory = string.IsNullOrEmpty(request.OutputDirectory)
             ? Path.GetDirectoryName(Path.GetFullPath(sourcePath))!
             : request.OutputDirectory;
-        var context = new NamingContext(FormatRegistry.StemOf(sourcePath), target.Id, target.Id, now, sequence, width, height);
+        var context = new NamingContext(FormatRegistry.StemOf(sourcePath), extension, extension, now, sequence, width, height);
         var baseName = new NamingTemplate(request.Naming).Expand(context);
-        return NamingTemplate.ResolveConflict(directory, baseName, folder ? "" : target.Id, request.Conflict, exists);
+        return NamingTemplate.ResolveConflict(directory, baseName, folder ? "" : extension, request.Conflict, exists);
     }
 }

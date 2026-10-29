@@ -47,4 +47,18 @@ public class OutputPlannerTests
     public void Alias_target_uses_the_canonical_extension()
         => OutputPlanner.PathFor(new([Source], "tif", ""), Source, Now, _ => false)
             .Should().Be(Path.Combine(Dir, "photo.tiff"));
+
+    [Theory]
+    [InlineData("bak")]
+    [InlineData(".bak")]
+    public void A_raw_output_extension_bypasses_the_format_registry(string extension)
+        => OutputPlanner.PathFor(new ConversionRequest([Source], "user.copy", "") { OutputExtension = extension }, Source, Now, _ => false)
+            .Should().Be(Path.Combine(Dir, "photo.bak"));
+
+    [Fact]
+    public void An_unknown_target_without_a_raw_extension_is_rejected()
+    {
+        var act = () => OutputPlanner.PathFor(new([Source], "user.copy", ""), Source, Now, _ => false);
+        act.Should().Throw<ArgumentException>();
+    }
 }

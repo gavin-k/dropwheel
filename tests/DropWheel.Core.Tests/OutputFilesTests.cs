@@ -38,6 +38,23 @@ public sealed class OutputFilesTests : IDisposable
     }
 
     [Fact]
+    public async Task Write_with_a_raw_extension_lands_next_to_the_source()
+    {
+        var source = Source("a.jpg");
+        string? seen = null;
+
+        var output = await OutputFiles.WriteAsync(new ConversionRequest([source], "user.copy", "") { OutputExtension = "bak" }, source, 0, Now, temp =>
+        {
+            seen = temp;
+            return File.WriteAllTextAsync(temp, "copy");
+        });
+
+        output.Should().Be(Path.Combine(_dir, "a.bak"));
+        seen.Should().StartWith(Path.Combine(_dir, ".a.bak."));
+        Names().Should().Equal("a.bak", "a.jpg");
+    }
+
+    [Fact]
     public async Task An_output_folder_that_does_not_exist_yet_is_created()
     {
         var source = Source("a.srt");
