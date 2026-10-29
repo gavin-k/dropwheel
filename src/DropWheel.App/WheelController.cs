@@ -223,7 +223,7 @@ internal sealed class WheelController : IDisposable
                 return;
             }
 
-            if (slot.Operation is null)
+            if (slot.IsGroup)
             {
                 // A group sector is never enabled, so the host refuses the drop before it gets here; defensive.
                 FileLog.Info($"wheel: drop on group {hit} ({slot.Label}) ignored");
@@ -436,7 +436,7 @@ internal sealed class WheelController : IDisposable
             session.Model = model;
 
             // A group sector is never enabled: a release on it cancels, and its ring is where the drop goes.
-            session.Enabled = Enumerable.Range(0, WheelModel.SlotCount).Select(i => model.SlotAt(i) is { Availability.IsAvailable: true, Operation: not null }).ToArray();
+            session.Enabled = Enumerable.Range(0, WheelModel.SlotCount).Select(i => model.SlotAt(i) is { Availability.IsAvailable: true, IsGroup: false }).ToArray();
             if (session.OpenGroup >= 0)
             {
                 session.Ring = model.SlotAt(session.OpenGroup)?.Children is { } children ? new RingPlacement(session.OpenGroup, [.. children.Select(c => c.Availability.IsAvailable)]) : null;
