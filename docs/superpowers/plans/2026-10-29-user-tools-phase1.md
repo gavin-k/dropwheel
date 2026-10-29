@@ -43,24 +43,35 @@
 - [ ] Write `OutputPlannerTests.A_raw_output_extension_bypasses_the_format_registry`: request `TargetFormatId = "user.x"`, `OutputExtension = "bak"` → path `Dir/a.bak`.
 - [ ] Write `OutputFilesTests.Write_with_a_raw_extension_lands_next_to_the_source`.
 - [ ] Run, expect fail (`ArgumentException` unknown format).
-- [ ] Implement; run `./build.sh`; commit `feat(jobs): plan outputs by a raw extension`.
+- [x] Implement; run `./build.sh`; commit `feat(jobs): plan outputs by a raw extension`.
 
-### Task 1: Manifest model, reader, catalog
+### Task 1a: Manifest model and reader
+
+The catalog (Task 1b) needs `CommandResolver` (Task 2) and `ScriptTool` (Task 3), so the order is 0 → 1a → 2 → 3 → 1b.
 
 **Files:**
-- Create: `src/DropWheel.Core/Tools/LocalizedText.cs`, `ToolManifest.cs`, `ToolProblem.cs`, `ToolManifestReader.cs`, `UserToolCatalog.cs`, `ToolsJson.cs`
-- Test: `tests/DropWheel.Core.Tests/Tools/ToolManifestReaderTests.cs`, `UserToolCatalogTests.cs`
+- Create: `src/DropWheel.Core/Tools/LocalizedText.cs`, `ToolManifest.cs`, `ToolProblem.cs`, `ToolManifestReader.cs`, `ToolsJson.cs`
+- Test: `tests/DropWheel.Core.Tests/Tools/ToolManifestReaderTests.cs`
 
 **Interfaces:**
 - `record LocalizedText(string Zh, string? En = null) { string Pick(); }`
 - `record ToolManifest(int Schema, string Id, LocalizedText Name, LocalizedText Hint, string? Icon, WheelMode Wheel, IReadOnlyList<MediaKind>? AppliesTo, string Kind, ScriptSpec Script, PlacementHint? Placement, string Undo)`
 - `record ScriptSpec(string Command, IReadOnlyList<string> Args, bool PerFile, OutputSpec Output, int TimeoutSeconds)`; `record OutputSpec(string Mode, string Extension, string Suffix)`; `record PlacementHint(LocalizedText? Group, int? Index)`
-- `record ToolProblem(string Code, string Message)`
-- `static ToolManifestReader.Read(string folder) → ToolReadResult(ToolManifest? Manifest, string Folder, IReadOnlyList<ToolProblem> Problems)`; `static string CommandHash(ScriptSpec)`
+- `record ToolProblem(string Code, string Message, bool IsWarning = false)`; `record ToolReadResult(string Folder, ToolManifest? Manifest, IReadOnlyList<ToolProblem> Problems)`
+- `static ToolManifestReader.Read(string folder) → ToolReadResult`; `static string CommandHash(ScriptSpec)`
 - `UserToolCatalog(string toolsDir, IProcessRunner runner, CommandResolver resolver, TimeProvider? time = null)`: `CatalogSnapshot Current`, `event Action<CatalogSnapshot>? Changed`, `CatalogSnapshot Reload()`, `void Watch()`, `Dispose()`; `record CatalogSnapshot(IReadOnlyList<ScriptTool> Tools, IReadOnlyList<ToolReadResult> Problems)`.
 
-- [ ] Tests: minimal manifest reads; id that is a format is rejected (`id-is-format`); unknown placeholder (`args`); `{output}` with `mode:none` (`output`); bad JSON lists one `json` problem and writes `.problems.json`; `Reload` swaps snapshot and raises `Changed`; `.problems.json` / dotfiles are not tool folders.
-- [ ] Implement; `./build.sh`; commit `feat(tools): read tool manifests and watch the tools folder`.
+- [x] Tests: minimal manifest reads; bare-string name is Zh-only and `Pick()` falls back to Zh; id without the `user.` prefix is rejected (`id`; the prefix alone keeps every tool id off the format ids, so there is no separate `id-is-format` code); unknown placeholder (`args`); `{output}` with `mode:none` (`output`); every problem is listed, not just the first; bad JSON lists one `json` problem.
+- [x] Implement; `./build.sh`; commit `feat(tools): read tool manifests`.
+
+### Task 1b: Catalog (after Task 3)
+
+**Files:**
+- Create: `src/DropWheel.Core/Tools/UserToolCatalog.cs`
+- Test: `tests/DropWheel.Core.Tests/Tools/UserToolCatalogTests.cs`
+
+- [ ] Tests: `Reload` swaps snapshot and raises `Changed`; `.problems.json` / dotfiles are not tool folders; a folder with problems gets `.problems.json`, a fixed one loses it; duplicate ids are an `id` problem; a command not on PATH is a warning that still loads the tool.
+- [ ] Implement (`FileSystemWatcher` + 300 ms debounce ignoring `.problems.json` and `*.dropwheel-tmp`); `./build.sh`; commit `feat(tools): watch the tools folder`.
 
 ### Task 2: Process runner
 
