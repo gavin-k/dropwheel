@@ -185,6 +185,8 @@ public partial class App : Application
             catalog.Changed += snapshot => ui.TryEnqueue(() => OnToolsChanged(snapshot, layout, operations));
             catalog.Reload();
             catalog.Watch();
+            layout.Changed += _ => FileLog.Info("layout: changed");
+            layout.Watch();
             _wheel.LooksFlat += () => _tray?.Notify(L.T("轮盘显示成了一整块白色"),
                 L.T("多半是显卡驱动卡住了。按 Win+Ctrl+Shift+B 重置显卡驱动；还不行就更新显卡驱动或重启电脑。"));
             void ShowHome()
@@ -339,6 +341,7 @@ public partial class App : Application
         }
 
         _catalog?.Dispose();
+        _layout?.Dispose();
         _network?.Dispose();
         FileLog.Flush(TimeSpan.FromSeconds(1));
         _instance?.Dispose();

@@ -21,7 +21,7 @@ Prefer the built-in wheel items when one already does the job (compress image, r
 
 ```json
 {
-  "$schema": "https://github.com/gavin-k/dropwheel/schemas/tool-manifest/v1",
+  "$schema": "https://raw.githubusercontent.com/gavin-k/dropwheel/main/docs/tool-manifest.schema.json",
   "schema": 1,
   "id": "user.strip-exif",
   "name": { "zh": "去掉 EXIF", "en": "Strip EXIF" },
@@ -100,7 +100,7 @@ A script tool is another process on the user's machine, started with the user's 
 
 ## Layout
 
-`%LOCALAPPDATA%\DropWheel\layout.json` holds the arrangement; DropWheel reloads it when it changes. Edit it only when the user asks to move, group, or hide items. Shape:
+`%LOCALAPPDATA%\DropWheel\layout.json` holds the arrangement. A running DropWheel reloads it within a second of a change and applies its own later writes on top of what is on disk, so editing it while DropWheel runs is safe; write the whole file in one go. Edit it only when the user asks to move, group, or hide items. Shape:
 
 ```json
 {

@@ -1,5 +1,5 @@
 {
-  "$schema": "https://github.com/gavin-k/dropwheel/schemas/tool-manifest/v1",
+  "$schema": "https://raw.githubusercontent.com/gavin-k/dropwheel/main/docs/tool-manifest.schema.json",
   "schema": 1,
   "id": "user.hello-python",
   "name": { "zh": "文件信息", "en": "File info" },

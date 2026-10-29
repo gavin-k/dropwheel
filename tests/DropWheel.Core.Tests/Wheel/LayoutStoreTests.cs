@@ -147,6 +147,50 @@ public sealed class LayoutStoreTests : IDisposable
     }
 
     [Fact]
+    public void An_edit_on_disk_is_read_before_a_change_is_applied_so_it_is_not_overwritten()
+    {
+        var store = new LayoutStore(File_);
+        store.Install(Manifest("user.first"), BuiltIns);
+        var moves = new List<IReadOnlyList<string?>>();
+        store.Changed += layout => moves.Add([.. Ids(layout.SlotsFor(WheelMode.Tools, MediaKind.Image))]);
+
+        // The agent moves the first tool to the front and drops most built-ins, after our write.
+        File.WriteAllText(File_, """{ "version": 1, "wheels": { "tools": { "image": [ { "item": "user.first" }, { "item": "tool.compress-image" }, null, null, null, null ] } }, "installed": ["user.first"] }""");
+        File.SetLastWriteTimeUtc(File_, File.GetLastWriteTimeUtc(File_).AddSeconds(2));
+
+        store.Install(Manifest("user.second"), BuiltIns);
+
+        Ids(store.SlotsFor(WheelMode.Tools, MediaKind.Image)).Should().Equal("user.first", "tool.compress-image", "user.second", null, null, null);
+        store.Current.Installed.Should().Equal("user.first", "user.second");
+        moves.Should().HaveCount(1);
+        Ids(new LayoutStore(File_).SlotsFor(WheelMode.Tools, MediaKind.Image)).Should().Equal(Ids(store.SlotsFor(WheelMode.Tools, MediaKind.Image)));
+    }
+
+    [Fact]
+    public void Reload_moves_only_when_the_file_changed_and_a_deleted_file_empties_the_layout()
+    {
+        var store = new LayoutStore(File_);
+        store.Install(Manifest("user.first"), BuiltIns);
+        var changes = 0;
+        store.Changed += _ => changes++;
+
+        store.Reload().Should().BeFalse();
+        changes.Should().Be(0);
+
+        File.WriteAllText(File_, """{ "version": 1, "wheels": { "tools": { "image": [ { "item": "tool.ocr" } ] } }, "installed": [] }""");
+        File.SetLastWriteTimeUtc(File_, File.GetLastWriteTimeUtc(File_).AddSeconds(2));
+        store.Reload().Should().BeTrue();
+        Ids(store.SlotsFor(WheelMode.Tools, MediaKind.Image)).Should().Equal("tool.ocr");
+        changes.Should().Be(1);
+
+        File.Delete(File_);
+        store.Reload().Should().BeTrue();
+        store.SlotsFor(WheelMode.Tools, MediaKind.Image).Should().BeNull();
+        store.LoadProblem.Should().BeNull();
+        changes.Should().Be(2);
+    }
+
+    [Fact]
     public void The_wheel_shows_the_layout_with_real_indexes_groups_and_nothing_unknown()
     {
         var store = new LayoutStore(File_);
