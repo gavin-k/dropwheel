@@ -120,5 +120,8 @@
   "{0} 没有写出文件": "{0} did not write a file",
   "{0} 超过 {1} 秒没有完成": "{0} did not finish within {1} seconds",
   "{0} 失败：{1}": "{0} failed: {1}",
-  "{0} 失败（退出码 {1}）": "{0} failed (exit code {1})"
+  "{0} 失败（退出码 {1}）": "{0} failed (exit code {1})",
+  "id 和 {0} 的重复": "id is the same as {0}'s",
+  "找不到 {0}；装好或放到 PATH 上以后重新加载": "Can't find {0}; install it or put it on PATH, then reload",
+  "没有 pwsh，会用 Windows PowerShell 运行；它的输出不是 UTF-8，中文可能变成乱码": "pwsh is not installed, so Windows PowerShell will run it; its output is not UTF-8, so non-ASCII text may be garbled"
 }

@@ -70,8 +70,8 @@ The catalog (Task 1b) needs `CommandResolver` (Task 2) and `ScriptTool` (Task 3)
 - Create: `src/DropWheel.Core/Tools/UserToolCatalog.cs`
 - Test: `tests/DropWheel.Core.Tests/Tools/UserToolCatalogTests.cs`
 
-- [ ] Tests: `Reload` swaps snapshot and raises `Changed`; `.problems.json` / dotfiles are not tool folders; a folder with problems gets `.problems.json`, a fixed one loses it; duplicate ids are an `id` problem; a command not on PATH is a warning that still loads the tool.
-- [ ] Implement (`FileSystemWatcher` + 300 ms debounce ignoring `.problems.json` and `*.dropwheel-tmp`); `./build.sh`; commit `feat(tools): watch the tools folder`.
+- [x] Tests: `Reload` swaps snapshot and raises `Changed`; `.problems.json` / dotfiles are not tool folders; a folder with problems gets `.problems.json`, a fixed one loses it; duplicate ids are an `id` problem; a command not on PATH is a warning that still loads the tool.
+- [x] Implement (`FileSystemWatcher` + 300 ms debounce ignoring `.problems.json` and `*.dropwheel-tmp`); `./build.sh`; commit `feat(tools): watch the tools folder`.
 
 ### Task 2: Process runner
 
@@ -86,8 +86,8 @@ The catalog (Task 1b) needs `CommandResolver` (Task 2) and `ScriptTool` (Task 3)
 - `interface IProcessRunner { Task<ProcessOutcome> RunAsync(ProcessStart start, Action<string>? onStdoutLine, CancellationToken ct); }`
 - `CommandResolver(Func<string,bool> fileExists, string? path, string? pathExt)`: `string? Resolve(string command, string toolDir)`; `pwsh` falls back to `powershell`.
 
-- [ ] Tests for absolute / relative-to-toolDir / PATH × PATHEXT / pwsh fallback.
-- [ ] Implement; `./build.sh`; commit `feat(tools): run external commands behind IProcessRunner`.
+- [x] Tests for absolute / relative-to-toolDir / PATH × PATHEXT / pwsh fallback.
+- [x] Implement; `./build.sh`; commit `feat(tools): run external commands behind IProcessRunner`.
 
 ### Task 3: ScriptTool
 
@@ -96,8 +96,8 @@ The catalog (Task 1b) needs `CommandResolver` (Task 2) and `ScriptTool` (Task 3)
 - Modify: `IWheelOperation.cs` (`string? TrustKey => null`), `Availability.cs` (`UntrustedTool`)
 - Test: `tests/DropWheel.Core.Tests/Tools/ScriptToolTests.cs`, `ScriptOutputTests.cs`, `JobQueueTests`
 
-- [ ] Tests: output moved into place; progress lines drive progress; non-zero exit → error with stderr tail; `skip` → no output, Skipped; `mode:none` → Done with no outputs; timeout → error; missing output → error and no temp left; cancellation leaves nothing.
-- [ ] Implement; `./build.sh`; commit `feat(tools): run script tools through the job queue`.
+- [x] Tests: output moved into place; progress lines drive progress; non-zero exit → error with stderr tail; `skip` → no output, Skipped; `mode:none` → Done with no outputs; timeout → error; missing output → error and no temp left; cancellation leaves nothing.
+- [x] Implement; `./build.sh`; commit `feat(tools): run script tools through the job queue`.
 
 ### Task 4: Trust gate and live operations
 
