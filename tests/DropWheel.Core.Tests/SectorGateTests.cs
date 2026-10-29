@@ -45,3 +45,40 @@ public class SectorGateTests
         WheelGeometry.OnHub(0, -WheelGeometry.InnerRadius).Should().BeFalse();
     }
 }
+
+public class RingHitTests
+{
+    private static readonly (double X, double Y) OnSector3 = WheelGeometry.SectorCenter(3);
+
+    [Fact]
+    public void A_ring_item_is_hit_only_while_the_ring_is_open()
+    {
+        var gate = new SectorGate(startsOnHub: true);
+        var (x, y) = WheelGeometry.ChildCenter(3, 2, 1);
+
+        gate.HitAt(x, y, null, out _).Should().Be(WheelHit.None);
+        gate.HitAt(x, y, new RingPlacement(3, [true, false]), out _).Should().Be(WheelHit.Child(1));
+        gate.HitAt(x, y, new RingPlacement(0, [true, false]), out _).Should().Be(WheelHit.None, "the ring is open on another sector");
+        gate.HitAt(OnSector3.X, OnSector3.Y, new RingPlacement(3, [true, false]), out _).Should().Be(WheelHit.Sector(3));
+        gate.HitAt(0, 0, new RingPlacement(3, [true, false]), out _).Should().Be(WheelHit.Hub);
+    }
+
+    [Fact]
+    public void A_shut_gate_reports_the_hub_but_no_sector_or_item()
+    {
+        var gate = new SectorGate(startsOnHub: false);
+        var ring = new RingPlacement(3, [true]);
+        var (x, y) = WheelGeometry.ChildCenter(3, 1, 0);
+
+        gate.HitAt(x, y, ring, out var opened).Should().Be(WheelHit.None);
+        opened.Should().BeFalse();
+        gate.HitAt(OnSector3.X, OnSector3.Y, ring, out _).Should().Be(WheelHit.None);
+        gate.HitAt(1, 1, ring, out opened).Should().Be(WheelHit.Hub);
+        opened.Should().BeTrue();
+        gate.HitAt(x, y, ring, out opened).Should().Be(WheelHit.Child(0));
+        opened.Should().BeFalse();
+        new RingPlacement(3, [true, false]).IsEnabled(1).Should().BeFalse();
+        new RingPlacement(3, [true, false]).IsEnabled(2).Should().BeFalse();
+        WheelHit.Child(0).ToString().Should().Be("child 0");
+    }
+}

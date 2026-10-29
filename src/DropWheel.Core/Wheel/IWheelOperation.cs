@@ -26,4 +26,10 @@ public interface IWheelOperation : IJobRunner
 
     /// <summary>Whether it belongs on the wheel for items of this kind; <see cref="IJobRunner.Check"/> then says whether it can run.</summary>
     bool AppliesTo(MediaKind kind) => true;
+
+    /// <summary>
+    /// For an item that runs code the user did not get from DropWheel: what Settings › 我的工具 must have recorded
+    /// as trusted before it runs, which changes when the code it runs does. Null for a built-in item.
+    /// </summary>
+    string? TrustKey => null;
 }

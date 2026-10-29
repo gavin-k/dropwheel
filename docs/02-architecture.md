@@ -7,7 +7,7 @@
 │ DropWheel.App (WinUI 3, 单实例, 常驻托盘)                         │
 │  ├─ OverlayWindow     轮盘窗（DWM 透明 + 亚克力），不接收输入       │
 │  ├─ QueueWindow       任务队列 / 详情                              │
-│  ├─ SettingsWindow    键位 · 输出 · 命名 · 重名 · 动作 · 隐私        │
+│  ├─ SettingsWindow    键位 · 输出 · 命名 · 重名 · 动作 · 我的工具 · 隐私 │
 │  ├─ OnboardingWindow  20 秒引导                                    │
 │  └─ DockWindow        屏幕边缘停靠栏，WinUI 拖动源拖出（CanDrag）     │
 ├─────────────────────────────────────────────────────────────────┤
@@ -21,6 +21,9 @@
 │ DropWheel.Core (纯 .NET, 可在任意平台测试)                          │
 │  ├─ Conversion/   ConversionGraph · FormatRegistry · Availability  │
 │  ├─ Wheel/        WheelModel (6 槽: 3 最近 + 3 推荐) · Ranking     │
+│  │                WheelLayout / LayoutStore（layout.json，分组外环） │
+│  ├─ Tools/        ToolManifest · UserToolCatalog · ScriptTool      │
+│  │                CommandResolver · ToolCommandLine（--validate-tool）│
 │  ├─ Jobs/         JobQueue · Job · UndoLedger · NamingTemplate     │
 │  ├─ Input/        ModifierTapper（轻点 / 按住判定）· WinKeyGate     │
 │  ├─ Quality/      QualityEstimator (高/中/低 + 原因)                │
@@ -42,7 +45,7 @@
 ```
 Idle ──(鼠标按下+移动>8px)──▶ MaybeDragging ──(轮询见 SysDragImage)──▶ Dragging
 MaybeDragging | Dragging ──(修饰键轻点 ≤300ms)──▶ WheelOpen(mode)   // WinForms 等不产生 SysDragImage 的拖拽停在 MaybeDragging
-WheelOpen ──(修饰键再轻点)──▶ WheelOpen(其他 mode)
+WheelOpen ──(停在分组扇区 200 ms)──▶ 外环展开 ──(移到别的顶层扇区 150 ms | 回到圆心)──▶ 外环收起
 WheelOpen ──(松手在扇区)──▶ IDropTarget::Drop → Enqueue(job) → Idle
 WheelOpen ──(松手在中心/外部 | Esc)──▶ DROPEFFECT_NONE → Idle
 Dragging ──(松手, 未轻点)──▶ Idle   // 覆盖层从未显示, Shell 原生语义
@@ -58,6 +61,8 @@ Dragging ──(推到屏幕左右外缘)──▶ DockWindow 显示 ──(松�
 - `NamingTemplate`：`{name} {fmt} {ext} {date} {time} {n} {w}x{h}`；`ConflictPolicy = AutoNumber | Overwrite(ToRecycleBin) | Skip | Ask`。
 - `QualityEstimator.Estimate(source, target) → (Level, reasons[])`，M0 仅覆盖 PDF→DOCX/TXT 与图片有损→无损。
 - `QuotaCounter`：本地计数；仅成功输出计次；失败/取消/撤销/文件动作不计次；本地 0 点重置。
+- `ToolManifest` / `UserToolCatalog` / `ScriptTool`（`Core.Tools`）：`%LOCALAPPDATA%\DropWheel\tools\<slug>\tool.json` 描述一个用户工具，目录热加载，脚本型工具装上后灰显、用户在设置里启用过的命令哈希才会跑。输出走 `OutputFiles`，撤销 / 重名策略沿用。见 ADR-0005 和 `skills/dropwheel-tool/SKILL.md`。
+- `WheelLayout` / `LayoutStore`：`layout.json` 记工具轮盘（按文件类型）和动作轮盘每个扇区放什么；扇区可以是一个分组（≤ 6 项，不嵌套），指针停在分组上 200 ms 时在外环展开。没有布局的轮盘保持注册顺序。
 
 ## 引擎接口
 
@@ -84,5 +89,5 @@ sidecar 引擎（ffmpeg / soffice）通过 `SidecarProcess` 统一启动：低�
 ## 无障碍
 
 - 覆盖层是真正的窗口，轮盘扇区是 `Button`，`AutomationProperties.Name = "{格式}，{最近/推荐}{，不可用：原因}"`。
-- 键盘：方向键环绕选择，Enter 确认，Esc 取消；覆盖层打开时焦点进入，关闭后焦点还给来源窗口。拖动中轮盘不抢焦点，焦点留在拖动来源，所以转换轮盘上的搜索靠键盘钩子：不按 Ctrl / Alt / Win 时吞掉字母、数字和退格，Esc 放行给系统取消拖动。
-- 所有状态文字 + 图标；对比度 ≥ 4.5:1；`UISettings.AnimationsEnabled == false` 时关闭全部动效。
+- 键盘：Esc 取消。方向键环绕选择和 Enter 确认还没有做，另立项。拖动中轮盘不抢焦点，焦点留在拖动来源，所以转换轮盘上的搜索靠键盘钩子：不按 Ctrl / Alt / Win 时吞掉字母、数字和退格，Esc 放行给系统取消拖动。
+- 所有状态文字 + 图标；对比度 ≥ 4.5:1。轮盘目前没有任何动效；动效系统和 `UISettings.AnimationsEnabled == false` 时的关闭是 M1.5 ②。

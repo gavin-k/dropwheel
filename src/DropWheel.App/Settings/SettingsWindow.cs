@@ -2,6 +2,7 @@ using DropWheel.App.Diagnostics;
 using DropWheel.Core.Jobs;
 using DropWheel.Core.Privacy;
 using DropWheel.Core.Settings;
+using DropWheel.Core.Tools;
 using DropWheel.Core.Wheel;
 using DropWheel.Shell;
 using Microsoft.UI.Dispatching;
@@ -23,7 +24,7 @@ namespace DropWheel.App.Settings;
 /// must be, with a note when the wheel is solid because Windows has transparency effects off; which items
 /// the Actions wheel offers, where results go, what they are called and what happens when the name is taken, and whether Windows starts it at sign-in; and what this computer keeps or sends:
 /// the network requests counted since start, and the logs, which name the files converted, to open or
-/// clear; and the language, which takes effect at the next start. Each change is saved as it is made,
+/// clear; the user's own tools, each with the switch that lets its script run; and the language, which takes effect at the next start. Each change is saved as it is made,
 /// the file name a moment after typing stops. Keys that <see cref="ConflictChecker"/> calls an error are
 /// shown with the reason and not saved, so the Convert wheel is never left without a way to open it.
 /// Closing only hides the window.
@@ -78,6 +79,13 @@ internal sealed class SettingsWindow
     private readonly TextBlock _startupNote = new() { TextWrapping = TextWrapping.Wrap, Opacity = 0.75 };
     private readonly StackPanel _startupSection;
     private readonly NetworkWatch _networkWatch;
+    private readonly UserToolCatalog _catalog;
+    private readonly LayoutStore _layout;
+    private readonly IReadOnlyList<IWheelOperation> _builtIns;
+    private readonly string _skillPath;
+    private readonly StackPanel _tools = new() { Spacing = 12 };
+    private readonly TextBlock _toolsFolder = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = 0.75, IsTextSelectionEnabled = true };
+    private readonly TextBlock _unplaced = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = 0.75, Visibility = Visibility.Collapsed };
     private readonly TextBlock _network = new() { TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock _logNote = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = 0.75 };
     private readonly DispatcherQueueTimer _namingPause;
@@ -89,12 +97,21 @@ internal sealed class SettingsWindow
     private bool _loading;
 
     /// <param name="operations">The wheel items; those with a <see cref="IWheelOperation.Action"/> get a switch under 文件动作.</param>
+    /// <param name="catalog">The user's tools; 我的工具 follows it as folders change.</param>
+    /// <param name="layout">Says which items some wheel leaves off, so 我的工具 can name them.</param>
+    /// <param name="skillPath">Where the shipped SKILL.md is, to show the user what to hand their agent.</param>
     /// <param name="network">What 隐私与离线 counts; its count is shown live.</param>
-    public SettingsWindow(SettingsStore settings, IReadOnlyList<IWheelOperation> operations, NetworkWatch network, DispatcherQueue ui)
+    public SettingsWindow(SettingsStore settings, IReadOnlyList<IWheelOperation> operations, UserToolCatalog catalog, LayoutStore layout, string skillPath, NetworkWatch network, DispatcherQueue ui)
     {
         _settings = settings;
         _networkWatch = network;
+        _catalog = catalog;
+        _layout = layout;
+        _builtIns = operations;
+        _skillPath = skillPath;
         network.Seen += _ => ui.TryEnqueue(ShowNetwork);
+        catalog.Changed += _ => ui.TryEnqueue(ShowTools);
+        layout.Changed += _ => ui.TryEnqueue(ShowTools);
         _window = new Window { Title = L.T("DropWheel 设置") };
         _window.AppWindow.SetIcon("Assets/DropWheel.ico");
         _window.AppWindow.Closing += (window, e) =>
@@ -204,6 +221,14 @@ internal sealed class SettingsWindow
         var clearLogs = new Button { Content = L.T("清除日志") };
         clearLogs.Click += async (_, _) => await ClearLogsAsync().ConfigureAwait(true);
         var logButtons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { openLogs, clearLogs } };
+        var openTools = new Button { Content = L.T("打开工具文件夹") };
+        openTools.Click += (_, _) => OpenTools();
+        var reloadTools = new Button { Content = L.T("重新加载") };
+        reloadTools.Click += (_, _) => ReloadTools();
+        var openSkill = new Button { Content = L.T("找到 SKILL.md") };
+        openSkill.Click += (_, _) => OpenSkill();
+        AutomationProperties.SetAutomationId(reloadTools, "reload-tools");
+        var toolButtons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { openTools, reloadTools, openSkill } };
 
         var page = new StackPanel { Spacing = 24, Padding = new Thickness(20, 16, 20, 24) };
         page.Children.Add(new TextBlock { Text = L.T("设置"), FontSize = 20, FontWeight = FontWeights.SemiBold });
@@ -211,6 +236,18 @@ internal sealed class SettingsWindow
         page.Children.Add(Section(L.T("唤出轮盘"), L.T("拖动文件时，把一行里选中的键一起按下再松开，那个轮盘就会在鼠标处弹出。转换轮盘把文件转成别的格式；工具轮盘压缩、缩小、拆分或提取音频；动作轮盘复制路径、重命名、压缩或删除。工具和动作轮盘一个键都不选就不会弹出。"), keys, _keyProblem, _tapWindow, _longPress, _longPressNote, _solidWheel));
         page.Children.Add(Section(L.T("停靠栏"), L.T("拖动文件时把鼠标推到屏幕左边或右边，那里会弹出停靠栏。文件先放进去，可以从几个文件夹陆续收集，回头一起或一个个拖走。放进去和拖出来都不会移动原文件，拖到文件夹里是复制。"), _edgeDock));
         page.Children.Add(Section(L.T("文件动作"), L.T("动作轮盘上哪几项能用。没勾选的仍然显示，只是灰色。删除默认不勾选，免得手一滑把文件扔进回收站。"), actions));
+        page.Children.Add(Section(L.T("我的工具"), L.T("把 SKILL.md 所在的文件夹交给你的 AI 助手（Claude Code、Codex、Cursor 都行），说一句想要什么工具，它会把工具写进下面的文件夹，DropWheel 自动加载。新工具先是灰的，在这里看过脚本、打开开关才会跑。"),
+            _toolsFolder,
+            toolButtons,
+            _tools,
+            _unplaced,
+            new TextBlock
+            {
+                Text = L.T("工具是 DropWheel 之外的另一个进程，用你电脑上的 pwsh 或 python 跑。它读了什么、上不上网，DropWheel 看不见，下面的网络请求计数也不包括它。"),
+                TextWrapping = TextWrapping.Wrap,
+                FontSize = 12,
+                Opacity = 0.75,
+            }));
         page.Children.Add(Section(L.T("输出"), null,
             _nextToSource,
             _toFolder,
@@ -356,6 +393,7 @@ internal sealed class SettingsWindow
         };
         ShowEffects();
         ShowNetwork();
+        ShowTools();
         _logNote.Text = L.T("日志记下了转换过的文件路径，用来排查问题，只留最近 {0} 天，不会发给任何人。", LogRetention.KeepDays);
     }
 
@@ -371,6 +409,126 @@ internal sealed class SettingsWindow
     }
 
     private void ShowNetwork() => _network.Text = L.T("这次启动以来的网络请求：{0} 次", _networkWatch.Count);
+
+    /// <summary>
+    /// Lists the tools the catalog holds, each with its folder, its command and the switch that lets it run, the
+    /// folders whose tool.json could not be read, and the items the layout leaves off some wheel. Rebuilt whole
+    /// on every change: a switch is set before its handler is attached, so building raises no Toggled.
+    /// </summary>
+    private void ShowTools()
+    {
+        var snapshot = _catalog.Current;
+        var trust = _settings.Current.Tools;
+        _toolsFolder.Text = L.T("工具文件夹：{0}", _catalog.Directory);
+        _tools.Children.Clear();
+        foreach (var tool in snapshot.Tools)
+        {
+            var warnings = snapshot.Problems.FirstOrDefault(r => r.Folder == tool.Folder)?.Problems.Where(p => p.IsWarning).Select(p => p.Message) ?? [];
+            _tools.Children.Add(ToolRow(tool, trust, [.. warnings]));
+        }
+
+        foreach (var result in snapshot.Problems.Where(r => r.HasErrors))
+        {
+            var bar = new InfoBar
+            {
+                IsOpen = true,
+                IsClosable = false,
+                Severity = InfoBarSeverity.Error,
+                Title = L.T("{0} 没有加载", Path.GetFileName(result.Folder)),
+                Message = string.Join(" ", result.Problems.Select(p => p.Message)),
+            };
+            AutomationProperties.SetName(bar, bar.Title); // for the acceptance driver
+            _tools.Children.Add(bar);
+        }
+
+        if (_tools.Children.Count == 0)
+        {
+            _tools.Children.Add(new TextBlock { Text = L.T("还没有工具。"), Opacity = 0.75 });
+        }
+
+        var all = _builtIns.Concat(snapshot.Tools).ToList();
+        var unplaced = _layout.UnplacedIds(all).Select(id => all.First(o => o.Id == id).Label).ToList();
+        _unplaced.Visibility = unplaced.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+        _unplaced.Text = L.T("没放上轮盘：{0}。轮盘满了，腾个位置或让 AI 助手改 layout.json 来排。", string.Join(L.T("、"), unplaced));
+    }
+
+    private StackPanel ToolRow(ScriptTool tool, UserToolSettings trust, IReadOnlyList<string> warnings)
+    {
+        var key = tool.TrustKey ?? "";
+        var trusted = trust.IsTrusted(tool.Id, key);
+        var row = new StackPanel { Spacing = 4 };
+        row.Children.Add(new TextBlock { Text = L.T("{0}（{1}）", tool.Label, tool.Hint), FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
+        row.Children.Add(Small(tool.Folder));
+        row.Children.Add(Small(L.T("命令：{0}", string.Join(" ", [tool.Manifest.Script.Command, .. tool.Manifest.Script.Args]))));
+        if (tool.Command is null)
+        {
+            row.Children.Add(Small(L.T("找不到 {0}，先装上它或者把路径写全。", tool.Manifest.Script.Command)));
+        }
+
+        foreach (var warning in warnings)
+        {
+            row.Children.Add(Small(warning));
+        }
+
+        if (!trusted && trust.Trusted.ContainsKey(tool.Id))
+        {
+            row.Children.Add(Small(L.T("命令改过了，看一眼脚本再打开。")));
+        }
+
+        var open = new HyperlinkButton { Content = L.T("查看脚本"), Padding = new Thickness(0, 4, 0, 4) };
+        open.Click += (_, _) => OpenTool(tool);
+        var allow = new ToggleSwitch { Header = L.T("允许运行"), OnContent = L.T("开"), OffContent = L.T("关"), IsOn = trusted };
+        AutomationProperties.SetAutomationId(allow, "tool-" + tool.Id);
+        AutomationProperties.SetName(allow, L.T("允许运行 {0}", tool.Label));
+        allow.Toggled += (_, _) => ToolToggled(tool.Id, key, allow.IsOn);
+        row.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16, Children = { allow, open } });
+        return row;
+    }
+
+    private static TextBlock Small(string text) => new() { Text = text, TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = 0.75, IsTextSelectionEnabled = true };
+
+    private void ToolToggled(string id, string key, bool on)
+    {
+        if (_settings.Current.Tools.IsTrusted(id, key) == on)
+        {
+            return;
+        }
+
+        Save($"tool {id} {(on ? "allowed" : "not allowed")}", s => s with { Tools = on ? s.Tools.Trust(id, key) : s.Tools.Distrust(id) });
+    }
+
+    private static void OpenTool(ScriptTool tool)
+    {
+        var manifest = Path.Combine(tool.Folder, ToolManifestReader.FileName);
+        var problem = Explorer.Select(File.Exists(manifest) ? manifest : tool.Folder);
+        FileLog.Info(problem is null ? $"settings: opened the folder of {tool.Id}" : $"settings: could not open the folder of {tool.Id}: {problem}");
+    }
+
+    private void OpenTools()
+    {
+        Directory.CreateDirectory(_catalog.Directory);
+        var problem = Explorer.Select(_catalog.Directory);
+        FileLog.Info(problem is null ? "settings: opened the tools folder" : $"settings: could not open the tools folder: {problem}");
+    }
+
+    private void ReloadTools()
+    {
+        var snapshot = _catalog.Reload();
+        FileLog.Info($"settings: reloaded the tools folder, {snapshot.Tools.Count} tool(s), {snapshot.Problems.Count} folder(s) with something to report");
+    }
+
+    private void OpenSkill()
+    {
+        if (!File.Exists(_skillPath))
+        {
+            FileLog.Error($"settings: SKILL.md is not at {_skillPath}");
+            _toolsFolder.Text = L.T("工具文件夹：{0}", _catalog.Directory) + "\n" + L.T("这份安装里没有 SKILL.md，在 DropWheel 的源码仓库 skills/dropwheel-tool 下能找到。");
+            return;
+        }
+
+        var problem = Explorer.Select(_skillPath);
+        FileLog.Info(problem is null ? "settings: opened the skill folder" : $"settings: could not open the skill folder: {problem}");
+    }
 
     private void OpenLogs()
     {

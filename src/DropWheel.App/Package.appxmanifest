@@ -7,7 +7,8 @@
   xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
   xmlns:desktop4="http://schemas.microsoft.com/appx/manifest/desktop/windows10/4"
   xmlns:desktop5="http://schemas.microsoft.com/appx/manifest/desktop/windows10/5"
-  IgnorableNamespaces="uap uap5 rescap com desktop4 desktop5">
+  xmlns:desktop6="http://schemas.microsoft.com/appx/manifest/desktop/windows10/6"
+  IgnorableNamespaces="uap uap5 rescap com desktop4 desktop5 desktop6">
 
   <!-- TODO: Publisher 必须与签名证书 Subject 一致；Store 提交时由合作伙伴中心覆盖 -->
   <Identity Name="GavinLee.DropWheel" Publisher="CN=Gavin Lee" Version="0.1.0.0" />
@@ -16,6 +17,9 @@
     <DisplayName>DropWheel</DisplayName>
     <PublisherDisplayName>Gavin Lee</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
+    <!-- Agents write tools into %LOCALAPPDATA%\DropWheel and read the .problems.json and layout.json we write back;
+         with virtualization on, our writes would land in the package's LocalCache where they cannot see them. -->
+    <desktop6:FileSystemWriteVirtualization>disabled</desktop6:FileSystemWriteVirtualization>
   </Properties>
 
   <Dependencies>

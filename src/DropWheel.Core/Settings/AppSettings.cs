@@ -40,6 +40,8 @@ public sealed record AppSettings
 
     public PrivacySettings Privacy { get; init; } = new();
 
+    public UserToolSettings Tools { get; init; } = UserToolSettings.Default;
+
     /// <summary>The first-run guide has been shown (finished or skipped).</summary>
     public bool OnboardingDone { get; init; }
 

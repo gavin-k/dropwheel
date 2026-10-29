@@ -1,5 +1,7 @@
 using DropWheel.Core.Conversion;
 using DropWheel.Core.Jobs;
+using DropWheel.Core.Tools;
+using DropWheel.Core.Wheel;
 using FluentAssertions;
 
 namespace DropWheel.Core.Tests;
@@ -55,6 +57,44 @@ public sealed class JobQueueTests : IDisposable
         job.Undo.Should().BeOfType<UndoPlan.RecycleOutputs>().Which.Paths.Should().Equal("/in/a.png");
         job.FinishedAt.Should().NotBeNull();
         changes.Select(c => c.State).Should().ContainInOrder(JobState.Pending, JobState.Running, JobState.Running, JobState.Done);
+    }
+
+    [Fact]
+    public async Task A_script_tool_runs_through_the_queue_and_its_output_can_be_undone()
+    {
+        var source = Path.Combine(_dir, "a.jpg");
+        File.WriteAllText(source, "source");
+        var toolDir = Directory.CreateDirectory(Path.Combine(_dir, "tool")).FullName;
+        File.WriteAllText(Path.Combine(toolDir, "clean.exe"), "");
+        var runner = new Tools.FakeProcessRunner
+        {
+            Behavior = (start, print, _) =>
+            {
+                print("progress 0.5");
+                File.WriteAllText(start.Arguments[1], "cleaned");
+                return Task.FromResult(new ProcessOutcome(0, ""));
+            },
+        };
+        var manifest = new ToolManifest(1, "user.clean", new("清理"), new(""), null, WheelMode.Tools, null, "script",
+            new("clean.exe", ["{input}", "{output}"], true, new("new-file", "same", "-clean"), 600), null, "recycle");
+        var tool = new ScriptTool(manifest, toolDir, runner, new CommandResolver(File.Exists, [], []));
+        var (queue, changes) = Create((_, _, _) => throw new InvalidOperationException("the graph is not consulted"));
+        await using var _ = queue;
+
+        var job = queue.Enqueue(new([source], tool.Id, ""), "a.jpg · 清理", tool);
+        await queue.WhenIdleAsync();
+
+        var output = Path.Combine(_dir, "a-clean.jpg");
+        job.State.Should().Be(JobState.Done);
+        job.Outputs.Should().Equal(output);
+        job.Progress.Should().Be(1);
+        job.Undo.Should().BeOfType<UndoPlan.RecycleOutputs>().Which.Paths.Should().Equal(output);
+        File.ReadAllText(output).Should().Be("cleaned");
+        changes.Select(c => c.State).Should().ContainInOrder(JobState.Pending, JobState.Running, JobState.Done);
+
+        (await queue.UndoAsync(job.Id)).Should().BeTrue();
+        _files.Recycled.Should().Equal(output);
+        Directory.EnumerateFileSystemEntries(_dir).Select(Path.GetFileName).Should().NotContain(n => n!.EndsWith(OutputFiles.TempSuffix, StringComparison.Ordinal));
     }
 
     [Fact]

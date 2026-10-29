@@ -117,10 +117,12 @@ internal static partial class AppScenario
                 Attempt(checks, "task window buttons", () => QueueButtons(checks, log, exe, explorer));
                 Attempt(checks, "file actions", () => FileActions(checks, log, app.Id, explorer));
                 Attempt(checks, "tools", () => Tools(checks, log, exe, explorer));
+                Attempt(checks, "user tools", () => UserTools(checks, log, exe, profile, explorer));
                 Attempt(checks, "edge dock", () => EdgeDock(checks, log, dir, explorer));
                 Attempt(checks, "settings", () => ChangeSettings(checks, log, profile, folder, exe, explorer));
                 Attempt(checks, "same name", () => SameName(checks, log, app.Id, folder, explorer));
                 Attempt(checks, "frame check", () => FrameChecked(checks, log));
+                Attempt(checks, "slow tool", () => SlowTool(checks, log, profile, explorer));
             }
         }
         finally
@@ -686,6 +688,7 @@ internal static partial class AppScenario
         }
 
         var exited = exitedOnClose;
+        var childrenAlive = ToolChildren.Count > 0 && ToolChildren.All(id => Process.GetProcesses().Any(p => p.Id == id));
         if (!exited)
         {
             using var quit = Process.Start(new ProcessStartInfo(exe, ["--quit"]) { UseShellExecute = false });
@@ -699,6 +702,13 @@ internal static partial class AppScenario
         if (!exited)
         {
             app.Kill();
+        }
+
+        if (ToolChildren.Count > 0)
+        {
+            var gone = Checks.Wait(() => ToolChildren.All(id => !Process.GetProcesses().Any(p => p.Id == id)), 5000);
+            checks.Check("a user tool still running when the app exits is ended with it", childrenAlive && gone,
+                $"pwsh pids [{string.Join(", ", ToolChildren)}] {(childrenAlive ? "alive before exit" : "already gone before exit")}, {(gone ? "gone after" : "still running 5 s after exit")}");
         }
 
         var error = log.FindSinceStart(" ERROR ");

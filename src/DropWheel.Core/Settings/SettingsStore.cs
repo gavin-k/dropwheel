@@ -50,6 +50,7 @@ public sealed class SettingsStore
         Output = s.Output ?? new(),
         Actions = s.Actions?.Enabled is null ? FileActionSettings.Default : s.Actions,
         Privacy = s.Privacy ?? new(),
+        Tools = s.Tools?.Trusted is null ? UserToolSettings.Default : s.Tools,
     };
 
     /// <summary>
@@ -107,5 +108,6 @@ public static class JsonFile
     ReadCommentHandling = JsonCommentHandling.Skip,
     AllowTrailingCommas = true)]
 [JsonSerializable(typeof(AppSettings))]
+[JsonSerializable(typeof(Wheel.WheelLayout))]
 [JsonSerializable(typeof(Dictionary<string, List<string>>))]
 internal sealed partial class SettingsJson : JsonSerializerContext;

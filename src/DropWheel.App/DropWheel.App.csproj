@@ -25,11 +25,19 @@
     <AppxBundle>Always</AppxBundle>
     <AppxBundlePlatforms>x64|arm64</AppxBundlePlatforms>
     <HoursBetweenUpdateChecks>0</HoursBetweenUpdateChecks>
+    <!-- Program.cs is the entry point: the tool command line runs before WinUI starts. -->
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
     <Content Include="Assets/**" />
     <Manifest Include="$(ApplicationManifest)" />
+  </ItemGroup>
+
+  <!-- The skill an agent reads to write a tool, next to the exe so Settings can point at it; the schema rides along. -->
+  <ItemGroup>
+    <Content Include="../../skills/dropwheel-tool/**" Link="skills/dropwheel-tool/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../../docs/tool-manifest.schema.json" Link="skills/dropwheel-tool/tool-manifest.schema.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!--

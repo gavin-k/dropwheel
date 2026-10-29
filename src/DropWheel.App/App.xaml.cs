@@ -14,6 +14,7 @@ using DropWheel.Core.Jobs;
 using DropWheel.Core.Localization;
 using DropWheel.Core.Privacy;
 using DropWheel.Core.Settings;
+using DropWheel.Core.Tools;
 using DropWheel.Core.Wheel;
 using DropWheel.Engines.Archive;
 using DropWheel.Engines.Document;
@@ -54,6 +55,9 @@ public partial class App : Application
     private WheelWindow? _wheel;
     private DockWindow? _dock;
     private NetworkWatch? _network;
+    private UserToolCatalog? _catalog;
+    private LayoutStore? _layout;
+    private HashSet<string>? _knownTools;
 
     public App()
     {
@@ -96,7 +100,7 @@ public partial class App : Application
                 FileLog.Info($"log: deleted {pruned} daily log(s) older than {LogRetention.KeepDays} days");
             }
 
-            var dataDir = ArgValue(commandLine, "--data-dir") ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DropWheel");
+            var dataDir = DataDir(commandLine);
             var settings = new SettingsStore(Path.Combine(dataDir, "settings.json"));
             // Before anything builds text: the libraries' text is fixed when it is built, some of it when a type first loads.
             Loc.Current = settings.Current.LanguageFor(CultureInfo.CurrentUICulture);
@@ -127,13 +131,20 @@ public partial class App : Application
             var desktop = new Desktop(ui);
             _queue = new JobQueue(graph, new UndoLedger(files), prompt: desktop);
             IReadOnlyList<IWheelOperation> operations = [.. FileActions.Create(files, desktop), .. EngineTools.Create(archives, ffmpeg, recognizer: recognizer)];
+            var catalog = _catalog = new UserToolCatalog(Path.Combine(dataDir, "tools"), new SidecarProcessRunner(), CommandResolver.FromEnvironment());
+            var layout = _layout = new LayoutStore(Path.Combine(dataDir, "layout.json"));
+            if (layout.LoadProblem is { } layoutProblem)
+            {
+                FileLog.Error($"layout: {layoutProblem}");
+            }
+
             var recent = new RecentItems(path: Path.Combine(dataDir, "recent.json"));
             foreach (var problem in new[] { settings.LoadProblem, recent.LoadProblem }.OfType<string>())
             {
                 FileLog.Error(problem);
             }
 
-            var builder = new WheelBuilder(graph, recent, new DefaultRecommender(graph), operations);
+            var builder = new WheelBuilder(graph, recent, new DefaultRecommender(graph), new LiveOperations(operations, catalog), layout);
 
             var tapper = new ModifierTapper(settings.Current.Keys, TimeProvider.System);
             var winKey = new WinKeyGate(settings.Current.Keys);
@@ -144,7 +155,8 @@ public partial class App : Application
             _monitor.Faulted += ex => FileLog.Error("hook thread handler failed", ex);
             _host = new DropTargetHost();
 
-            var settingsWindow = _settingsWindow = new SettingsWindow(settings, operations, _network, ui);
+            var skillPath = Path.Combine(AppContext.BaseDirectory, "skills", "dropwheel-tool", "SKILL.md");
+            var settingsWindow = _settingsWindow = new SettingsWindow(settings, operations, catalog, layout, skillPath, _network, ui);
             var queueWindow = _queueWindow = new QueueWindow(_queue, ui, settingsWindow.Show);
             queueWindow.ShowKeys(settings.Current.Keys.KeysFor(WheelMode.Convert));
             settings.Changed += changed =>
@@ -157,7 +169,7 @@ public partial class App : Application
             };
             var onboarding = _onboarding = new OnboardingWindow(settings, _queue, ui, settingsWindow.Show);
             _wheel = new WheelWindow(white: commandLine.Contains("--white-wheel"));
-            var controller = _controller = new WheelController(ui, _monitor, _host, _wheel, builder, _queue, recent, settings, tapper, longPress, typeAhead);
+            var controller = _controller = new WheelController(ui, _monitor, _host, _wheel, builder, _queue, recent, settings, tapper, longPress, typeAhead, layout);
             _dock = new DockWindow(ui, _monitor, () => controller.IsOpen);
 
             _host.Start();
@@ -170,6 +182,11 @@ public partial class App : Application
                 (L.T("退出 DropWheel"), Shutdown),
             ]);
             _tray.Selected += () => queueWindow.Show();
+            catalog.Changed += snapshot => ui.TryEnqueue(() => OnToolsChanged(snapshot, layout, operations));
+            catalog.Reload();
+            catalog.Watch();
+            layout.Changed += _ => FileLog.Info("layout: changed");
+            layout.Watch();
             _wheel.LooksFlat += () => _tray?.Notify(L.T("轮盘显示成了一整块白色"),
                 L.T("多半是显卡驱动卡住了。按 Win+Ctrl+Shift+B 重置显卡驱动；还不行就更新显卡驱动或重启电脑。"));
             void ShowHome()
@@ -223,10 +240,10 @@ public partial class App : Application
     private async Task PreviewAsync(WheelBuilder builder, AppSettings settings, bool withHost)
     {
         var bounds = Microsoft.UI.Windowing.DisplayArea.Primary.OuterBounds;
-        var (x, y, scale) = WheelController.Place((bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2));
+        var (x, y, scale) = WheelController.Place((bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2), WheelWindow.SizeFor(ring: false));
         _wheel!.ShowAt(x, y, scale);
         _wheel.SetModel(builder.Build(["preview.jpg"], WheelMode.Convert, settings));
-        _wheel.SetHovered(0);
+        _wheel.SetHovered(new WheelHit(WheelRing.Sector, 0));
         if (withHost)
         {
             _host!.Show(new WheelPlacement(x, y, scale, [true, true, true, true, true, true]));
@@ -236,6 +253,10 @@ public partial class App : Application
         await Task.Delay(TimeSpan.FromSeconds(4)).ConfigureAwait(true);
         Shutdown();
     }
+
+    /// <summary>Where settings, layout and the tools folder live: <c>--data-dir</c>, else %LOCALAPPDATA%\DropWheel.</summary>
+    internal static string DataDir(string[] args) =>
+        ArgValue(args, "--data-dir") ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DropWheel");
 
     private static string? ArgValue(string[] args, string name) =>
         Array.IndexOf(args, name) is var i and >= 0 && i + 1 < args.Length ? args[i + 1] : null;
@@ -266,6 +287,36 @@ public partial class App : Application
         }
     }
 
+    /// <summary>
+    /// After the tools folder was read: logs what it holds, and once past the first read tells the user about a
+    /// tool that was not there before, which is greyed until they switch it on in Settings.
+    /// </summary>
+    private void OnToolsChanged(CatalogSnapshot snapshot, LayoutStore layout, IReadOnlyList<IWheelOperation> builtIns)
+    {
+        FileLog.Info($"tools: {snapshot.Tools.Count} loaded from {_catalog?.Directory}" + (snapshot.Tools.Count > 0 ? ": " + string.Join(", ", snapshot.Tools.Select(t => t.Id)) : ""));
+        foreach (var result in snapshot.Problems)
+        {
+            foreach (var problem in result.Problems)
+            {
+                FileLog.Info($"tools: {Path.GetFileName(result.Folder)}: {(problem.IsWarning ? "warning" : "error")} {problem.Code}: {problem.Message}");
+            }
+        }
+
+        foreach (var tool in snapshot.Tools.Where(t => !layout.Current.Installed.Contains(t.Id)))
+        {
+            var placed = layout.Install(tool.Manifest, builtIns);
+            FileLog.Info($"layout: {tool.Id} {(placed ? "placed" : "left unplaced: its sector holds a full group")}");
+        }
+
+        var ids = snapshot.Tools.Select(t => t.Id).ToHashSet();
+        if (_knownTools is { } known && snapshot.Tools.Where(t => !known.Contains(t.Id)).Select(t => t.Label).ToList() is { Count: > 0 } added)
+        {
+            _tray?.Notify(L.T("新工具：{0}", string.Join(L.T("、"), added)), L.T("在 设置 › 我的工具 里启用一次就能用"));
+        }
+
+        _knownTools = ids;
+    }
+
     private void Shutdown()
     {
         if (_shuttingDown)
@@ -289,6 +340,8 @@ public partial class App : Application
             FileLog.Info("a job was still running at exit");
         }
 
+        _catalog?.Dispose();
+        _layout?.Dispose();
         _network?.Dispose();
         FileLog.Flush(TimeSpan.FromSeconds(1));
         _instance?.Dispose();
