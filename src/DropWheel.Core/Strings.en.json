@@ -84,5 +84,6 @@
   "默认关闭 · 可在 设置 › 文件动作 中开启": "Off by default · turn it on in Settings › File actions",
   "，": ", ",
   "，跳过 {0} 项": ", skipped {0} {0|item|items}",
-  "；": "; "
+  "；": "; ",
+  "不能压缩符号链接或联接：{0}": "Cannot compress a symbolic link or junction: {0}"
 }

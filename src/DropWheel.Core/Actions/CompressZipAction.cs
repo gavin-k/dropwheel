@@ -89,6 +89,11 @@ public sealed class CompressZipAction(TimeProvider? time = null) : IWheelOperati
         var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var item in items)
         {
+            if ((File.GetAttributes(item) & FileAttributes.ReparsePoint) != 0)
+            {
+                throw new IOException(L.T("不能压缩符号链接或联接：{0}", Path.GetFileName(item)));
+            }
+
             var name = Unique(Path.GetFileName(Path.TrimEndingDirectorySeparator(item)), taken);
             if (!Directory.Exists(item))
             {
@@ -98,8 +103,8 @@ public sealed class CompressZipAction(TimeProvider? time = null) : IWheelOperati
 
             entries.Add((item, name, -1));
 
-            // Hidden and system files are packed too; .NET does not recurse into junctions or symbolic links.
-            var options = new EnumerationOptions { RecurseSubdirectories = true, AttributesToSkip = 0, IgnoreInaccessible = false };
+            // Keep hidden files, but never follow links outside the selected tree.
+            var options = new EnumerationOptions { RecurseSubdirectories = true, AttributesToSkip = FileAttributes.ReparsePoint, IgnoreInaccessible = false };
             foreach (var info in new DirectoryInfo(item).EnumerateFileSystemInfos("*", options))
             {
                 // The zip being written, when outputs go into the folder being packed.

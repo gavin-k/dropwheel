@@ -106,6 +106,34 @@ public sealed class FileActionsTests : IDisposable
     }
 
     [Fact]
+    public async Task Zip_does_not_follow_directory_or_file_links()
+    {
+        var source = Folder("selected");
+        var outside = Folder("outside");
+        var secret = File("outside/private.txt", "not selected");
+        File("selected/own.txt", "selected");
+        Directory.CreateSymbolicLink(Path.Combine(source, "external"), outside);
+        System.IO.File.CreateSymbolicLink(Path.Combine(source, "file.txt"), secret);
+
+        var result = await Run(Action("action.zip"), source);
+
+        using var zip = ZipFile.OpenRead(result.OutputPaths.Single());
+        zip.Entries.Select(e => e.FullName).Should().BeEquivalentTo("selected/", "selected/own.txt");
+    }
+
+    [Fact]
+    public async Task Zip_refuses_a_link_selected_as_the_root()
+    {
+        var file = File("private.txt", "not selected");
+        var link = Path.Combine(_dir, "link.txt");
+        System.IO.File.CreateSymbolicLink(link, file);
+        var act = () => Run(Action("action.zip"), link);
+
+        await act.Should().ThrowAsync<IOException>();
+        Directory.GetFiles(_dir, "*.zip").Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task Copy_path_puts_quoted_paths_one_per_line_on_the_clipboard()
     {
         var a = File("a b.jpg");
