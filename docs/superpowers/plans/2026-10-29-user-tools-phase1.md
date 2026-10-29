@@ -133,6 +133,8 @@ The catalog (Task 1b) needs `CommandResolver` (Task 2) and `ScriptTool` (Task 3)
 
 ### Task 7: Settings › 我的工具 — `SettingsWindow` section, strings in `Strings.en.json`; commit `feat(settings): list user tools with a trust switch`.
 
+- [x] Done: section lists tools (folder, command, warnings, 允许运行 switch, 查看脚本), error folders as InfoBars, unplaced items, buttons 打开工具文件夹 / 重新加载 / 找到 SKILL.md, privacy note.
+
 ### Task 8: `--validate-tool` / `--list-tools` — `Program.cs`, `DISABLE_XAML_GENERATED_MAIN`, `AttachConsole`; commit `feat(app): validate and list tools from the command line`.
 
 ### Task 9: Skill, schema, docs, packaging — `skills/dropwheel-tool/SKILL.md` + examples, `docs/tool-manifest.schema.json`, `docs/adr/0005-user-tools-manifest-and-trust.md`, docs updates, csproj Content, `FileSystemWriteVirtualization` disabled; commit `docs(tools): ship the dropwheel-tool skill and manifest schema`.

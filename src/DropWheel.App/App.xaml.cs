@@ -155,7 +155,8 @@ public partial class App : Application
             _monitor.Faulted += ex => FileLog.Error("hook thread handler failed", ex);
             _host = new DropTargetHost();
 
-            var settingsWindow = _settingsWindow = new SettingsWindow(settings, operations, _network, ui);
+            var skillPath = Path.Combine(AppContext.BaseDirectory, "skills", "dropwheel-tool", "SKILL.md");
+            var settingsWindow = _settingsWindow = new SettingsWindow(settings, operations, catalog, layout, skillPath, _network, ui);
             var queueWindow = _queueWindow = new QueueWindow(_queue, ui, settingsWindow.Show);
             queueWindow.ShowKeys(settings.Current.Keys.KeysFor(WheelMode.Convert));
             settings.Changed += changed =>
