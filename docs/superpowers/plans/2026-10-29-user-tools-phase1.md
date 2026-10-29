@@ -106,8 +106,8 @@ The catalog (Task 1b) needs `CommandResolver` (Task 2) and `ScriptTool` (Task 3)
 - Modify: `AppSettings.cs`, `SettingsStore.cs` (Repair), `WheelModel.cs:BuildOperations`, `App.xaml.cs`
 - Test: `WheelBuilderTests` (new file), `SettingsStoreTests`
 
-- [ ] Tests: untrusted script tool greyed with `UntrustedTool`; changed hash greys again; `Tools` section round trips and repairs.
-- [ ] Implement; `./build.sh`; commit `feat(tools): gate script tools behind a trust switch`.
+- [x] Tests: untrusted script tool greyed with `UntrustedTool`; changed hash greys again; `Tools` section round trips and repairs.
+- [x] Implement; `./build.sh`; commit `feat(tools): gate script tools behind a trust switch`.
 
 ### Task 5: Layout file and grouped slots
 

@@ -14,6 +14,7 @@ using DropWheel.Core.Jobs;
 using DropWheel.Core.Localization;
 using DropWheel.Core.Privacy;
 using DropWheel.Core.Settings;
+using DropWheel.Core.Tools;
 using DropWheel.Core.Wheel;
 using DropWheel.Engines.Archive;
 using DropWheel.Engines.Document;
@@ -54,6 +55,8 @@ public partial class App : Application
     private WheelWindow? _wheel;
     private DockWindow? _dock;
     private NetworkWatch? _network;
+    private UserToolCatalog? _catalog;
+    private HashSet<string>? _knownTools;
 
     public App()
     {
@@ -127,13 +130,14 @@ public partial class App : Application
             var desktop = new Desktop(ui);
             _queue = new JobQueue(graph, new UndoLedger(files), prompt: desktop);
             IReadOnlyList<IWheelOperation> operations = [.. FileActions.Create(files, desktop), .. EngineTools.Create(archives, ffmpeg, recognizer: recognizer)];
+            var catalog = _catalog = new UserToolCatalog(Path.Combine(dataDir, "tools"), new SidecarProcessRunner(), CommandResolver.FromEnvironment());
             var recent = new RecentItems(path: Path.Combine(dataDir, "recent.json"));
             foreach (var problem in new[] { settings.LoadProblem, recent.LoadProblem }.OfType<string>())
             {
                 FileLog.Error(problem);
             }
 
-            var builder = new WheelBuilder(graph, recent, new DefaultRecommender(graph), operations);
+            var builder = new WheelBuilder(graph, recent, new DefaultRecommender(graph), new LiveOperations(operations, catalog));
 
             var tapper = new ModifierTapper(settings.Current.Keys, TimeProvider.System);
             var winKey = new WinKeyGate(settings.Current.Keys);
@@ -170,6 +174,9 @@ public partial class App : Application
                 (L.T("退出 DropWheel"), Shutdown),
             ]);
             _tray.Selected += () => queueWindow.Show();
+            catalog.Changed += snapshot => ui.TryEnqueue(() => OnToolsChanged(snapshot));
+            catalog.Reload();
+            catalog.Watch();
             _wheel.LooksFlat += () => _tray?.Notify(L.T("轮盘显示成了一整块白色"),
                 L.T("多半是显卡驱动卡住了。按 Win+Ctrl+Shift+B 重置显卡驱动；还不行就更新显卡驱动或重启电脑。"));
             void ShowHome()
@@ -266,6 +273,30 @@ public partial class App : Application
         }
     }
 
+    /// <summary>
+    /// After the tools folder was read: logs what it holds, and once past the first read tells the user about a
+    /// tool that was not there before, which is greyed until they switch it on in Settings.
+    /// </summary>
+    private void OnToolsChanged(CatalogSnapshot snapshot)
+    {
+        FileLog.Info($"tools: {snapshot.Tools.Count} loaded from {_catalog?.Directory}" + (snapshot.Tools.Count > 0 ? ": " + string.Join(", ", snapshot.Tools.Select(t => t.Id)) : ""));
+        foreach (var result in snapshot.Problems)
+        {
+            foreach (var problem in result.Problems)
+            {
+                FileLog.Info($"tools: {Path.GetFileName(result.Folder)}: {(problem.IsWarning ? "warning" : "error")} {problem.Code}: {problem.Message}");
+            }
+        }
+
+        var ids = snapshot.Tools.Select(t => t.Id).ToHashSet();
+        if (_knownTools is { } known && snapshot.Tools.Where(t => !known.Contains(t.Id)).Select(t => t.Label).ToList() is { Count: > 0 } added)
+        {
+            _tray?.Notify(L.T("新工具：{0}", string.Join(L.T("、"), added)), L.T("在 设置 › 我的工具 里启用一次就能用"));
+        }
+
+        _knownTools = ids;
+    }
+
     private void Shutdown()
     {
         if (_shuttingDown)
@@ -289,6 +320,7 @@ public partial class App : Application
             FileLog.Info("a job was still running at exit");
         }
 
+        _catalog?.Dispose();
         _network?.Dispose();
         FileLog.Flush(TimeSpan.FromSeconds(1));
         _instance?.Dispose();

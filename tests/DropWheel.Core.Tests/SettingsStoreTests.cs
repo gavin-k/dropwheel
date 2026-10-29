@@ -79,6 +79,25 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public void Switched_on_tools_round_trip_and_a_missing_section_is_empty()
+    {
+        var store = new SettingsStore(File_);
+
+        store.Update(s => s with { Tools = s.Tools.Trust("user.strip", "abc123").Trust("user.other", "def") });
+
+        var reloaded = new SettingsStore(File_);
+        reloaded.Current.Tools.Should().Be(UserToolSettings.Default.Trust("user.other", "def").Trust("user.strip", "abc123"));
+        reloaded.Current.Tools.IsTrusted("user.strip", "abc123").Should().BeTrue();
+        reloaded.Current.Tools.IsTrusted("user.strip", "changed").Should().BeFalse();
+        File.ReadAllText(File_).Should().Contain("\"user.strip\": \"abc123\"");
+
+        File.WriteAllText(File_, """{ "version": 2, "tools": null }""");
+        new SettingsStore(File_).Current.Tools.Should().Be(UserToolSettings.Default);
+        File.WriteAllText(File_, """{ "version": 2, "tools": {} }""");
+        new SettingsStore(File_).Current.Tools.Should().Be(UserToolSettings.Default);
+    }
+
+    [Fact]
     public void Missing_or_null_sections_fall_back_to_defaults()
     {
         File.WriteAllText(File_, """

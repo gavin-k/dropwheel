@@ -200,8 +200,15 @@ public sealed class WheelBuilder(ConversionGraph graph, IRecentItems recent, IRe
         {
             var availability = op.Action is { } action && !settings.Actions.IsEnabled(action)
                 ? Availability.Unavailable(FileActionSettings.DisabledReason) with { Cause = UnavailableCause.DisabledInSettings }
+                : op.TrustKey is { } key && !settings.Tools.IsTrusted(op.Id, key)
+                ? Availability.Unavailable(UserToolSettings.UntrustedReason) with { Cause = UnavailableCause.UntrustedTool }
                 : op.Check(settings.Request(sourcePaths, op.Id));
-            var subLabel = availability.IsAvailable ? op.Hint : availability.Cause == UnavailableCause.DisabledInSettings ? L.T("未开启") : L.T("不可用");
+            var subLabel = availability.IsAvailable ? op.Hint : availability.Cause switch
+            {
+                UnavailableCause.DisabledInSettings => L.T("未开启"),
+                UnavailableCause.UntrustedTool => L.T("未启用"),
+                _ => L.T("不可用"),
+            };
             return new WheelSlot(i, op.Id, op.Label, subLabel, SlotSource.Fixed, availability, null, op);
         }).ToList();
 
