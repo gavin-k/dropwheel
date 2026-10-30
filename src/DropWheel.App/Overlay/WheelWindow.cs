@@ -1,20 +1,25 @@
 using System.Diagnostics;
+using System.Numerics;
 using DropWheel.App.Diagnostics;
 using DropWheel.Core.Wheel;
 using Microsoft.UI;
+using Microsoft.UI.Composition;
 using Microsoft.UI.Text;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
 using Windows.Foundation;
 using Windows.Graphics;
 using Windows.UI;
+using Windows.UI.ViewManagement;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.UI.WindowsAndMessaging;
+using CompositionTarget = Microsoft.UI.Xaml.Media.CompositionTarget;
 using Path = Microsoft.UI.Xaml.Shapes.Path;
 
 namespace DropWheel.App.Overlay;
@@ -27,8 +32,20 @@ namespace DropWheel.App.Overlay;
 /// shown and hidden per drag. After the first frame of a show it checks, now and then, that the screen
 /// shows the wheel and not a flat white block (<see cref="FrameCheck"/>). UI thread only.
 /// </summary>
+/// <remarks>
+/// Motion runs on the compositor (see docs/design/README.md): the wheel scales in from .92 over
+/// <c>DwMotionWheelIn</c>, fades out over <c>DwMotionSelect</c>, a hovered sector lifts to 1.08, and ring items
+/// fan out 20 ms apart. With system animations off (<see cref="UISettings.AnimationsEnabled"/>) every one of
+/// those is a plain property set: nothing moves, nothing is delayed.
+/// </remarks>
 internal sealed class WheelWindow
 {
+    /// <summary>How much a hovered sector or ring item grows.</summary>
+    private const float Lift = 1.08f;
+
+    /// <summary>Ring items appear one after another, this far apart.</summary>
+    private static readonly TimeSpan Stagger = TimeSpan.FromMilliseconds(20);
+
     /// <summary>Room around the rim, in DIPs.</summary>
     private const double Margin = 10;
     private const double DiscPadding = 6;
@@ -83,6 +100,16 @@ internal sealed class WheelWindow
     private readonly SolidColorBrush[] _childInks = new SolidColorBrush[LayoutGroup.Capacity];
     private readonly SolidColorBrush[] _childSubInks = new SolidColorBrush[LayoutGroup.Capacity];
     private readonly Canvas _canvas;
+    private readonly UISettings _system = new();
+    private readonly Visual _root;
+    private readonly Compositor _compositor;
+    private readonly CompositionEasingFunction _ease;
+    private readonly TimeSpan _wheelIn = Motion("DwMotionWheelIn", 150);
+    private readonly TimeSpan _select = Motion("DwMotionSelect", 100);
+    private readonly Visual[] _sectorVisuals = new Visual[WheelModel.SlotCount];
+    private readonly Visual[] _childVisuals = new Visual[LayoutGroup.Capacity];
+    private readonly Visual[] _childPanelVisuals = new Visual[LayoutGroup.Capacity];
+    private bool _shown;
     private readonly TextBlock _title;
     private readonly TextBlock _subtitle;
     private readonly TextBlock _hint;
@@ -148,7 +175,11 @@ internal sealed class WheelWindow
             _labels[i] = new TextBlock { FontSize = 16, FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center, Foreground = _inks[i] };
             _subLabels[i] = new TextBlock { FontSize = 11, HorizontalAlignment = HorizontalAlignment.Center, Foreground = _subInks[i] };
             var (x, y) = WheelGeometry.SectorCenter(i);
-            canvas.Children.Add(LabelPanel(_glyphs[i], _labels[i], _subLabels[i], SectorLabelWidth, SectorLabelHeight, Center + x, Center + y));
+            var label = LabelPanel(_glyphs[i], _labels[i], _subLabels[i], SectorLabelWidth, SectorLabelHeight, Center + x, Center + y);
+            Canvas.SetZIndex(label, 2); // above a lifted neighbour
+            canvas.Children.Add(label);
+            _sectorVisuals[i] = ElementCompositionPreview.GetElementVisual(_sectors[i]);
+            _sectorVisuals[i].CenterPoint = new Vector3((float)(Center + x), (float)(Center + y), 0);
         }
 
         for (var i = 0; i < LayoutGroup.Capacity; i++)
@@ -165,7 +196,11 @@ internal sealed class WheelWindow
             _childSubLabels[i] = new TextBlock { FontSize = 10, HorizontalAlignment = HorizontalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, Foreground = _childSubInks[i] };
             var panel = _childPanels[i] = LabelPanel(_childGlyphs[i], _childLabels[i], _childSubLabels[i], ChildLabelWidth, ChildLabelHeight, 0, 0);
             panel.Visibility = Visibility.Collapsed;
+            Canvas.SetZIndex(panel, 2);
             canvas.Children.Add(panel);
+            _childVisuals[i] = ElementCompositionPreview.GetElementVisual(_children[i]);
+            _childPanelVisuals[i] = ElementCompositionPreview.GetElementVisual(panel);
+            _childPanelVisuals[i].CenterPoint = new Vector3((float)(ChildLabelWidth / 2), (float)(ChildLabelHeight / 2), 0);
         }
 
         _title = new TextBlock
@@ -200,11 +235,16 @@ internal sealed class WheelWindow
         Place(hole, Center - WheelGeometry.InnerRadius, Center - WheelGeometry.InnerRadius);
         canvas.Children.Add(hole);
 
-        _window.Content = new Grid { Children = { disc, frame } };
+        var content = new Grid { Children = { disc, frame } };
+        _window.Content = content;
         if (white)
         {
-            ((Grid)_window.Content).Children.Add(new Border { Background = new SolidColorBrush(Colors.White) });
+            content.Children.Add(new Border { Background = new SolidColorBrush(Colors.White) });
         }
+
+        _root = ElementCompositionPreview.GetElementVisual(content);
+        _compositor = _root.Compositor;
+        _ease = _compositor.CreateCubicBezierEasingFunction(new Vector2(0.1f, 0.9f), new Vector2(0.2f, 1f));
 
         SetModel(null);
         SetHubHint(false);
@@ -230,6 +270,101 @@ internal sealed class WheelWindow
     /// </summary>
     public void ShowAt(int centerX, int centerY, double scale, bool ring = false)
     {
+        var dip = Fit(centerX, centerY, scale, ring);
+        _generation++;
+        _shownAt = Stopwatch.GetTimestamp();
+        CompositionTarget.Rendered += OnFirstFrame;
+
+        // A fade still running from the last close is cut short: this show owns the window now.
+        _root.StopAnimation("Opacity");
+        _root.StopAnimation("Scale");
+        var animated = Animated;
+        if (animated)
+        {
+            _root.CenterPoint = new Vector3((float)(dip / 2), (float)(dip / 2), 0);
+            var grow = _compositor.CreateVector3KeyFrameAnimation();
+            grow.InsertKeyFrame(0f, new Vector3(0.92f, 0.92f, 1f));
+            grow.InsertKeyFrame(1f, Vector3.One, _ease);
+            grow.Duration = _wheelIn;
+            var fadeIn = _compositor.CreateScalarKeyFrameAnimation();
+            fadeIn.InsertKeyFrame(0f, 0f);
+            fadeIn.InsertKeyFrame(1f, 1f, _ease);
+            fadeIn.Duration = _wheelIn;
+            _root.StartAnimation("Scale", grow);
+            _root.StartAnimation("Opacity", fadeIn);
+        }
+        else
+        {
+            _root.Scale = Vector3.One;
+            _root.Opacity = 1;
+        }
+
+        _shown = true;
+        _appWindow.Show(false);
+        FileLog.Info(animated ? $"overlay: motion on, wheel in {_wheelIn.TotalMilliseconds:F0} ms" : "overlay: motion off, system animations are disabled");
+    }
+
+    /// <summary>
+    /// Moves and resizes the shown window for another wheel at the same centre (the user tapped another
+    /// wheel's keys mid-drag). The frame check in flight is dropped; nothing is shown or hidden.
+    /// </summary>
+    public void Resize(int centerX, int centerY, double scale, bool ring)
+    {
+        Fit(centerX, centerY, scale, ring);
+        _generation++;
+    }
+
+    /// <summary>
+    /// Fades the wheel out over <c>DwMotionSelect</c> and hides it; at once when animations are off. A show
+    /// that comes first takes the window back (see <see cref="ShowAt"/>) and the hide is dropped.
+    /// </summary>
+    public void Hide()
+    {
+        CompositionTarget.Rendered -= OnFirstFrame;
+        _generation++;
+        if (!_shown || !Animated)
+        {
+            HideNow();
+            return;
+        }
+
+        var generation = _generation;
+        var batch = _compositor.CreateScopedBatch(CompositionBatchTypes.Animation);
+        var fade = _compositor.CreateScalarKeyFrameAnimation();
+        fade.InsertKeyFrame(1f, 0f);
+        fade.Duration = _select;
+        _root.StartAnimation("Opacity", fade);
+        batch.Completed += (_, _) =>
+        {
+            if (generation == _generation)
+            {
+                HideNow();
+            }
+        };
+        batch.End();
+    }
+
+    private void HideNow()
+    {
+        _shown = false;
+        _appWindow.Hide();
+        _root.StopAnimation("Opacity");
+        _root.Opacity = 1;
+        _root.Scale = Vector3.One;
+        for (var i = 0; i < WheelModel.SlotCount; i++)
+        {
+            Settle(_sectors[i], _sectorVisuals[i]);
+        }
+
+        SetRing(-1, null);
+        SetModel(null);
+    }
+
+    private bool Animated => _system.AnimationsEnabled;
+
+    /// <summary>Places the window for the wheel's footprint and returns that footprint in DIPs.</summary>
+    private double Fit(int centerX, int centerY, double scale, bool ring)
+    {
         var dip = SizeFor(ring);
         var px = (int)Math.Ceiling(dip * scale);
         var discPx = (int)Math.Ceiling(Size * scale);
@@ -238,19 +373,7 @@ internal sealed class WheelWindow
 
         // The frame check looks at the disc only: around it the window is transparent and shows the desktop.
         _bounds = new RectInt32(centerX - discPx / 2, centerY - discPx / 2, discPx, discPx);
-        _generation++;
-        _shownAt = Stopwatch.GetTimestamp();
-        CompositionTarget.Rendered += OnFirstFrame;
-        _appWindow.Show(false);
-    }
-
-    public void Hide()
-    {
-        CompositionTarget.Rendered -= OnFirstFrame;
-        _generation++;
-        _appWindow.Hide();
-        SetRing(-1, null);
-        SetModel(null);
+        return dip;
     }
 
     public void Close()
@@ -323,6 +446,11 @@ internal sealed class WheelWindow
         ShowHub();
         Repaint(previous);
         Repaint(hit);
+        if (previous != hit)
+        {
+            Raise(previous, false);
+            Raise(hit, true);
+        }
     }
 
     /// <summary>
@@ -353,6 +481,15 @@ internal sealed class WheelWindow
             var (x, y) = WheelGeometry.ChildCenter(_ringParent, count, i);
             Place(_childPanels[i], Center + x - ChildLabelWidth / 2, Center + y - ChildLabelHeight / 2);
             PaintChild(i);
+            _childVisuals[i].CenterPoint = new Vector3((float)(Center + x), (float)(Center + y), 0);
+            FanOut(i, _childVisuals[i]);
+            FanOut(i, _childPanelVisuals[i]);
+        }
+
+        for (var i = count; i < LayoutGroup.Capacity; i++)
+        {
+            Settle(_children[i], _childVisuals[i]);
+            Settle(_childPanels[i], _childPanelVisuals[i]);
         }
 
         if (previous >= 0)
@@ -422,6 +559,92 @@ internal sealed class WheelWindow
         _childInks[i].Color = hovered ? OnAccent : Text;
         _childSubInks[i].Color = hovered ? OnAccent : Text3;
         _childGlyphs[i].Opacity = _childLabels[i].Opacity = _childSubLabels[i].Opacity = enabled ? 1 : 0.45;
+    }
+
+    /// <summary>Lifts the sector or ring item under the pointer above its neighbours, or sets it back down.</summary>
+    private void Raise(WheelHit hit, bool up)
+    {
+        var (element, visual) = hit.Ring switch
+        {
+            WheelRing.Sector when hit.Index >= 0 && hit.Index < WheelModel.SlotCount => (_sectors[hit.Index], _sectorVisuals[hit.Index]),
+            WheelRing.Child when hit.Index >= 0 && hit.Index < LayoutGroup.Capacity => (_children[hit.Index], _childVisuals[hit.Index]),
+            _ => ((Path?)null, (Visual?)null),
+        };
+        if (element is null || visual is null)
+        {
+            return;
+        }
+
+        var lift = up && Under(hit)?.Availability.IsAvailable == true;
+        Canvas.SetZIndex(element, lift ? 1 : 0);
+        var target = lift ? new Vector3(Lift, Lift, 1f) : Vector3.One;
+        if (!Animated)
+        {
+            visual.StopAnimation("Scale");
+            visual.Scale = target;
+            return;
+        }
+
+        var scale = _compositor.CreateVector3KeyFrameAnimation();
+        scale.InsertKeyFrame(1f, target, _ease);
+        scale.Duration = _select;
+        visual.StartAnimation("Scale", scale);
+    }
+
+    /// <summary>A ring item appears in its turn: the <paramref name="index"/>th waits that many staggers, then grows in.</summary>
+    private void FanOut(int index, Visual visual)
+    {
+        if (!Animated)
+        {
+            visual.StopAnimation("Opacity");
+            visual.StopAnimation("Scale");
+            visual.Opacity = 1;
+            visual.Scale = Vector3.One;
+            return;
+        }
+
+        var fade = _compositor.CreateScalarKeyFrameAnimation();
+        fade.InsertKeyFrame(0f, 0f);
+        fade.InsertKeyFrame(1f, 1f, _ease);
+        fade.Duration = _select;
+        fade.DelayTime = Stagger * index;
+        fade.DelayBehavior = AnimationDelayBehavior.SetInitialValueBeforeDelay;
+        var grow = _compositor.CreateVector3KeyFrameAnimation();
+        grow.InsertKeyFrame(0f, new Vector3(0.9f, 0.9f, 1f));
+        grow.InsertKeyFrame(1f, Vector3.One, _ease);
+        grow.Duration = _select;
+        grow.DelayTime = Stagger * index;
+        grow.DelayBehavior = AnimationDelayBehavior.SetInitialValueBeforeDelay;
+        visual.StartAnimation("Opacity", fade);
+        visual.StartAnimation("Scale", grow);
+    }
+
+    /// <summary>Back to rest: no lift, fully opaque, in the normal z-order.</summary>
+    private static void Settle(UIElement element, Visual visual)
+    {
+        Canvas.SetZIndex(element, 0);
+        visual.StopAnimation("Opacity");
+        visual.StopAnimation("Scale");
+        visual.Opacity = 1;
+        visual.Scale = Vector3.One;
+    }
+
+    /// <summary>A motion token from Tokens.xaml, in ms; the design's number when the resource is missing.</summary>
+    private static TimeSpan Motion(string key, double fallback)
+    {
+        try
+        {
+            if (Application.Current.Resources.TryGetValue(key, out var value) && value is double ms)
+            {
+                return TimeSpan.FromMilliseconds(ms);
+            }
+        }
+        catch (Exception ex)
+        {
+            FileLog.Error($"overlay: no {key} resource", ex);
+        }
+
+        return TimeSpan.FromMilliseconds(fallback);
     }
 
     private void OnFirstFrame(object? sender, RenderedEventArgs e)

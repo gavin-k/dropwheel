@@ -190,6 +190,12 @@ internal sealed class WheelController : IDisposable
             {
                 _wheel.SetModel(model);
             }
+            else if (_session is { Paths: null } switched)
+            {
+                // The user switched wheels in the few ms before DragEnter: the new session takes the files.
+                switched.Paths = paths;
+                _wheel.SetModel(Rebuild(switched));
+            }
         });
     }
 
@@ -266,8 +272,18 @@ internal sealed class WheelController : IDisposable
     /// <param name="by">What opened it, for the log: "tap" or "long press".</param>
     private void Open(WheelMode mode, (int X, int Y) point, long tappedAt, string by)
     {
-        if (_session is not null || _monitor.Phase == DragPhase.Idle)
+        if (_monitor.Phase == DragPhase.Idle)
         {
+            return;
+        }
+
+        if (_session is { } current)
+        {
+            if (current.Mode != mode)
+            {
+                Switch(current, mode, tappedAt, by);
+            }
+
             return;
         }
 
@@ -278,7 +294,7 @@ internal sealed class WheelController : IDisposable
         var (x, y, scale) = Place(point, WheelWindow.SizeFor(ring));
         var onHub = WheelGeometry.OnHub((point.X - x) / scale, (point.Y - y) / scale);
         var placement = new WheelPlacement(x, y, scale, new bool[WheelModel.SlotCount], onHub);
-        _session = new Session(mode, placement, tappedAt, by, _settings.Current);
+        _session = new Session(mode, placement, tappedAt, by, _settings.Current) { RingSized = ring };
         _typeAhead.Listening = mode == WheelMode.Convert;
         _pendingGroup = -1;
 
@@ -290,6 +306,41 @@ internal sealed class WheelController : IDisposable
         _buttonUpReadings = 0;
         _watchdog.Start();
         FileLog.Info($"wheel: shown +{Stopwatch.GetElapsedTime(tappedAt).TotalMilliseconds:F1} ms after {by}, centre {x},{y} scale {scale:0.##} (pointer {point.X},{point.Y}{(onHub ? "" : ", off the hub: sectors wait for it")})");
+    }
+
+    /// <summary>
+    /// Another wheel's keys tapped while one is open: the same drag and the same centre show the other wheel's
+    /// items. The window keeps its place, so the sectors stay under the hand that knows them; it only grows or
+    /// shrinks for the ring, which near an edge may then reach off the screen. The host keeps its gate: sectors
+    /// that were waiting for the pointer to visit the hub still wait.
+    /// </summary>
+    private void Switch(Session current, WheelMode mode, long tappedAt, string by)
+    {
+        _dwell.Stop();
+        _ringClose.Stop();
+        _pendingGroup = -1;
+        var ring = _layout?.HasGroups(mode) == true;
+        var next = new Session(mode, current.Placement, tappedAt, by, current.Settings) { Paths = current.Paths, RingSized = ring };
+        _session = next;
+        _typeAhead.Listening = mode == WheelMode.Convert;
+        _wheel.SetRing(-1, null);
+        if (ring != current.RingSized)
+        {
+            _wheel.Resize(current.Placement.CenterX, current.Placement.CenterY, current.Placement.Scale, ring);
+        }
+
+        var model = Rebuild(next);
+        if (model is null)
+        {
+            // No files yet: the host still has to forget the old wheel's sectors and ring.
+            lock (next.Gate)
+            {
+                ShowHost(next);
+            }
+        }
+
+        _wheel.SetModel(model);
+        FileLog.Info($"wheel: switched to {mode} +{Stopwatch.GetElapsedTime(tappedAt).TotalMilliseconds:F1} ms after {by}, slots {(model is null ? "none yet" : Slots(model))}");
     }
 
     private void Close(string why)
@@ -501,6 +552,9 @@ internal sealed class WheelController : IDisposable
         public volatile int OpenGroup = -1;
 
         public volatile RingPlacement? Ring;
+
+        /// <summary>Whether the window was sized for a ring when this wheel was shown.</summary>
+        public bool RingSized { get; init; }
 
         /// <summary>Guards <see cref="Query"/> and each rebuild of <see cref="Model"/>.</summary>
         public Lock Gate { get; } = new();

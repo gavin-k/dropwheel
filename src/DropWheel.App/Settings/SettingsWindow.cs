@@ -1,4 +1,5 @@
 using DropWheel.App.Diagnostics;
+using DropWheel.Core.Conversion;
 using DropWheel.Core.Jobs;
 using DropWheel.Core.Privacy;
 using DropWheel.Core.Settings;
@@ -86,6 +87,15 @@ internal sealed class SettingsWindow
     private readonly StackPanel _tools = new() { Spacing = 12 };
     private readonly TextBlock _toolsFolder = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = 0.75, IsTextSelectionEnabled = true };
     private readonly TextBlock _unplaced = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = 0.75, Visibility = Visibility.Collapsed };
+
+    // 轮盘排布: which wheel and file kind is being edited, its six sectors, and what is left off it.
+    private static readonly MediaKind[] LayoutKinds = [.. Enum.GetValues<MediaKind>().Where(k => k != MediaKind.Unknown)];
+    private readonly ComboBox _layoutWheel = new() { Header = L.T("轮盘"), MinWidth = 120 };
+    private readonly ComboBox _layoutKind = new() { Header = L.T("文件类型"), MinWidth = 140 };
+    private readonly StackPanel _layoutRows = new() { Spacing = 4 };
+    private readonly ComboBox _layoutUnplaced = new() { Header = L.T("没放上的"), MinWidth = 180 };
+    private readonly ComboBox _layoutSector = new() { Header = L.T("放到扇区"), MinWidth = 100 };
+    private readonly TextBlock _layoutNote = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = 0.75, Visibility = Visibility.Collapsed };
     private readonly TextBlock _network = new() { TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock _logNote = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = 0.75 };
     private readonly DispatcherQueueTimer _namingPause;
@@ -112,6 +122,8 @@ internal sealed class SettingsWindow
         network.Seen += _ => ui.TryEnqueue(ShowNetwork);
         catalog.Changed += _ => ui.TryEnqueue(ShowTools);
         layout.Changed += _ => ui.TryEnqueue(ShowTools);
+        layout.Changed += _ => ui.TryEnqueue(ShowLayout);
+        catalog.Changed += _ => ui.TryEnqueue(ShowLayout);
         _window = new Window { Title = L.T("DropWheel 设置") };
         _window.AppWindow.SetIcon("Assets/DropWheel.ico");
         _window.AppWindow.Closing += (window, e) =>
@@ -248,6 +260,40 @@ internal sealed class SettingsWindow
                 FontSize = 12,
                 Opacity = 0.75,
             }));
+        foreach (var mode in new[] { WheelMode.Tools, WheelMode.Actions })
+        {
+            _layoutWheel.Items.Add(WheelName(mode));
+        }
+
+        foreach (var kind in LayoutKinds)
+        {
+            _layoutKind.Items.Add(KindName(kind));
+        }
+
+        for (var i = 1; i <= WheelModel.SlotCount; i++)
+        {
+            _layoutSector.Items.Add(i.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        _layoutWheel.SelectedIndex = 0;
+        _layoutKind.SelectedIndex = 0;
+        _layoutSector.SelectedIndex = 0;
+        _layoutWheel.SelectionChanged += (_, _) => ShowLayout();
+        _layoutKind.SelectionChanged += (_, _) => ShowLayout();
+        var put = new Button { Content = L.T("放入"), VerticalAlignment = VerticalAlignment.Bottom };
+        put.Click += (_, _) => PutUnplaced();
+        var reset = new Button { Content = L.T("恢复默认") };
+        reset.Click += (_, _) => ResetLayout();
+        AutomationProperties.SetName(put, "layout-put");
+        AutomationProperties.SetName(reset, "layout-reset");
+        page.Children.Add(Section(L.T("轮盘排布"), L.T("工具轮盘按文件类型各有六格，动作轮盘一套六格。这里改每格放什么：放到已经有东西的格子上就折成一个分组，拖文件时停在分组扇区上会展开外环。也可以让 AI 助手直接改 layout.json。"),
+            new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { _layoutWheel, _layoutKind } },
+            _layoutRows,
+            new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { _layoutUnplaced, _layoutSector, put } },
+            _layoutNote,
+            reset));
+        ShowLayout();
+
         page.Children.Add(Section(L.T("输出"), null,
             _nextToSource,
             _toFolder,
@@ -451,6 +497,167 @@ internal sealed class SettingsWindow
         _unplaced.Visibility = unplaced.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         _unplaced.Text = L.T("没放上轮盘：{0}。轮盘满了，腾个位置或让 AI 助手改 layout.json 来排。", string.Join(L.T("、"), unplaced));
     }
+
+    // ---- 轮盘排布 ------------------------------------------------------------------------------------
+
+    private WheelMode LayoutMode => _layoutWheel.SelectedIndex == 1 ? WheelMode.Actions : WheelMode.Tools;
+
+    /// <summary>The kind being edited; the actions wheel has one layout for every kind.</summary>
+    private MediaKind LayoutKind => LayoutMode == WheelMode.Actions ? MediaKind.Unknown : LayoutKinds[Math.Max(0, _layoutKind.SelectedIndex)];
+
+    private List<IWheelOperation> Operations() => [.. _builtIns.Concat(_catalog.Current.Tools)];
+
+    /// <summary>Redraws the six sectors and the unplaced list for the wheel and kind picked.</summary>
+    private void ShowLayout()
+    {
+        var mode = LayoutMode;
+        var kind = LayoutKind;
+        _layoutKind.Visibility = mode == WheelMode.Actions ? Visibility.Collapsed : Visibility.Visible;
+        var operations = Operations();
+        var slots = new List<LayoutSlot?>(_layout.Current.SlotsFor(mode, kind) ?? WheelLayout.Seed(mode, kind, operations));
+        while (slots.Count < WheelModel.SlotCount)
+        {
+            slots.Add(null);
+        }
+
+        _layoutRows.Children.Clear();
+        for (var i = 0; i < WheelModel.SlotCount; i++)
+        {
+            _layoutRows.Children.Add(LayoutRow(mode, kind, operations, slots, i));
+        }
+
+        static IEnumerable<string> IdsOf(LayoutSlot? slot) => slot switch
+        {
+            { Group: { } group } => group.Items,
+            { Item: { } item } => [item],
+            _ => [],
+        };
+        var placed = slots.SelectMany(IdsOf).ToHashSet();
+        var unplaced = operations.Where(o => o.Mode == mode && o.AppliesTo(kind) && !placed.Contains(o.Id)).ToList();
+        _layoutUnplaced.Items.Clear();
+        foreach (var operation in unplaced)
+        {
+            _layoutUnplaced.Items.Add(new ComboBoxItem { Content = operation.Label, Tag = operation.Id });
+        }
+
+        _layoutUnplaced.SelectedIndex = unplaced.Count > 0 ? 0 : -1;
+        _layoutUnplaced.IsEnabled = unplaced.Count > 0;
+        _layoutUnplaced.PlaceholderText = unplaced.Count > 0 ? "" : L.T("全都在轮盘上");
+    }
+
+    /// <summary>"n · label" with 上移 / 下移 / 移除, or for a group its name and items with 拆开 as well.</summary>
+    private StackPanel LayoutRow(WheelMode mode, MediaKind kind, List<IWheelOperation> operations, List<LayoutSlot?> slots, int index)
+    {
+        var slot = slots[index];
+        string Label(string id) => operations.FirstOrDefault(o => o.Id == id)?.Label ?? id;
+        var text = slot switch
+        {
+            { Group: { } group } => L.T("{0}（分组）：{1}", group.Name.Pick(), string.Join(L.T("、"), group.Items.Select(Label))),
+            { Item: { } item } => Label(item),
+            _ => L.T("（空）"),
+        };
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+        row.Children.Add(new TextBlock { Text = L.T("{0} · {1}", index + 1, text), VerticalAlignment = VerticalAlignment.Center, MinWidth = 260, MaxWidth = 360, TextWrapping = TextWrapping.Wrap });
+        AutomationProperties.SetName(row, $"layout-sector-{index}");
+        var up = new Button { Content = L.T("上移"), IsEnabled = index > 0 };
+        var down = new Button { Content = L.T("下移"), IsEnabled = index < WheelModel.SlotCount - 1 };
+        up.Click += (_, _) => EditLayout(l => l.Swap(mode, kind, operations, index, index - 1));
+        down.Click += (_, _) => EditLayout(l => l.Swap(mode, kind, operations, index, index + 1));
+        row.Children.Add(up);
+        row.Children.Add(down);
+        if (slot?.Group is { } g)
+        {
+            var ungroup = new Button { Content = L.T("拆开") };
+            ungroup.Click += (_, _) =>
+            {
+                var done = false;
+                EditLayout(l =>
+                {
+                    var (next, ok) = l.Ungroup(mode, kind, operations, index);
+                    done = ok;
+                    return next;
+                });
+                Note(done ? null : L.T("空扇区不够放开这个分组，先移走几项。"));
+            };
+            row.Children.Add(ungroup);
+            var remove = new Button { Content = L.T("移除") };
+            remove.Click += (_, _) => EditLayout(l => g.Items.Aggregate(l, (acc, id) => acc.Remove(mode, kind, operations, id)));
+            row.Children.Add(remove);
+        }
+        else if (slot?.Item is { } id)
+        {
+            var remove = new Button { Content = L.T("移除") };
+            remove.Click += (_, _) => EditLayout(l => l.Remove(mode, kind, operations, id));
+            row.Children.Add(remove);
+        }
+
+        return row;
+    }
+
+    private void PutUnplaced()
+    {
+        if (_layoutUnplaced.SelectedItem is not ComboBoxItem { Tag: string id })
+        {
+            return;
+        }
+
+        var mode = LayoutMode;
+        var kind = LayoutKind;
+        var operations = Operations();
+        var index = Math.Max(0, _layoutSector.SelectedIndex);
+        var placed = false;
+        EditLayout(l =>
+        {
+            var (next, ok) = l.Put(mode, kind, operations, id, index);
+            placed = ok;
+            return next;
+        });
+        Note(placed ? null : L.T("那个扇区的分组已经满了，换一个。"));
+    }
+
+    /// <summary>Forgets this wheel's layout: the registration order comes back, and tools you installed go to the unplaced list.</summary>
+    private void ResetLayout()
+    {
+        var mode = LayoutMode;
+        var kind = LayoutKind;
+        EditLayout(l => l.Reset(mode, kind));
+        Note(L.T("已恢复默认。自己装的工具回到了「没放上的」里，从那里再放回去。"));
+    }
+
+    private void EditLayout(Func<WheelLayout, WheelLayout> change)
+    {
+        try
+        {
+            _layout.Update(change);
+            Note(null);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Note(L.T("layout.json 写不进去：{0}", ex.Message));
+        }
+
+        ShowLayout();
+    }
+
+    private void Note(string? text)
+    {
+        _layoutNote.Text = text ?? "";
+        _layoutNote.Visibility = text is null ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private static string KindName(MediaKind kind) => kind switch
+    {
+        MediaKind.Image => L.T("图片"),
+        MediaKind.Video => L.T("视频"),
+        MediaKind.Audio => L.T("音频"),
+        MediaKind.Pdf => "PDF",
+        MediaKind.Document => L.T("文档"),
+        MediaKind.Slides => L.T("演示文稿"),
+        MediaKind.Sheet => L.T("表格"),
+        MediaKind.Subtitle => L.T("字幕"),
+        MediaKind.Archive => L.T("压缩包"),
+        _ => kind.ToString(),
+    };
 
     /// <summary>A script shows its command line and the switch that lets it run; a recipe shows its steps and needs no switch.</summary>
     private StackPanel ToolRow(IUserTool tool, UserToolSettings trust, IReadOnlyList<string> warnings)
