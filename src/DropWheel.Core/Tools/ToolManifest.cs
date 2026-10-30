@@ -8,6 +8,7 @@ namespace DropWheel.Core.Tools;
 /// contract agents write against; see docs/tool-manifest.schema.json and ADR-0005.
 /// </summary>
 /// <param name="Id">"user.&lt;slug&gt;": the operation id, which also becomes the request's TargetFormatId.</param>
+/// <param name="Icon">A Segoe Fluent Icons code point such as "E7A7", in any spelling <see cref="Wheel.Glyphs.Parse"/> takes; null for no icon.</param>
 /// <param name="AppliesTo">The kinds the tool shows up for; null for every kind.</param>
 /// <param name="Kind">Only "script" for now; "recipe" comes later.</param>
 /// <param name="Placement">Where the author suggests the tool goes; applied once, on install, then the layout file rules.</param>

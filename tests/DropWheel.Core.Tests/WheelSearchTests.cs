@@ -27,6 +27,7 @@ public class WheelSearchTests
 
         wheel.Slots.Should().HaveCount(WheelModel.SlotCount);
         wheel.HasMore.Should().BeTrue();
+        wheel.Slots.Select(s => s.Glyph).Should().OnlyContain(g => Glyphs.IsGlyph(g), "a Convert sector draws the icon of the kind of file it makes");
         wheel.CenterTitle.Should().Be("a.jpg");
     }
 

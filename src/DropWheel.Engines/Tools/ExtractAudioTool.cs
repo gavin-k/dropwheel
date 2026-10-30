@@ -14,6 +14,8 @@ public sealed class ExtractAudioTool(FfmpegConverter ffmpeg, TimeProvider? time 
 
     public override string Hint => L.T("尽量原样");
 
+    public override string? Glyph => "\uEC4F"; // MusicNote
+
     protected override string Suffix => "";
 
     protected override string Unchanged => L.T("没有音轨");

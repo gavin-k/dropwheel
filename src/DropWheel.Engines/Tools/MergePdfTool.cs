@@ -22,6 +22,8 @@ public sealed class MergePdfTool(TimeProvider? time = null) : IWheelOperation
 
     public string Hint => L.T("按文件名排序");
 
+    public string? Glyph => "\uE902"; // Group
+
     public bool AppliesTo(MediaKind kind) => kind == MediaKind.Pdf;
 
     public Availability Check(ConversionRequest request) => request.SourcePaths.Count < 2

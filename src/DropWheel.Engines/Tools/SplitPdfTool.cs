@@ -23,6 +23,8 @@ public sealed class SplitPdfTool(TimeProvider? time = null) : IWheelOperation
 
     public string Hint => L.T("每页一个");
 
+    public string? Glyph => "\uF740"; // Split20
+
     public bool AppliesTo(MediaKind kind) => kind == MediaKind.Pdf;
 
     public Availability Check(ConversionRequest request) => MergePdfTool.CheckPdfs(request.SourcePaths);

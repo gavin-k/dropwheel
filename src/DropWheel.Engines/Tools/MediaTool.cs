@@ -24,6 +24,8 @@ public abstract class MediaTool(FfmpegConverter ffmpeg, TimeProvider? time) : IW
 
     public abstract string Hint { get; }
 
+    public abstract string? Glyph { get; }
+
     /// <summary>The formats it reads.</summary>
     protected virtual IReadOnlyCollection<string> Formats => FfmpegPlan.VideoInputs;
 

@@ -64,6 +64,14 @@ public sealed class WheelBuilderTests : IDisposable
     }
 
     [Fact]
+    public void A_tool_with_an_icon_shows_it_on_its_sector()
+    {
+        var tool = Tool(Manifest() with { Icon = "U+E7A7" });
+        Wheel([tool], AppSettings.Default).Slots.Single().Glyph.Should().Be("\uE7A7");
+        Wheel([Tool(Manifest())], AppSettings.Default).Slots.Single().Glyph.Should().BeNull();
+    }
+
+    [Fact]
     public void A_tool_for_other_kinds_of_file_stays_off_the_wheel()
     {
         var tool = Tool(Manifest() with { AppliesTo = [MediaKind.Pdf] });

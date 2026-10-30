@@ -10,6 +10,7 @@ public sealed record ToolProblem(string Code, string Message, bool IsWarning = f
     public const string Schema = "schema";
     public const string Id = "id";
     public const string Name = "name";
+    public const string Icon = "icon";
     public const string Wheel = "wheel";
     public const string AppliesTo = "appliesTo";
     public const string Kind = "kind";

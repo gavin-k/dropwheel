@@ -15,6 +15,8 @@ public sealed class CopyPathAction(IDesktop desktop) : IWheelOperation
 
     public string Hint => L.T("带引号");
 
+    public string? Glyph => "\uE71B"; // Link
+
     public FileAction? Action => FileAction.CopyPath;
 
     public Availability Check(ConversionRequest request) => Availability.Available;

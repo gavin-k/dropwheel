@@ -74,7 +74,11 @@ public static partial class ToolManifestReader
 
         var name = Text(root, "name", problems, ToolProblem.Name, required: true) ?? new("");
         var hint = Text(root, "hint", problems, ToolProblem.Name, required: false) ?? new("");
-        var icon = String(root, "icon", problems, ToolProblem.Name, required: false);
+        var icon = String(root, "icon", problems, ToolProblem.Icon, required: false);
+        if (icon is { Length: > 0 } && Glyphs.Parse(icon) is null)
+        {
+            problems.Add(new(ToolProblem.Icon, L.T("icon 要是 Segoe Fluent Icons 的码点，例如 E7A7；这个先不显示图标"), IsWarning: true));
+        }
 
         var wheelName = String(root, "wheel", problems, ToolProblem.Wheel, required: true);
         var wheel = wheelName switch

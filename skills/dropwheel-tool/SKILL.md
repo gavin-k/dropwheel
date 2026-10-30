@@ -47,7 +47,7 @@ Prefer the built-in wheel items when one already does the job (compress image, r
 | `id` | yes | `^user\.[a-z0-9-]+$`. Must be unique across the tools folder; the folder name is unrelated. |
 | `name` | yes | String, or `{ "zh", "en" }`. DropWheel shows `en` only when its UI language is English; `zh` is the fallback, so always give `zh` (or a plain string). |
 | `hint` | no | Same shape; one short line shown in the wheel's centre while hovering. |
-| `icon` | no | Reserved; ignored today. |
+| `icon` | no | A [Segoe Fluent Icons](https://learn.microsoft.com/windows/apps/design/style/segoe-fluent-icons-font) code point, written as `E7A7`, `U+E7A7` or `\uE7A7`, drawn above the name on the sector. Pick one from the font's list, such as `E8C8` (Copy), `E7AD` (Rotate), `E8FE` (Scan), `EA90` (PDF), `E898` (Upload). Anything else is a warning and the sector shows no icon. |
 | `wheel` | yes | `tools` or `actions`. |
 | `appliesTo` | no | Array of `image`, `video`, `audio`, `pdf`, `document` (DOCX), `slides` (PPTX), `sheet` (XLSX/CSV), `subtitle`, `archive`. Omit or `null` = every kind, including unknown files and folders. |
 | `kind` | no | Only `script` for now. |

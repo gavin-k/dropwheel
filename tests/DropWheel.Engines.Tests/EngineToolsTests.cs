@@ -28,6 +28,14 @@ public sealed class EngineToolsTests
     }
 
     [Fact]
+    public void Every_tool_has_an_icon_in_the_font_and_the_wheel_carries_it()
+    {
+        var tools = EngineTools.Create(new SharpCompressArchiveConverter(), new FfmpegConverter(), recognizer: new NoText());
+        tools.Should().HaveCount(12).And.OnlyContain(t => Glyphs.IsGlyph(t.Glyph));
+        Wheel("a.jpg").Slots.Select(s => s.Glyph).Should().OnlyContain(g => Glyphs.IsGlyph(g));
+    }
+
+    [Fact]
     public void With_a_recognizer_images_and_pdfs_end_with_reading_their_text()
     {
         var builder = new WheelBuilder(new ConversionGraph(), new RecentItems(), new DefaultRecommender(new ConversionGraph()),

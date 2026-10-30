@@ -16,6 +16,8 @@ public sealed class RecycleAction(IFileOperations files) : IWheelOperation
 
     public string Hint => L.T("回收站");
 
+    public string? Glyph => "\uE74D"; // Delete
+
     public FileAction? Action => FileAction.DeleteToRecycleBin;
 
     public Availability Check(ConversionRequest request) => FileActions.CheckItems(request.SourcePaths);

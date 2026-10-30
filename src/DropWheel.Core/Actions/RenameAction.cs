@@ -18,6 +18,8 @@ public sealed class RenameAction(IDesktop desktop) : IWheelOperation
 
     public string Hint => L.T("资源管理器");
 
+    public string? Glyph => "\uE8AC"; // Rename
+
     public FileAction? Action => FileAction.Rename;
 
     public Availability Check(ConversionRequest request) =>

@@ -30,6 +30,8 @@ public sealed class CompressZipAction(TimeProvider? time = null) : IWheelOperati
 
     public string Hint => "ZIP";
 
+    public string? Glyph => "\uE7B8"; // Package
+
     public FileAction? Action => FileAction.CompressZip;
 
     public Availability Check(ConversionRequest request) => FileActions.CheckItems(request.SourcePaths);

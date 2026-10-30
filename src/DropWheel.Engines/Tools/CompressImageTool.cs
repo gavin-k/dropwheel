@@ -17,6 +17,8 @@ public sealed class CompressImageTool(TimeProvider? time = null) : ImageTool(tim
 
     public override string Hint => L.T("变小才保留");
 
+    public override string? Glyph => "\uF165"; // CollapseContent
+
     protected override IReadOnlyCollection<string> Formats { get; } = ["jpg", "png", "webp", "tiff"];
 
     protected override string Suffix => L.T("-压缩");

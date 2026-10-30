@@ -42,6 +42,18 @@ public sealed class ToolManifestReaderTests : IDisposable
     }
 
     [Fact]
+    public void An_icon_is_a_code_point_and_anything_else_is_a_warning_without_one()
+    {
+        var good = Read(Minimal.Replace("\"wheel\"", "\"icon\": \"E7A7\", \"wheel\""));
+        good.Problems.Should().BeEmpty();
+        good.Manifest!.Icon.Should().Be("E7A7");
+
+        var bad = Read(Minimal.Replace("\"wheel\"", "\"icon\": \"icon.svg\", \"wheel\""));
+        bad.Manifest.Should().NotBeNull();
+        bad.Problems.Should().ContainSingle(p => p.Code == ToolProblem.Icon && p.IsWarning);
+    }
+
+    [Fact]
     public void A_bare_string_name_is_Chinese_only_and_Pick_falls_back_to_it()
     {
         var name = Read(Minimal).Manifest!.Name;

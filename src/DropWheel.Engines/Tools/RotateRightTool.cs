@@ -12,6 +12,8 @@ public sealed class RotateRightTool(TimeProvider? time = null) : ImageTool(time)
 
     public override string Hint => "90°";
 
+    public override string? Glyph => "\uE7AD"; // Rotate
+
     protected override IReadOnlyCollection<string> Formats => Image.MagickImageConverter.Formats.Keys;
 
     protected override string Suffix => L.T("-旋转");

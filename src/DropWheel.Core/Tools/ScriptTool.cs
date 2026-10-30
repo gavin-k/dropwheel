@@ -31,6 +31,8 @@ public sealed class ScriptTool(ToolManifest manifest, string folder, IProcessRun
 
     public JobLane Lane => JobLane.Script;
 
+    public string? Glyph => Glyphs.Parse(Manifest.Icon);
+
     public bool AppliesTo(MediaKind kind) => Manifest.AppliesToKind(kind);
 
     /// <summary>The command's path, or null when it cannot be found; a few file-exists calls, cheap enough for every wheel open.</summary>

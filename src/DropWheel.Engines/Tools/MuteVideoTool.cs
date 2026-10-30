@@ -12,6 +12,8 @@ public sealed class MuteVideoTool(FfmpegConverter ffmpeg, TimeProvider? time = n
 
     public override string Hint => L.T("画面不动");
 
+    public override string? Glyph => "\uE74F"; // Mute
+
     protected override IReadOnlyCollection<string> Formats => FfmpegPlan.VideoOutputs;
 
     protected override string Suffix => L.T("-无声");

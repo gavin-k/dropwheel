@@ -16,7 +16,7 @@
     },
     "name": { "$ref": "#/$defs/text", "description": "Shown on the wheel sector." },
     "hint": { "$ref": "#/$defs/text", "description": "One line shown in the wheel's centre while hovering." },
-    "icon": { "type": "string", "description": "Reserved; ignored by schema 1." },
+    "icon": { "type": "string", "pattern": "^(U\\+|\\\\u|&#x)?[0-9A-Fa-f]{4};?$|^[\\uE700-\\uF8FF]$", "description": "A Segoe Fluent Icons code point such as E7A7, drawn above the name. Anything else is a warning and the sector shows no icon." },
     "wheel": { "enum": ["tools", "actions"] },
     "appliesTo": {
       "type": ["array", "null"],

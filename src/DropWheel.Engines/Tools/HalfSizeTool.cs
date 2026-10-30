@@ -11,6 +11,8 @@ public sealed class HalfSizeTool(TimeProvider? time = null) : ImageTool(time)
 
     public override string Hint => L.T("一半尺寸");
 
+    public override string? Glyph => "\uE742"; // ResizeTouchSmaller
+
     protected override IReadOnlyCollection<string> Formats => Image.MagickImageConverter.Formats.Keys;
 
     protected override string Suffix => "-{w}x{h}";

@@ -11,6 +11,7 @@ public enum SlotSource { Recent, Recommended, Fixed, Search }
 /// <param name="Index">The sector, 0 to 5 clockwise from the top; for a child, its place on the ring.</param>
 /// <param name="Operation">What runs a Tools or Actions item; null for a Convert item, which the graph resolves, and for a group.</param>
 /// <param name="Children">The items a group opens as, in ring order; null for an item.</param>
+/// <param name="Glyph">The icon above the label, see <see cref="Glyphs"/>; null draws none.</param>
 public sealed record WheelSlot(
     int Index,
     string ItemId,
@@ -20,7 +21,8 @@ public sealed record WheelSlot(
     Availability Availability,
     QualityEstimate? Quality,
     IWheelOperation? Operation = null,
-    IReadOnlyList<WheelSlot>? Children = null)
+    IReadOnlyList<WheelSlot>? Children = null,
+    string? Glyph = null)
 {
     public bool IsGroup => Children is not null;
 
@@ -146,7 +148,8 @@ public sealed class WheelBuilder(ConversionGraph graph, IRecentItems recent, IRe
                 availability.IsAvailable ? WheelSlot.SourceName(p.src) : L.T("不可用"),
                 p.src,
                 availability,
-                quality);
+                quality,
+                Glyph: Glyphs.ForKind(target?.Kind ?? MediaKind.Unknown));
         }).ToList();
 
         var hasMore = matches.Count > WheelModel.SlotCount;
@@ -238,7 +241,7 @@ public sealed class WheelBuilder(ConversionGraph graph, IRecentItems recent, IRe
                     if (children.Count > 0)
                     {
                         var availability = children.Any(c => c.Availability.IsAvailable) ? Availability.Available : Availability.Unavailable(L.T("里面的项现在都用不了"));
-                        slots.Add(new WheelSlot(i, "group:" + group.Name.Zh, group.Name.Pick(), L.T("{0} 项", children.Count), SlotSource.Fixed, availability, null, null, children));
+                        slots.Add(new WheelSlot(i, "group:" + group.Name.Zh, group.Name.Pick(), L.T("{0} 项", children.Count), SlotSource.Fixed, availability, null, null, children, Glyphs.Group));
                     }
 
                     break;
@@ -261,7 +264,7 @@ public sealed class WheelBuilder(ConversionGraph graph, IRecentItems recent, IRe
             UnavailableCause.UntrustedTool => L.T("未启用"),
             _ => L.T("不可用"),
         };
-        return new WheelSlot(index, op.Id, op.Label, subLabel, SlotSource.Fixed, availability, null, op);
+        return new WheelSlot(index, op.Id, op.Label, subLabel, SlotSource.Fixed, availability, null, op, Glyph: op.Glyph);
     }
 }
 

@@ -14,6 +14,8 @@ public sealed class CompressVideoTool(FfmpegConverter ffmpeg, TimeProvider? time
 
     public override string Hint => L.T("变小才保留");
 
+    public override string? Glyph => "\uF165"; // CollapseContent
+
     protected override string Suffix => L.T("-压缩");
 
     protected override string Unchanged => L.T("已经很小，压缩后没有变小");

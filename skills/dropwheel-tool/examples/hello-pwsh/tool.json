@@ -4,6 +4,7 @@
   "id": "user.hello-pwsh",
   "name": { "zh": "复制一份", "en": "Make a copy" },
   "hint": { "zh": "原样复制，名字加 -copy", "en": "Same file, named -copy" },
+  "icon": "E8C8",
   "wheel": "tools",
   "appliesTo": ["image"],
   "kind": "script",

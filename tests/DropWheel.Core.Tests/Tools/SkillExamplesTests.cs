@@ -2,6 +2,7 @@ using FluentAssertions;
 using System.Text.Json;
 using DropWheel.Core.Conversion;
 using DropWheel.Core.Tools;
+using DropWheel.Core.Wheel;
 
 namespace DropWheel.Core.Tests.Tools;
 
@@ -47,6 +48,17 @@ public sealed class SkillExamplesTests
         }
 
         root.GetProperty("properties").GetProperty("script").GetProperty("properties").GetProperty("timeoutSeconds").GetProperty("default").GetInt32().Should().Be(ScriptSpec.DefaultTimeoutSeconds);
+
+        var icon = new System.Text.RegularExpressions.Regex(root.GetProperty("properties").GetProperty("icon").GetProperty("pattern").GetString()!);
+        foreach (var text in new[] { "E7A7", "U+E7A7", "\\uE7A7", "&#xE7A7;", "\uE7A7" })
+        {
+            icon.IsMatch(text).Should().Be(Glyphs.Parse(text) is not null, text);
+        }
+
+        foreach (var text in new[] { "icon.svg", "rotate", "A" })
+        {
+            icon.IsMatch(text).Should().BeFalse(text);
+        }
     }
 
     [Fact]

@@ -38,6 +38,8 @@ public sealed class OcrTool(ITextRecognizer recognizer, TimeProvider? time = nul
 
     public string Hint => L.T("存成 TXT");
 
+    public string? Glyph => "\uE8FE"; // Scan
+
     public bool AppliesTo(MediaKind kind) => kind is MediaKind.Image or MediaKind.Pdf;
 
     public Availability Check(ConversionRequest request)

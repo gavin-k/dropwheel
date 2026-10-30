@@ -37,6 +37,13 @@ public sealed class FileActionsTests : IDisposable
         new WheelBuilder(new ConversionGraph(), new RecentItems(), new DefaultRecommender(new ConversionGraph()), Actions()).Build(paths, WheelMode.Actions, settings);
 
     [Fact]
+    public void Every_action_has_an_icon_and_the_wheel_carries_it()
+    {
+        Actions().Should().HaveCount(6).And.OnlyContain(a => Glyphs.IsGlyph(a.Glyph));
+        Wheel(AppSettings.Default, File("a.jpg")).Slots.Select(s => s.Glyph).Should().Equal(Actions().Select(a => a.Glyph));
+    }
+
+    [Fact]
     public void The_actions_wheel_keeps_a_fixed_order_and_greys_what_settings_turned_off()
     {
         var wheel = Wheel(AppSettings.Default, File("a.jpg"));

@@ -30,6 +30,8 @@ public sealed class ExtractArchiveTool(SharpCompressArchiveConverter archives, T
 
     public string Hint => L.T("到文件夹");
 
+    public string? Glyph => "\uE7B8"; // Package
+
     public bool AppliesTo(MediaKind kind) => kind == MediaKind.Archive;
 
     public Availability Check(ConversionRequest request)

@@ -463,16 +463,16 @@ public sealed class JobQueueTests : IDisposable
             return new ConversionResult(true, []);
         }, lane: JobLane.Script);
         var engineDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        var slow = queue.Enqueue(Jpg("slow"), "slow", script);
-        var quick = queue.Enqueue(Jpg("quick"), "quick");
         queue.JobChanged += j =>
         {
-            if (j.Id == quick.Id && j.State == JobState.Done)
+            if (j.Label == "quick" && j.State == JobState.Done)
             {
                 engineDone.TrySetResult();
             }
         };
+
+        var slow = queue.Enqueue(Jpg("slow"), "slow", script);
+        var quick = queue.Enqueue(Jpg("quick"), "quick");
 
         await engineDone.Task.WaitAsync(TimeSpan.FromSeconds(5));
         slow.State.Should().Be(JobState.Running);

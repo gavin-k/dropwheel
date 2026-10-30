@@ -21,6 +21,9 @@ public interface IWheelOperation : IJobRunner
     /// <summary>The line under the label while the item is available.</summary>
     string Hint { get; }
 
+    /// <summary>A Segoe Fluent Icons code point drawn above the label, as a one-character string; null for none.</summary>
+    string? Glyph => null;
+
     /// <summary>The switch in Settings › 文件动作 that turns this item on; null when it is always on.</summary>
     FileAction? Action => null;
 

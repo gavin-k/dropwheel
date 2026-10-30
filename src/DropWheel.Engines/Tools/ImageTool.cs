@@ -23,6 +23,8 @@ public abstract class ImageTool(TimeProvider? time) : IWheelOperation
 
     public abstract string Hint { get; }
 
+    public abstract string? Glyph { get; }
+
     /// <summary>The formats it reads and writes back.</summary>
     protected abstract IReadOnlyCollection<string> Formats { get; }
 

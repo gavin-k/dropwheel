@@ -12,6 +12,8 @@ public sealed class StripMetadataTool(TimeProvider? time = null) : ImageTool(tim
 
     public override string Hint => L.T("位置等信息");
 
+    public override string? Glyph => "\uE75C"; // EraseTool
+
     protected override IReadOnlyCollection<string> Formats => ImageMetadata.Formats;
 
     protected override string Suffix => L.T("-无元数据");

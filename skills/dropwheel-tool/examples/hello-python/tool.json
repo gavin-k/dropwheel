@@ -4,6 +4,7 @@
   "id": "user.hello-python",
   "name": { "zh": "文件信息", "en": "File info" },
   "hint": { "zh": "写一份 -info.txt 放在旁边", "en": "Writes an -info.txt beside it" },
+  "icon": "E943",
   "wheel": "actions",
   "kind": "script",
   "script": {

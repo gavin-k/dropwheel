@@ -22,6 +22,8 @@ public sealed class CombinePdfTool(TimeProvider? time = null) : IWheelOperation
 
     public string Hint => L.T("按文件名排序");
 
+    public string? Glyph => "\uEA90"; // PDF
+
     public bool AppliesTo(MediaKind kind) => kind == MediaKind.Image;
 
     public Availability Check(ConversionRequest request)

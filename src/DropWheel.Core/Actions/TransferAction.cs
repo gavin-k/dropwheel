@@ -26,6 +26,8 @@ public sealed class TransferAction(bool copy, IFileOperations files, IDesktop de
 
     public string Hint => L.T("选文件夹");
 
+    public string? Glyph => copy ? "\uF413" : "\uE8DE"; // CopyTo / MoveToFolder
+
     public FileAction? Action => copy ? FileAction.CopyTo : FileAction.MoveTo;
 
     public Availability Check(ConversionRequest request) => FileActions.CheckItems(request.SourcePaths);
