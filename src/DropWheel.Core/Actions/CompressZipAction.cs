@@ -34,6 +34,11 @@ public sealed class CompressZipAction(TimeProvider? time = null) : IWheelOperati
 
     public FileAction? Action => FileAction.CompressZip;
 
+    /// <summary>The one action a recipe may end with: it makes a file and asks nothing.</summary>
+    public bool IsRecipeStep => true;
+
+    public bool WorksOnBatch => true;
+
     public Availability Check(ConversionRequest request) => FileActions.CheckItems(request.SourcePaths);
 
     public async Task<ConversionResult> RunAsync(ConversionRequest request, IProgress<double> progress, CancellationToken cancellationToken)

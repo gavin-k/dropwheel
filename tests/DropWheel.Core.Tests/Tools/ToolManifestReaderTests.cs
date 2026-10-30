@@ -135,7 +135,7 @@ public sealed class ToolManifestReaderTests : IDisposable
     public void Every_problem_is_listed_not_just_the_first()
     {
         var result = Read("""
-            { "schema": 2, "id": "Bad Id", "wheel": "menu", "appliesTo": ["poster"], "kind": "recipe", "undo": "maybe",
+            { "schema": 2, "id": "Bad Id", "wheel": "menu", "appliesTo": ["poster"], "kind": "macro", "undo": "maybe",
               "script": { "command": "", "args": "x", "timeoutSeconds": 0, "output": { "mode": "replace", "extension": "a/b" } }, "placement": { "index": 6 } }
             """);
 
@@ -186,5 +186,65 @@ public sealed class ToolManifestReaderTests : IDisposable
         ToolManifestReader.CommandHash(script with { Command = "other.ps1" }).Should().NotBe(hash);
         ToolManifestReader.CommandHash(script with { Args = ["{input}"] }).Should().NotBe(hash);
         ToolManifestReader.CommandHash(script with { TimeoutSeconds = 1 }).Should().Be(hash);
+    }
+
+    private const string Recipe = """
+        { "schema": 1, "id": "user.web-ready", "name": "发网上", "wheel": "tools", "appliesTo": ["image"], "kind": "recipe",
+          "steps": [ { "convert": "jpg" }, { "op": "tool.compress-image", "options": { "quality": 70, "fast": true, "mode": "x" } }, { "op": "action.zip" } ] }
+        """;
+
+    [Fact]
+    public void A_recipe_reads_its_steps_with_options_as_text()
+    {
+        var result = Read(Recipe);
+
+        result.Problems.Should().BeEmpty();
+        var manifest = result.Manifest!;
+        manifest.IsRecipe.Should().BeTrue();
+        manifest.Script.Should().BeNull();
+        manifest.Steps.Select(s => s.Describe()).Should().Equal("\u2192 jpg", "tool.compress-image", "action.zip");
+        manifest.Steps[0].IsConvert.Should().BeTrue();
+        manifest.Steps[1].Options.Should().Equal(new Dictionary<string, string> { ["quality"] = "70", ["fast"] = "true", ["mode"] = "x" });
+        manifest.Steps[2].Options.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void A_recipe_may_not_run_another_user_tool_nor_a_script()
+    {
+        Read(Recipe.Replace("tool.compress-image", "user.other")).Problems.Should().ContainSingle()
+            .Which.Should().BeEquivalentTo(new { Code = ToolProblem.Steps, IsWarning = false });
+        Read(Recipe.Replace("tool.compress-image", "compress")).Problems.Select(p => p.Code).Should().Equal(ToolProblem.Steps);
+        Read(Recipe.Replace("\"steps\"", "\"script\": { \"command\": \"x\", \"args\": [] }, \"steps\"")).Problems.Select(p => p.Code).Should().Equal(ToolProblem.Command);
+        Read(Minimal.Replace("\"script\"", "\"steps\": [], \"script\"")).Problems.Select(p => p.Code).Should().Equal(ToolProblem.Steps);
+        Read(Minimal.Replace("\"wheel\"", "\"kind\": \"macro\", \"wheel\"")).Problems.Select(p => p.Code).Should().Equal(ToolProblem.Kind);
+    }
+
+    [Fact]
+    public void A_recipe_step_is_one_of_op_or_convert_and_a_convert_names_a_writable_format()
+    {
+        Read(Recipe.Replace("{ \"convert\": \"jpg\" }", "{ \"op\": \"tool.half-size\", \"convert\": \"jpg\" }")).Problems.Select(p => p.Code).Should().Equal(ToolProblem.Steps);
+        Read(Recipe.Replace("{ \"convert\": \"jpg\" }", "{ }")).Problems.Select(p => p.Code).Should().Equal(ToolProblem.Steps);
+        Read(Recipe.Replace("{ \"convert\": \"jpg\" }", "\"jpg\"")).Problems.Select(p => p.Code).Should().Equal(ToolProblem.Steps);
+        Read(Recipe.Replace("\"convert\": \"jpg\"", "\"convert\": \"xyz\"")).Problems.Should().ContainSingle().Which.Message.Should().Contain("xyz");
+        Read(Recipe.Replace("\"convert\": \"jpg\"", "\"convert\": \"psd\"")).Problems.Should().ContainSingle().Which.Code.Should().Be(ToolProblem.Steps);
+        Read(Recipe.Replace("\"convert\": \"jpg\"", "\"convert\": \".PNG\"")).Manifest!.Steps[0].Convert.Should().Be("png");
+        Read(Recipe.Replace("\"steps\": [", "\"steps\": []  , \"x\": [")).Problems.Select(p => p.Code).Should().Equal(ToolProblem.Steps);
+    }
+
+    [Fact]
+    public void Options_belong_to_op_steps_and_hold_only_simple_values()
+    {
+        Read(Recipe.Replace("{ \"convert\": \"jpg\" }", "{ \"convert\": \"jpg\", \"options\": { \"quality\": 1 } }")).Problems.Select(p => p.Code).Should().Equal(ToolProblem.Steps);
+        Read(Recipe.Replace("\"mode\": \"x\"", "\"mode\": [1]")).Problems.Should().ContainSingle().Which.Message.Should().Contain("mode");
+        Read(Recipe.Replace("\"options\": { \"quality\": 70, \"fast\": true, \"mode\": \"x\" }", "\"options\": 3")).Problems.Select(p => p.Code).Should().Equal(ToolProblem.Steps);
+    }
+
+    [Fact]
+    public void A_recipe_that_starts_by_converting_must_say_what_it_applies_to()
+    {
+        var result = Read(Recipe.Replace("\"appliesTo\": [\"image\"], ", ""));
+
+        result.Problems.Select(p => p.Code).Should().Equal(ToolProblem.AppliesTo);
+        Read(Recipe.Replace("\"appliesTo\": [\"image\"], ", "").Replace("{ \"convert\": \"jpg\" }, ", "")).Problems.Should().BeEmpty();
     }
 }

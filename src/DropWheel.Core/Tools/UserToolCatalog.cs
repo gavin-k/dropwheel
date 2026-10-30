@@ -1,11 +1,13 @@
 using System.Text.Json;
+using DropWheel.Core.Conversion;
 using DropWheel.Core.Jobs;
+using DropWheel.Core.Wheel;
 
 namespace DropWheel.Core.Tools;
 
 /// <param name="Tools">Every tool that loaded, in folder-name order, so each keeps its place on a wheel without a layout.</param>
 /// <param name="Problems">Every folder with something to report, warnings included; a folder whose tool loaded may be here with a warning.</param>
-public sealed record CatalogSnapshot(IReadOnlyList<ScriptTool> Tools, IReadOnlyList<ToolReadResult> Problems)
+public sealed record CatalogSnapshot(IReadOnlyList<IUserTool> Tools, IReadOnlyList<ToolReadResult> Problems)
 {
     public static CatalogSnapshot Empty { get; } = new([], []);
 }
@@ -24,16 +26,22 @@ public sealed class UserToolCatalog : IDisposable
     private readonly IProcessRunner _runner;
     private readonly CommandResolver _resolver;
     private readonly TimeProvider _time;
+    private readonly IReadOnlyList<IWheelOperation> _builtIns;
+    private readonly ConversionGraph? _graph;
     private readonly Lock _gate = new();
     private FileSystemWatcher? _watcher;
     private ITimer? _debounce;
 
-    public UserToolCatalog(string toolsDirectory, IProcessRunner runner, CommandResolver resolver, TimeProvider? time = null)
+    /// <param name="builtIns">The items a recipe step may name, by id; only these, never another user tool.</param>
+    /// <param name="graph">What a recipe's convert steps run through; without it they fail when run.</param>
+    public UserToolCatalog(string toolsDirectory, IProcessRunner runner, CommandResolver resolver, TimeProvider? time = null, IReadOnlyList<IWheelOperation>? builtIns = null, ConversionGraph? graph = null)
     {
         Directory = toolsDirectory;
         _runner = runner;
         _resolver = resolver;
         _time = time ?? TimeProvider.System;
+        _builtIns = builtIns ?? [];
+        _graph = graph;
     }
 
     public string Directory { get; }
@@ -162,7 +170,7 @@ public sealed class UserToolCatalog : IDisposable
             return CatalogSnapshot.Empty;
         }
 
-        var tools = new List<ScriptTool>();
+        var tools = new List<IUserTool>();
         var problems = new List<ToolReadResult>();
         var seen = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var folder in Folders())
@@ -176,7 +184,9 @@ public sealed class UserToolCatalog : IDisposable
             if (result.Manifest is { } manifest && !result.HasErrors)
             {
                 seen[manifest.Id] = folder;
-                tools.Add(new ScriptTool(manifest, folder, _runner, _resolver, _time));
+                tools.Add(manifest.IsRecipe
+                    ? new RecipeTool(manifest, folder, _builtIns, _graph)
+                    : new ScriptTool(manifest, folder, _runner, _resolver, _time));
             }
 
             Report(result);
@@ -185,7 +195,10 @@ public sealed class UserToolCatalog : IDisposable
         return new(tools, problems);
     }
 
-    /// <summary>The checks only the whole folder can make: duplicate ids, and whether the command can be found.</summary>
+    /// <summary>
+    /// The checks only the whole folder and the running app can make: duplicate ids, whether a script's command
+    /// can be found, and whether a recipe's steps name built-ins that exist and take the options given.
+    /// </summary>
     private ToolReadResult Check(ToolReadResult result, Dictionary<string, string> seen)
     {
         if (result.Manifest is not { } manifest)
@@ -199,17 +212,59 @@ public sealed class UserToolCatalog : IDisposable
             problems.Add(new(ToolProblem.Id, L.T("id 和 {0} 的重复", Path.GetFileName(other))));
         }
 
-        switch (_resolver.Resolve(manifest.Script.Command, result.Folder))
+        if (manifest.Script is { } script)
         {
-            case null:
-                problems.Add(new(ToolProblem.Command, L.T("找不到 {0}；装好或放到 PATH 上以后重新加载", manifest.Script.Command), IsWarning: true));
-                break;
-            case { FellBackToWindowsPowerShell: true }:
-                problems.Add(new(ToolProblem.Command, L.T("没有 pwsh，会用 Windows PowerShell 运行；它的输出不是 UTF-8，中文可能变成乱码"), IsWarning: true));
-                break;
+            switch (_resolver.Resolve(script.Command, result.Folder))
+            {
+                case null:
+                    problems.Add(new(ToolProblem.Command, L.T("找不到 {0}；装好或放到 PATH 上以后重新加载", script.Command), IsWarning: true));
+                    break;
+                case { FellBackToWindowsPowerShell: true }:
+                    problems.Add(new(ToolProblem.Command, L.T("没有 pwsh，会用 Windows PowerShell 运行；它的输出不是 UTF-8，中文可能变成乱码"), IsWarning: true));
+                    break;
+            }
+        }
+
+        for (var i = 0; i < manifest.Steps.Count; i++)
+        {
+            if (manifest.Steps[i].Op is { } op)
+            {
+                CheckStep(i + 1, op, manifest.Steps[i].Options, problems);
+            }
         }
 
         return result with { Problems = problems };
+    }
+
+    private void CheckStep(int number, string op, IReadOnlyDictionary<string, string> options, List<ToolProblem> problems)
+    {
+        var item = _builtIns.FirstOrDefault(b => b.Id == op);
+        if (item is null)
+        {
+            problems.Add(new(ToolProblem.Steps, L.T("第 {0} 步：没有叫 {1} 的内置项能放进配方", number, op)));
+            return;
+        }
+
+        if (!item.IsRecipeStep)
+        {
+            problems.Add(new(ToolProblem.Steps, L.T("第 {0} 步：{1} 要问用户或者不产生文件，配方里用不了", number, op)));
+            return;
+        }
+
+        foreach (var (name, value) in options)
+        {
+            var spec = item.Options.FirstOrDefault(o => o.Name == name);
+            if (spec is null)
+            {
+                problems.Add(new(ToolProblem.Steps, item.Options.Count == 0
+                    ? L.T("第 {0} 步：{1} 没有选项", number, op)
+                    : L.T("第 {0} 步：{1} 没有 {2} 这个选项；有的是 {3}", number, op, name, string.Join(' ', item.Options.Select(o => o.Name)))));
+            }
+            else if (!spec.Accepts(value))
+            {
+                problems.Add(new(ToolProblem.Steps, L.T("第 {0} 步：{1} 的 {2} 要是 {3}", number, op, name, spec.Expected)));
+            }
+        }
     }
 
     /// <summary>Writes the folder's .problems.json, or removes it when there is nothing to say; never for a folder with no tool.json.</summary>

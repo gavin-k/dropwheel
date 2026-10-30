@@ -313,4 +313,33 @@ public sealed class ImageToolTests : IDisposable
         tool.AppliesTo(MediaKind.Pdf).Should().BeFalse();
         tool.Mode.Should().Be(WheelMode.Tools);
     }
+
+    private static Task<ConversionResult> RunWith(IWheelOperation tool, string source, string option, string value) =>
+        tool.RunAsync(new([source], tool.Id, "", new Dictionary<string, string> { [option] = value }), new InlineProgress(_ => { }), CancellationToken.None);
+
+    [Fact]
+    public async Task A_recipe_may_set_the_quality_the_percent_and_the_turn()
+    {
+        var noisy = Sample("noise.jpg", 400, 300, image => image.AddNoise(NoiseType.Gaussian), quality: 97);
+
+        var compressed = await RunWith(new CompressImageTool(), noisy, CompressImageTool.QualityOption, "50");
+        var shrunk = await RunWith(new HalfSizeTool(), Sample("shot.png"), HalfSizeTool.PercentOption, "25");
+        var turned = await RunWith(new RotateRightTool(), Sample("turn.png"), RotateRightTool.DegreesOption, "180");
+
+        using var quality = new MagickImage(compressed.OutputPaths.Single());
+        quality.Quality.Should().Be(50);
+        shrunk.OutputPaths.Should().Equal(Path.Combine(_dir, "shot-16x12.png"));
+        using var half = new MagickImage(turned.OutputPaths.Single());
+        (half.Width, half.Height).Should().Be((64u, 48u));
+        half.GetPixels().GetPixel(10, 24).ToColor()!.Should().Be(MagickColors.Blue, "180 degrees swaps the halves");
+    }
+
+    [Fact]
+    public void The_options_a_recipe_can_set_are_declared_and_bounded()
+    {
+        new CompressImageTool().Options.Should().ContainSingle().Which.Should().Match<OptionSpec>(o => o.Name == "quality" && o.Accepts("1") && o.Accepts("100") && !o.Accepts("0") && !o.Accepts("high"));
+        new HalfSizeTool().Options.Should().ContainSingle().Which.Should().Match<OptionSpec>(o => o.Name == "percent" && o.Accepts("50") && !o.Accepts("101"));
+        new RotateRightTool().Options.Should().ContainSingle().Which.Should().Match<OptionSpec>(o => o.Name == "degrees" && o.Accepts("270") && !o.Accepts("45") && o.Expected == "90 / 180 / 270");
+        new StripMetadataTool().Options.Should().BeEmpty();
+    }
 }

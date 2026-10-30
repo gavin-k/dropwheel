@@ -35,4 +35,16 @@ public interface IWheelOperation : IJobRunner
     /// as trusted before it runs, which changes when the code it runs does. Null for a built-in item.
     /// </summary>
     string? TrustKey => null;
+
+    /// <summary>The options a recipe step may set on this item; none by default.</summary>
+    IReadOnlyList<OptionSpec> Options => [];
+
+    /// <summary>
+    /// Whether a recipe may run this item as a step: it must produce files from files without asking the user.
+    /// Tools do; actions do not, except the ones that say so. A user tool never is, so recipes stay built-ins only.
+    /// </summary>
+    bool IsRecipeStep => Mode == WheelMode.Tools;
+
+    /// <summary>Whether it takes every dragged item as one run (merge, zip) rather than one run per item.</summary>
+    bool WorksOnBatch => false;
 }

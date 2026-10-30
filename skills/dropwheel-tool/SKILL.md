@@ -5,17 +5,52 @@ description: Build a DropWheel tool from a one-line request. Use when the user w
 
 # DropWheel tool
 
-DropWheel is a Windows app: drag a file, tap a modifier key, a 6-sector wheel appears, drop on a sector. Three wheels: Convert (Shift), **Tools** (Ctrl+Alt) and **Actions** (Win). A user tool is a folder with a `tool.json` and a script. DropWheel watches the tools folder and loads new tools while it runs. Nothing here needs network access, and DropWheel never calls a model; **you** are the AI.
+DropWheel is a Windows app: drag a file, tap a modifier key, a 6-sector wheel appears, drop on a sector. Three wheels: Convert (Shift), **Tools** (Ctrl+Alt) and **Actions** (Win). A user tool is a folder with a `tool.json`: either a **recipe** (built-in items run in turn, no code) or a **script** (pwsh / python / exe). DropWheel watches the tools folder and loads new tools while it runs. Nothing here needs network access, and DropWheel never calls a model; **you** are the AI.
 
 ## Workflow
 
-1. **Pin down three things** before writing anything: what the script does to one file, which wheel it belongs on (`tools` for transformations that produce a file, `actions` for things like moving, tagging, uploading), and which kinds of file it applies to. Ask only when the request leaves one of these open.
-2. **Write the folder** `%LOCALAPPDATA%\DropWheel\tools\<slug>\` with `tool.json` and the script. One tool per folder, no nesting, no leading dot. Use the slug from the id (`user.strip-exif` → folder `strip-exif`). If DropWheel runs with `--data-dir <dir>`, the folder is `<dir>\tools\<slug>\` instead.
-3. **Validate**: run `DropWheel.exe --validate-tool "<folder>"` (see *Finding DropWheel.exe*). It prints JSON with `problems`; exit code 0 means clean, 1 means at least one error, 2 means usage. Fix every entry whose `isWarning` is not `true`, then run it again. A warning about a missing command means the interpreter is not on PATH: tell the user, or write the absolute path into `command`.
-4. **Tell the user** that the tool is now on the wheel but greyed out: script tools run only after the user opens **Settings › 我的工具 (My tools)**, reads the command line shown there and turns on **允许运行 (Allow to run)**. Changing `command` or `args` later turns it off again until they re-enable it. Do not try to work around this.
-5. Only if asked, edit `layout.json` to move or group items (see *Layout*).
+1. **Pin down three things** before writing anything: what the tool does to one file, which wheel it belongs on (`tools` for transformations that produce a file, `actions` for things like moving, tagging, uploading), and which kinds of file it applies to. Ask only when the request leaves one of these open.
+2. **Recipe first.** If the job is a chain of what DropWheel already does (convert, compress, resize, rotate, strip metadata, merge PDFs, zip), write a recipe (see *Recipes*): no code, nothing to enable, undo and naming as for the built-ins. Write a script only for what the built-ins cannot do.
+3. **Write the folder** `%LOCALAPPDATA%\DropWheel\tools\<slug>\` with `tool.json` and the script. One tool per folder, no nesting, no leading dot. Use the slug from the id (`user.strip-exif` → folder `strip-exif`). If DropWheel runs with `--data-dir <dir>`, the folder is `<dir>\tools\<slug>\` instead.
+4. **Validate**: run `DropWheel.exe --validate-tool "<folder>"` (see *Finding DropWheel.exe*). It prints JSON with `problems`; exit code 0 means clean, 1 means at least one error, 2 means usage. Fix every entry whose `isWarning` is not `true`, then run it again. A warning about a missing command means the interpreter is not on PATH: tell the user, or write the absolute path into `command`.
+5. **Tell the user** where the tool is. A recipe is usable at once. A script tool is on the wheel but greyed out: script tools run only after the user opens **Settings › 我的工具 (My tools)**, reads the command line shown there and turns on **允许运行 (Allow to run)**. Changing `command` or `args` later turns it off again until they re-enable it. Do not try to work around this.
+6. Only if asked, edit `layout.json` to move or group items (see *Layout*).
 
-Prefer the built-in wheel items when one already does the job (compress image, resize, merge/split PDF, OCR, compress video, extract audio, unzip; copy path, move to, rename, zip). A user tool is for what DropWheel cannot do itself.
+Prefer the built-in wheel items when one already does the job (compress image, resize, merge/split PDF, OCR, compress video, extract audio, unzip; copy path, move to, rename, zip), a recipe when several of them in a row do it, and a script only for what DropWheel cannot do itself.
+
+## Recipes
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/gavin-k/dropwheel/main/docs/tool-manifest.schema.json",
+  "schema": 1,
+  "id": "user.web-jpg",
+  "name": { "zh": "发网上", "en": "Web JPG" },
+  "hint": { "zh": "缩到一半、转成 JPG、压到 70", "en": "Half size, JPG, quality 70" },
+  "wheel": "tools",
+  "appliesTo": ["image"],
+  "kind": "recipe",
+  "steps": [
+    { "op": "tool.half-size" },
+    { "convert": "jpg" },
+    { "op": "tool.compress-image", "options": { "quality": 70 } }
+  ]
+}
+```
+
+`steps` runs in order; each step's outputs are the next step's inputs. A step is either `{ "op": "<built-in id>", "options": { ... } }` or `{ "convert": "<extension>" }` (a target of the Convert wheel, such as `jpg`, `png`, `webp`, `pdf`, `mp3`; it takes no options). Steps run per file; `tool.combine-pdf`, `tool.merge-pdf` and `action.zip` take all files at once and produce one. A step that writes nothing for a file (compress found it small enough already) passes the file on unchanged. Only the last step writes where the user's outputs go, so naming, duplicate handling, undo and cancel are the last step's; earlier outputs live in a hidden temporary folder that is removed afterwards. Each step's suffix stays in the name: the recipe above writes `photo-600x400-压缩.jpg`.
+
+Steps are built-ins only: no `user.*` ids, no scripts, no recipes inside recipes. Set `appliesTo` whenever the first step is `convert` (otherwise it is taken from the first step). `undo: "none"` turns undo off for the last step's outputs.
+
+Built-ins that take `options`:
+
+| Step | Option | Values |
+|---|---|---|
+| `tool.compress-image` | `quality` | 1 to 100; JPEG and WebP only, never above the source's own quality. Default 80. |
+| `tool.half-size` | `percent` | 1 to 100, of the side length. Default 50. |
+| `tool.rotate-right` | `degrees` | `90`, `180` or `270` clockwise. Default 90. |
+
+Every other built-in takes none; `--validate-tool` rejects unknown options and out-of-range values. Items that ask the user something (`action.move-to`, `action.copy-to`, `action.rename`), only show something (`action.copy-path`) or delete (`action.recycle`) are not steps. `tool.extract` and `tool.split-pdf` write a folder, which no later step reads, so they can only come last. `--validate-tool` checks the first convert step's format and every `op`; whether a convert step's engine exists for the files actually dropped is found out when it runs.
 
 ## tool.json
 
@@ -50,7 +85,8 @@ Prefer the built-in wheel items when one already does the job (compress image, r
 | `icon` | no | A [Segoe Fluent Icons](https://learn.microsoft.com/windows/apps/design/style/segoe-fluent-icons-font) code point, written as `E7A7`, `U+E7A7` or `\uE7A7`, drawn above the name on the sector. Pick one from the font's list, such as `E8C8` (Copy), `E7AD` (Rotate), `E8FE` (Scan), `EA90` (PDF), `E898` (Upload). Anything else is a warning and the sector shows no icon. |
 | `wheel` | yes | `tools` or `actions`. |
 | `appliesTo` | no | Array of `image`, `video`, `audio`, `pdf`, `document` (DOCX), `slides` (PPTX), `sheet` (XLSX/CSV), `subtitle`, `archive`. Omit or `null` = every kind, including unknown files and folders. |
-| `kind` | no | Only `script` for now. |
+| `kind` | no | `script` (default) or `recipe`. A recipe has `steps` and no `script`; a script has `script` and no `steps`. |
+| `steps` | recipe | See *Recipes*. |
 | `script.command` | yes | Absolute path, a path relative to the tool folder, or a bare name looked up in the tool folder and then PATH (with PATHEXT, so `python` finds `python.exe`). `pwsh` falls back to Windows PowerShell 5.1 with a warning (see *Encoding*). |
 | `script.args` | yes | Array of strings. Each argument is passed as is, no shell, no quoting needed, even with spaces. Placeholders below. |
 | `script.perFile` | no | Default `true`: the script runs once per dropped item with `{input}`. `false`: it runs once with all items, and must use `{inputs}`. |
@@ -120,13 +156,14 @@ A script tool is another process on the user's machine, started with the user's 
 
 ## Examples
 
-Two working tools live beside this file under `examples/`: `hello-pwsh` (copies an image with a `-copy` suffix, reports progress) and `hello-python` (writes a `-info.txt` next to any file). Copy one, rename the id, folder and script, keep the UTF-8 line of the PowerShell script.
+Three working tools live beside this file under `examples/`: `recipe-web-jpg` (a recipe: half size, JPG, quality 70), `hello-pwsh` (a script that copies an image with a `-copy` suffix and reports progress) and `hello-python` (a script that writes a `-info.txt` next to any file). Copy one, rename the id, folder and script, keep the UTF-8 line of the PowerShell script.
 
 ## Checklist before you say "done"
 
 - `--validate-tool` exit code 0, no non-warning problems.
 - `id` is unique, `name.zh` present.
-- Output goes to `{output}` only; nothing else is created beside the input.
+- A recipe wherever the built-ins can do the job; a script only otherwise.
+- Script: output goes to `{output}` only; nothing else is created beside the input.
 - `undo: "none"` if the input is modified or deleted.
 - PowerShell: first statement sets UTF-8 output.
-- Told the user to enable the tool in Settings › 我的工具, and on which wheel (Ctrl+Alt or Win) it appears.
+- Told the user on which wheel (Ctrl+Alt or Win) it appears, and for a script tool, to enable it in Settings › 我的工具.

@@ -4,8 +4,11 @@
   "title": "DropWheel tool manifest",
   "description": "tool.json for a user tool in %LOCALAPPDATA%\\DropWheel\\tools\\<slug>\\. See skills/dropwheel-tool/SKILL.md and docs/adr/0005-user-tools-manifest-and-trust.md.",
   "type": "object",
-  "required": ["schema", "id", "name", "wheel", "script"],
+  "required": ["schema", "id", "name", "wheel"],
   "additionalProperties": true,
+  "if": { "properties": { "kind": { "const": "recipe" } }, "required": ["kind"] },
+  "then": { "required": ["steps"], "not": { "required": ["script"] } },
+  "else": { "required": ["script"], "not": { "required": ["steps"] } },
   "properties": {
     "$schema": { "type": "string" },
     "schema": { "const": 1 },
@@ -24,7 +27,13 @@
       "items": { "enum": ["image", "video", "audio", "pdf", "document", "slides", "sheet", "subtitle", "archive"] },
       "description": "Omit or null for every kind of file, including unknown files and folders."
     },
-    "kind": { "enum": ["script"], "default": "script" },
+    "kind": { "enum": ["script", "recipe"], "default": "script", "description": "script runs a process; recipe runs built-in items in turn and needs steps instead of script." },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/step" },
+      "description": "Recipe only. Each step's outputs are the next step's inputs; only the last step writes where the user's outputs go."
+    },
     "script": {
       "type": "object",
       "required": ["command", "args"],
@@ -70,6 +79,28 @@
     "undo": { "enum": ["recycle", "none"], "default": "recycle" }
   },
   "$defs": {
+    "step": {
+      "type": "object",
+      "additionalProperties": true,
+      "oneOf": [{ "required": ["op"] }, { "required": ["convert"] }],
+      "properties": {
+        "op": {
+          "type": "string",
+          "pattern": "^(tool|action)\\.[a-z0-9-]+$",
+          "description": "A built-in item that writes files without asking: tool.compress-image, tool.half-size, tool.rotate-right, tool.strip-metadata, tool.combine-pdf, tool.merge-pdf, tool.split-pdf, tool.ocr, tool.compress-video, tool.extract-audio, tool.mute, tool.extract, action.zip. Never user.* nor another recipe."
+        },
+        "convert": {
+          "type": "string",
+          "pattern": "^\\.?[A-Za-z0-9]+$",
+          "description": "A target of the Convert wheel by extension, such as jpg or pdf. Takes no options; set appliesTo when it is the first step."
+        },
+        "options": {
+          "type": "object",
+          "additionalProperties": { "type": ["string", "number", "boolean"] },
+          "description": "Only with op. compress-image: quality 1..100; half-size: percent 1..100; rotate-right: degrees 90 / 180 / 270. Others take none."
+        }
+      }
+    },
     "text": {
       "oneOf": [
         { "type": "string", "minLength": 1 },

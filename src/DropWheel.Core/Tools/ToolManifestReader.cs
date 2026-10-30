@@ -91,13 +91,38 @@ public static partial class ToolManifestReader
 
         var appliesTo = Kinds(root, problems);
 
-        var kind = String(root, "kind", problems, ToolProblem.Kind, required: false) ?? "script";
-        if (kind != "script")
+        var kind = String(root, "kind", problems, ToolProblem.Kind, required: false) ?? ToolManifest.ScriptKind;
+        if (kind is not (ToolManifest.ScriptKind or ToolManifest.RecipeKind))
         {
-            problems.Add(new(ToolProblem.Kind, L.T("kind 目前只支持 script")));
+            problems.Add(new(ToolProblem.Kind, L.T("kind 只能是 script 或 recipe")));
+            kind = ToolManifest.ScriptKind;
         }
 
-        var script = Script(root, problems);
+        ScriptSpec? script = null;
+        List<RecipeStep> steps = [];
+        if (kind == ToolManifest.RecipeKind)
+        {
+            if (root.TryGetProperty("script", out _))
+            {
+                problems.Add(new(ToolProblem.Command, L.T("recipe 不运行脚本，去掉 script 或者把 kind 改成 script")));
+            }
+
+            steps = Steps(root, problems);
+            if (steps.Count > 0 && steps[0].IsConvert && appliesTo is null)
+            {
+                problems.Add(new(ToolProblem.AppliesTo, L.T("第一步是转换时要写 appliesTo，轮盘才知道给哪类文件显示")));
+            }
+        }
+        else
+        {
+            if (root.TryGetProperty("steps", out _))
+            {
+                problems.Add(new(ToolProblem.Steps, L.T("script 没有 steps；要按步骤运行内置项就把 kind 改成 recipe")));
+            }
+
+            script = Script(root, problems);
+        }
+
         var placement = Placement(root, problems);
 
         var undo = String(root, "undo", problems, ToolProblem.Undo, required: false) ?? "recycle";
@@ -106,7 +131,99 @@ public static partial class ToolManifestReader
             problems.Add(new(ToolProblem.Undo, L.T("undo 只能是 recycle 或 none")));
         }
 
-        return new(schema, id, name, hint, icon, wheel, appliesTo, kind, script, placement, undo);
+        return new(schema, id, name, hint, icon, wheel, appliesTo, kind, script, placement, undo) { Steps = steps };
+    }
+
+    /// <summary>
+    /// A recipe's steps. Only what the file alone can tell is checked here: shape, that an op id is a built-in's,
+    /// that a convert names a format that can be written. Whether the built-in exists and takes the options is
+    /// the catalog's check, against the items it was given.
+    /// </summary>
+    private static List<RecipeStep> Steps(JsonElement root, List<ToolProblem> problems)
+    {
+        if (!root.TryGetProperty("steps", out var element) || element.ValueKind != JsonValueKind.Array || element.GetArrayLength() == 0)
+        {
+            problems.Add(new(ToolProblem.Steps, L.T("recipe 要有 steps：至少一步的数组")));
+            return [];
+        }
+
+        var steps = new List<RecipeStep>();
+        var index = 0;
+        foreach (var item in element.EnumerateArray())
+        {
+            index++;
+            if (item.ValueKind != JsonValueKind.Object)
+            {
+                problems.Add(new(ToolProblem.Steps, L.T("第 {0} 步必须是对象", index)));
+                continue;
+            }
+
+            var op = String(item, "op", problems, ToolProblem.Steps, required: false);
+            var convert = String(item, "convert", problems, ToolProblem.Steps, required: false)?.TrimStart('.').ToLowerInvariant();
+            if ((op is null) == (convert is null))
+            {
+                problems.Add(new(ToolProblem.Steps, L.T("第 {0} 步要有 op 或 convert 中的一个", index)));
+                continue;
+            }
+
+            if (op is not null && !StepIdPattern().IsMatch(op))
+            {
+                problems.Add(new(ToolProblem.Steps, op.StartsWith("user.", StringComparison.Ordinal)
+                    ? L.T("第 {0} 步：配方只能用内置项，不能用别的用户工具 {1}", index, op)
+                    : L.T("第 {0} 步：op 要是内置项的 id，例如 tool.compress-image", index)));
+            }
+
+            if (convert is not null)
+            {
+                var format = FormatRegistry.FromExtension(convert);
+                if (format is null)
+                {
+                    problems.Add(new(ToolProblem.Steps, L.T("第 {0} 步：不认识的格式 {1}", index, convert)));
+                }
+                else if (!format.CanOutput)
+                {
+                    problems.Add(new(ToolProblem.Steps, L.T("第 {0} 步：{1} 只能读不能写", index, format.DisplayName)));
+                }
+            }
+
+            var options = new Dictionary<string, string>(StringComparer.Ordinal);
+            if (item.TryGetProperty("options", out var optionsElement) && optionsElement.ValueKind != JsonValueKind.Null)
+            {
+                if (convert is not null)
+                {
+                    problems.Add(new(ToolProblem.Steps, L.T("第 {0} 步：转换步骤现在不带选项", index)));
+                }
+                else if (optionsElement.ValueKind != JsonValueKind.Object)
+                {
+                    problems.Add(new(ToolProblem.Steps, L.T("第 {0} 步：options 必须是对象", index)));
+                }
+                else
+                {
+                    foreach (var option in optionsElement.EnumerateObject())
+                    {
+                        var value = option.Value.ValueKind switch
+                        {
+                            JsonValueKind.String => option.Value.GetString(),
+                            JsonValueKind.Number => option.Value.GetRawText(),
+                            JsonValueKind.True => "true",
+                            JsonValueKind.False => "false",
+                            _ => null,
+                        };
+                        if (value is null)
+                        {
+                            problems.Add(new(ToolProblem.Steps, L.T("第 {0} 步：选项 {1} 要是文字、数字或 true / false", index, option.Name)));
+                            continue;
+                        }
+
+                        options[option.Name] = value;
+                    }
+                }
+            }
+
+            steps.Add(new(op, convert, options));
+        }
+
+        return steps;
     }
 
     private static ScriptSpec Script(JsonElement root, List<ToolProblem> problems)
@@ -351,6 +468,9 @@ public static partial class ToolManifestReader
 
     [GeneratedRegex(@"^user\.[a-z0-9-]+$")]
     private static partial Regex IdPattern();
+
+    [GeneratedRegex(@"^(tool|action)\.[a-z0-9-]+$")]
+    private static partial Regex StepIdPattern();
 
     [GeneratedRegex(@"\{([A-Za-z]+)\}")]
     private static partial Regex PlaceholderPattern();

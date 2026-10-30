@@ -26,6 +26,8 @@ public sealed class CombinePdfTool(TimeProvider? time = null) : IWheelOperation
 
     public bool AppliesTo(MediaKind kind) => kind == MediaKind.Image;
 
+    public bool WorksOnBatch => true;
+
     public Availability Check(ConversionRequest request)
     {
         if (request.SourcePaths.Count < 2)

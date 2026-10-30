@@ -3,10 +3,10 @@ using System.Text.Json.Serialization;
 namespace DropWheel.Core.Tools;
 
 /// <summary>One tool folder as the problems file and the command line report it.</summary>
-public sealed record ToolReport(string Folder, string? Id, string? Name, string? Wheel, IReadOnlyList<ToolProblem> Problems)
+public sealed record ToolReport(string Folder, string? Id, string? Name, string? Wheel, string? Kind, IReadOnlyList<ToolProblem> Problems)
 {
     public static ToolReport From(ToolReadResult result) =>
-        new(result.Folder, result.Manifest?.Id, result.Manifest?.Name.Zh, result.Manifest?.Wheel.ToString().ToLowerInvariant(), result.Problems);
+        new(result.Folder, result.Manifest?.Id, result.Manifest?.Name.Zh, result.Manifest?.Wheel.ToString().ToLowerInvariant(), result.Manifest?.Kind, result.Problems);
 
     [JsonIgnore]
     public bool HasErrors => Problems.Any(p => !p.IsWarning);

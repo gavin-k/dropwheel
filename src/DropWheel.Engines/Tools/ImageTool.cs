@@ -25,6 +25,9 @@ public abstract class ImageTool(TimeProvider? time) : IWheelOperation
 
     public abstract string? Glyph { get; }
 
+    /// <summary>The options a recipe step may set; see <see cref="OptionSpec"/>.</summary>
+    public virtual IReadOnlyList<OptionSpec> Options => [];
+
     /// <summary>The formats it reads and writes back.</summary>
     protected abstract IReadOnlyCollection<string> Formats { get; }
 
@@ -68,7 +71,7 @@ public abstract class ImageTool(TimeProvider? time) : IWheelOperation
                 Rendered? rendered;
                 try
                 {
-                    rendered = Render(source, formatId);
+                    rendered = Render(source, formatId, request);
                 }
                 catch (Exception ex) when (ex is MagickException or InvalidDataException)
                 {
@@ -102,8 +105,8 @@ public abstract class ImageTool(TimeProvider? time) : IWheelOperation
         }
     }
 
-    /// <summary>The new file, or null when it would be no different from the source.</summary>
-    protected abstract Rendered? Render(string source, string formatId);
+    /// <summary>The new file, or null when it would be no different from the source; <paramref name="request"/> carries a recipe step's options.</summary>
+    protected abstract Rendered? Render(string source, string formatId, ConversionRequest request);
 
     /// <summary>
     /// Why a format is not covered, for a reason more useful than "不支持": by default, for an image the wheel

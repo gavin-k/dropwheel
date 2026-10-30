@@ -20,6 +20,7 @@ public sealed record ToolProblem(string Code, string Message, bool IsWarning = f
     public const string Timeout = "timeout";
     public const string Placement = "placement";
     public const string Undo = "undo";
+    public const string Steps = "steps";
 }
 
 /// <summary>What reading one tool folder gave: a manifest when there was no error, and every problem found.</summary>

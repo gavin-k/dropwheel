@@ -1,5 +1,7 @@
+using DropWheel.Core.Actions;
 using DropWheel.Core.Conversion;
 using DropWheel.Core.Settings;
+using DropWheel.Core.Tools;
 using DropWheel.Core.Wheel;
 using DropWheel.Engines.Archive;
 using DropWheel.Engines.Media;
@@ -65,5 +67,37 @@ public sealed class EngineToolsTests
 
         public Task<IReadOnlyList<IReadOnlyList<string>>> ReadAsync(byte[] bgra, int width, int height, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<IReadOnlyList<string>>>([]);
+    }
+
+    [Fact]
+    public void The_example_recipes_validate_against_the_real_built_ins()
+    {
+        var root = Root();
+        IReadOnlyList<IWheelOperation> builtIns = [.. EngineTools.Create(new SharpCompressArchiveConverter(), new FfmpegConverter(), recognizer: new NoText()), new CompressZipAction()];
+        var catalog = new UserToolCatalog(Path.Combine(root, "skills", "dropwheel-tool", "examples"), new NoProcess(), new CommandResolver(File.Exists, [], []), builtIns: builtIns);
+
+        var recipes = Directory.GetDirectories(Path.Combine(root, "skills", "dropwheel-tool", "examples")).Select(catalog.Validate).Where(r => r.Manifest?.IsRecipe == true).ToList();
+
+        recipes.Should().NotBeEmpty();
+        recipes.Should().OnlyContain(r => !r.HasErrors, string.Join("; ", recipes.SelectMany(r => r.Problems).Select(p => p.Message)));
+        builtIns.Where(t => t.IsRecipeStep).Select(t => t.Id).Should().Contain("tool.compress-image").And.Contain("action.zip");
+    }
+
+    private sealed class NoProcess : IProcessRunner
+    {
+        public Task<ProcessOutcome> RunAsync(ProcessStart start, Action<string>? onStdoutLine, CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
+
+    private static string Root()
+    {
+        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
+        {
+            if (File.Exists(Path.Combine(dir.FullName, "DropWheel.slnx")))
+            {
+                return dir.FullName;
+            }
+        }
+
+        throw new InvalidOperationException("repository root not found");
     }
 }

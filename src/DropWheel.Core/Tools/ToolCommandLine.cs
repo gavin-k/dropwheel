@@ -1,4 +1,6 @@
 using System.Text.Json;
+using DropWheel.Core.Conversion;
+using DropWheel.Core.Wheel;
 
 namespace DropWheel.Core.Tools;
 
@@ -15,9 +17,10 @@ public static class ToolCommandLine
 
     public static bool Handles(IReadOnlyList<string> args) => args.Contains(Validate) || args.Contains(List);
 
-    public static int Run(IReadOnlyList<string> args, string toolsDirectory, IProcessRunner runner, CommandResolver resolver, TextWriter output)
+    /// <param name="builtIns">The items a recipe step may name; a recipe is an error without them.</param>
+    public static int Run(IReadOnlyList<string> args, string toolsDirectory, IProcessRunner runner, CommandResolver resolver, TextWriter output, IReadOnlyList<IWheelOperation>? builtIns = null, ConversionGraph? graph = null)
     {
-        var catalog = new UserToolCatalog(toolsDirectory, runner, resolver);
+        var catalog = new UserToolCatalog(toolsDirectory, runner, resolver, builtIns: builtIns, graph: graph);
         if (args.Contains(List))
         {
             var listing = catalog.Inspect();

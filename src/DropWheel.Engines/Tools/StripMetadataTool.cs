@@ -20,6 +20,6 @@ public sealed class StripMetadataTool(TimeProvider? time = null) : ImageTool(tim
 
     protected override string Unchanged => L.T("没有可去除的元数据");
 
-    protected override Rendered? Render(string source, string formatId) =>
+    protected override Rendered? Render(string source, string formatId, Core.Conversion.ConversionRequest request) =>
         ImageMetadata.Strip(File.ReadAllBytes(source), formatId) is { } data ? new(data) : null;
 }

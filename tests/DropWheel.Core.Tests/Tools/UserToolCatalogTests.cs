@@ -1,4 +1,7 @@
+using DropWheel.Core.Conversion;
+using DropWheel.Core.Tests.Wheel;
 using DropWheel.Core.Tools;
+using DropWheel.Core.Wheel;
 using FluentAssertions;
 
 namespace DropWheel.Core.Tests.Tools;
@@ -16,7 +19,17 @@ public sealed class UserToolCatalogTests : IDisposable
 
     public void Dispose() => Directory.Delete(_dir, recursive: true);
 
-    private UserToolCatalog Catalog() => new(_dir, new FakeProcessRunner(), new CommandResolver(File.Exists, [_bin], []));
+    private UserToolCatalog Catalog(IReadOnlyList<IWheelOperation>? builtIns = null) => new(_dir, new FakeProcessRunner(), new CommandResolver(File.Exists, [_bin], []), builtIns: builtIns);
+
+    private static string Recipe(string steps) =>
+        $$"""{ "schema": 1, "id": "user.r", "name": "配方", "wheel": "tools", "kind": "recipe", "steps": [ {{steps}} ] }""";
+
+    private static readonly IReadOnlyList<IWheelOperation> BuiltIns =
+    [
+        new FakeOperation("tool.shrink", WheelMode.Tools, [MediaKind.Image]) { Options = [OptionSpec.Range("percent", "", 1, 100), OptionSpec.OneOf("fit", "", "in", "out")] },
+        new FakeOperation("tool.plain", WheelMode.Tools, null),
+        new FakeOperation("action.ask", WheelMode.Actions, null),
+    ];
 
     private string Folder(string name, string? manifest)
     {
@@ -157,5 +170,56 @@ public sealed class UserToolCatalogTests : IDisposable
         catalog.Watch();
 
         Directory.Exists(folder).Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_recipe_loads_as_a_tool_that_needs_no_trust_and_takes_its_kinds_from_its_first_step()
+    {
+        Folder("r", Recipe("""{ "op": "tool.shrink", "options": { "percent": 30, "fit": "in" } }, { "op": "tool.plain" }"""));
+
+        var snapshot = Catalog(BuiltIns).Reload();
+
+        snapshot.Problems.Should().BeEmpty();
+        var tool = snapshot.Tools.Should().ContainSingle().Which.Should().BeOfType<RecipeTool>().Subject;
+        ((IWheelOperation)tool).TrustKey.Should().BeNull();
+        tool.IsRecipeStep.Should().BeFalse();
+        tool.AppliesTo(MediaKind.Image).Should().BeTrue();
+        tool.AppliesTo(MediaKind.Video).Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_recipe_step_must_name_a_built_in_that_can_be_a_step()
+    {
+        Folder("r", Recipe("""{ "op": "tool.nope" }, { "op": "action.ask" }"""));
+
+        var problems = Catalog(BuiltIns).Reload().Problems.Should().ContainSingle().Which.Problems;
+
+        problems.Should().HaveCount(2).And.OnlyContain(p => p.Code == ToolProblem.Steps && !p.IsWarning);
+        problems[0].Message.Should().Contain("第 1 步").And.Contain("tool.nope");
+        problems[1].Message.Should().Contain("第 2 步").And.Contain("action.ask");
+        File.Exists(Path.Combine(_dir, "r", UserToolCatalog.ProblemsFile)).Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_recipe_without_built_ins_to_check_against_is_an_error_not_a_crash()
+    {
+        Folder("r", Recipe("""{ "op": "tool.shrink" }"""));
+
+        Catalog().Reload().Problems.Should().ContainSingle().Which.Problems.Should().ContainSingle().Which.Code.Should().Be(ToolProblem.Steps);
+    }
+
+    [Fact]
+    public void Step_options_are_checked_against_what_the_built_in_takes()
+    {
+        Folder("r", Recipe("""{ "op": "tool.shrink", "options": { "percent": 0, "fit": "sideways", "speed": 1 } }, { "op": "tool.plain", "options": { "x": 1 } }"""));
+
+        var problems = Catalog(BuiltIns).Reload().Problems.Should().ContainSingle().Which.Problems;
+
+        problems.Should().HaveCount(4).And.OnlyContain(p => p.Code == ToolProblem.Steps);
+        problems.Select(p => p.Message).Should().SatisfyRespectively(
+            m => m.Should().Contain("percent").And.Contain("1..100"),
+            m => m.Should().Contain("fit").And.Contain("in / out"),
+            m => m.Should().Contain("speed").And.Contain("percent fit"),
+            m => m.Should().Contain("tool.plain").And.Contain("没有选项"));
     }
 }

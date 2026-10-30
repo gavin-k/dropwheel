@@ -10,13 +10,13 @@ namespace DropWheel.Core.Tools;
 /// the file into place through <see cref="OutputFiles"/>, so naming, conflicts, rollback and undo work as for any
 /// engine; the script never names its own output. Stateless, as the queue reuses the instance for retries.
 /// </summary>
-public sealed class ScriptTool(ToolManifest manifest, string folder, IProcessRunner runner, CommandResolver resolver, TimeProvider? time = null) : IWheelOperation
+public sealed class ScriptTool(ToolManifest manifest, string folder, IProcessRunner runner, CommandResolver resolver, TimeProvider? time = null) : IUserTool
 {
     private readonly TimeProvider _time = time ?? TimeProvider.System;
+    private readonly ScriptSpec _script = manifest.Script ?? throw new ArgumentException("A script tool needs a script.", nameof(manifest));
 
     public ToolManifest Manifest { get; } = manifest;
 
-    /// <summary>The tool's folder, holding tool.json and whatever the script needs.</summary>
     public string Folder { get; } = folder;
 
     public string Id => Manifest.Id;
@@ -27,29 +27,35 @@ public sealed class ScriptTool(ToolManifest manifest, string folder, IProcessRun
 
     public string Hint => Manifest.Hint.Pick();
 
-    public string? TrustKey => ToolManifestReader.CommandHash(Manifest.Script);
+    /// <summary>What the script runs, never null: the constructor refuses a manifest without one.</summary>
+    public ScriptSpec Script => _script;
+
+    public string? TrustKey => ToolManifestReader.CommandHash(_script);
 
     public JobLane Lane => JobLane.Script;
+
+    /// <summary>A script never runs inside a recipe: a recipe is the safe kind of tool, and this is the other kind.</summary>
+    public bool IsRecipeStep => false;
 
     public string? Glyph => Glyphs.Parse(Manifest.Icon);
 
     public bool AppliesTo(MediaKind kind) => Manifest.AppliesToKind(kind);
 
     /// <summary>The command's path, or null when it cannot be found; a few file-exists calls, cheap enough for every wheel open.</summary>
-    public CommandResolution? Command => resolver.Resolve(Manifest.Script.Command, Folder);
+    public CommandResolution? Command => resolver.Resolve(_script.Command, Folder);
 
     public Availability Check(ConversionRequest request) => Command is null
-        ? Availability.Unavailable(L.T("找不到 {0}", Manifest.Script.Command)) with { Cause = UnavailableCause.MissingOptionalModule }
+        ? Availability.Unavailable(L.T("找不到 {0}", _script.Command)) with { Cause = UnavailableCause.MissingOptionalModule }
         : Availability.Available;
 
     public async Task<ConversionResult> RunAsync(ConversionRequest request, IProgress<double> progress, CancellationToken cancellationToken)
     {
         if (Command is not { } command)
         {
-            return new(false, [], L.T("找不到 {0}", Manifest.Script.Command));
+            return new(false, [], L.T("找不到 {0}", _script.Command));
         }
 
-        var script = Manifest.Script;
+        var script = _script;
         var detail = new Detail();
         try
         {
@@ -91,7 +97,7 @@ public sealed class ScriptTool(ToolManifest manifest, string folder, IProcessRun
     /// <returns>The written path, or null when the script skipped the item, the conflict policy did, or there is no output.</returns>
     private async Task<string?> RunOneAsync(string executable, ConversionRequest request, IReadOnlyList<string> inputs, string namedAfter, int index, IProgress<double> within, Detail detail, CancellationToken cancellationToken)
     {
-        var output = Manifest.Script.Output;
+        var output = _script.Output;
         if (!output.WritesFile)
         {
             await RunScriptAsync(executable, inputs, null, Path.GetDirectoryName(namedAfter) ?? "", null, within, detail, cancellationToken).ConfigureAwait(false);
@@ -118,7 +124,7 @@ public sealed class ScriptTool(ToolManifest manifest, string folder, IProcessRun
     /// <summary>Has the script write beside <paramref name="temp"/> and moves its file there.</summary>
     private async Task WriteAsync(string executable, IReadOnlyList<string> inputs, string namedAfter, string temp, IProgress<double> within, Detail detail, CancellationToken cancellationToken)
     {
-        var output = Manifest.Script.Output;
+        var output = _script.Output;
         var extension = output.Extension == OutputSpec.Same ? Path.GetExtension(namedAfter).TrimStart('.') : output.Extension;
         {
             // The script's own file lives in a scratch folder beside the target, so the move into place is a rename
@@ -157,7 +163,7 @@ public sealed class ScriptTool(ToolManifest manifest, string folder, IProcessRun
     /// <returns>False when the script said to skip this item.</returns>
     private async Task<bool> RunScriptAsync(string executable, IReadOnlyList<string> inputs, string? output, string outputDir, string? scratch, IProgress<double> within, Detail detail, CancellationToken cancellationToken)
     {
-        var script = Manifest.Script;
+        var script = _script;
         var arguments = new List<string>();
         foreach (var arg in script.Args)
         {

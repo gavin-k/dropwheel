@@ -10,7 +10,9 @@ DropWheel 的差异化方向是「AI 造工具」：用户在自己的 agent（C
 
 - **清单是公开契约，从第一天带版本号。** `tool.json` 的 `schema` 固定为 `1`，JSON Schema 发布在 `docs/tool-manifest.schema.json`（`$id` 以 `/v1` 结尾）。字段增减只能向后兼容；不兼容的改动升 `schema`，旧值继续能读。
 - **id 规则 `user.<slug>`**，并校验它不是任何格式的 id：操作 id 会原样当作任务的 `TargetFormatId` 记录，和内置的 `tool.` / `action.` 前缀一样不能撞上格式表。
-- **工具分两档。** 脚本型（`kind: script`，本 ADR）跑外部进程；配方型（`kind: recipe`，只拼内置引擎，M1.5 ④）以后加，清单上 `kind` 已经留位。
+- **工具分两档。** 脚本型（`kind: script`）跑外部进程；配方型（`kind: recipe`）只按顺序跑内置项，不跑任何用户没从 DropWheel 拿到的代码，所以不需要信任开关，装上就能用。skill 要求 agent 先想配方，内置项做不到才写脚本。
+- **配方的步骤只有内置项。** `steps` 里每步是 `{ op: "tool.* / action.*", options }` 或 `{ convert: "<扩展名>" }`；不能引用 `user.*`，配方不能套配方，否则一层层包起来用户看不清在跑什么。能当步骤的内置项是「不问用户、产出文件」的那些（`IWheelOperation.IsRecipeStep`）；选项由内置项自己声明（`Options`，目前压缩质量、缩放百分比、旋转角度三个），`--validate-tool` 按声明拒绝不认识的选项和越界的值。
+- **只有最后一步写到用户看得见的地方。** 前面各步写进目标目录旁一个隐藏的 `.{guid}.dropwheel-tmp` 文件夹，每步按文件跑（合并 PDF、压缩包这类整批项除外），写不出东西的文件原样传给下一步；最后一步用任务自己的请求跑，所以命名模板、重名策略、回滚、撤销都是最后一步的，和内置项一样。后果：每步的后缀都留在名字里（`photo-600x400-压缩.jpg`）；开轮盘时只检查第一步，后面的步骤在跑的时候才知道行不行；产出文件夹的步骤（解压、拆分 PDF）只能放最后。
 - **脚本型默认不可信。** 新工具装上后在轮盘上灰显，原因写「在 设置 › 我的工具 里启用后可用」；用户在设置页看到完整命令行后打开开关才会跑。设置里记的是 `(id → SHA-256(command + args))`，清单的命令或参数一改，哈希对不上，工具重新灰显。信任的是「这条命令」，不是「这个文件夹」。
 - **脚本不自报输出路径。** DropWheel 在目标目录旁开一个 `.{guid}.dropwheel-tmp` 临时文件夹，把带最终扩展名的 `{output}` 路径交给脚本；脚本写完，DropWheel 用 `OutputFiles.WriteAsync` 搬进位。这样命名模板、重名策略、撤销、批量回滚全部沿用，资源管理器也永远看不到半成品。`output.mode: none` 表示没有要跟踪的产物；`undo: none` 表示不能撤销，改写或删除输入的脚本必须声明它。
 - **stdout 协议只有三行**：`progress <0..1>`、`detail <文字>`、`skip <原因>`。退出码非 0 算失败，stderr 末尾几行成为用户看到的原因。超时和取消都结束整个进程树（Job Object，`KILL_ON_JOB_CLOSE`），DropWheel 退出时子进程一起结束。
@@ -26,5 +28,5 @@ DropWheel 的差异化方向是「AI 造工具」：用户在自己的 agent（C
 
 - `Package.appxmanifest` 关闭文件系统写虚拟化（`desktop6:FileSystemWriteVirtualization = disabled`），否则打包版把 `.problems.json` 和 `layout.json` 写到 `LocalCache`，agent 看不到；这一点只能在 MSIX 安装上实测。
 - 工具的名字和提示是数据，不经本地化目录；清单里 `name` / `hint` 可以给 `{zh, en}`。
-- `--validate-tool` 的问题码（`json schema id name wheel appliesTo kind command args output timeout placement undo`）从此稳定，是 agent 和测试依赖的接口。
+- `--validate-tool` 的问题码（`json schema id name wheel appliesTo kind command args output timeout placement undo steps`）从此稳定，是 agent 和测试依赖的接口。
 - 没做：`output.mode: replace`（原地替换 + 可撤销，需要新的 UndoPlan）、嵌套分组、让 agent 反过来调用 DropWheel 引擎的 MCP / CLI。

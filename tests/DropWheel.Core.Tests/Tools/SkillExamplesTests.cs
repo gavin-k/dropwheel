@@ -24,10 +24,18 @@ public sealed class SkillExamplesTests
             result.Problems.Where(p => !p.IsWarning).Should().BeEmpty(folder);
             result.Manifest.Should().NotBeNull(folder);
             ids.Add(result.Manifest!.Id);
-            File.Exists(Path.Combine(folder, result.Manifest.Script.Args.First(a => a.StartsWith("{toolDir}", StringComparison.Ordinal))["{toolDir}\\".Length..])).Should().BeTrue(folder);
+            if (result.Manifest.Script is { } script)
+            {
+                File.Exists(Path.Combine(folder, script.Args.First(a => a.StartsWith("{toolDir}", StringComparison.Ordinal))["{toolDir}\\".Length..])).Should().BeTrue(folder);
+            }
+            else
+            {
+                result.Manifest.Steps.Should().NotBeEmpty(folder);
+            }
         }
 
         ids.Should().OnlyHaveUniqueItems();
+        Directory.GetDirectories(Path.Combine(Skill, "examples")).Select(f => ToolManifestReader.Read(f).Manifest!.Kind).Should().Contain(ToolManifest.RecipeKind, "the skill says recipes come first");
     }
 
     [Fact]
@@ -48,6 +56,10 @@ public sealed class SkillExamplesTests
         }
 
         root.GetProperty("properties").GetProperty("script").GetProperty("properties").GetProperty("timeoutSeconds").GetProperty("default").GetInt32().Should().Be(ScriptSpec.DefaultTimeoutSeconds);
+        root.GetProperty("properties").GetProperty("kind").GetProperty("enum").EnumerateArray().Select(e => e.GetString()).Should().BeEquivalentTo(ToolManifest.ScriptKind, ToolManifest.RecipeKind);
+        root.GetProperty("required").EnumerateArray().Select(e => e.GetString()).Should().NotContain("script", "a recipe has steps instead");
+        var step = root.GetProperty("$defs").GetProperty("step");
+        step.GetProperty("properties").GetProperty("op").GetProperty("pattern").GetString().Should().Be("^(tool|action)\\.[a-z0-9-]+$");
 
         var icon = new System.Text.RegularExpressions.Regex(root.GetProperty("properties").GetProperty("icon").GetProperty("pattern").GetString()!);
         foreach (var text in new[] { "E7A7", "U+E7A7", "\\uE7A7", "&#xE7A7;", "\uE7A7" })

@@ -145,5 +145,8 @@
   "隐藏的幻灯片不导出": "Hidden slides are left out",
   "：{0}": ": {0}",
   "；": "; ",
-  "压缩包内的名称处理后冲突：{0}，已停止解压": "Archive names collide after sanitizing: {0}; extraction stopped"
+  "压缩包内的名称处理后冲突：{0}，已停止解压": "Archive names collide after sanitizing: {0}; extraction stopped",
+  "JPEG 和 WebP 的质量，1 到 100；PNG 和 TIFF 无损，不看它": "Quality for JPEG and WebP, 1 to 100; PNG and TIFF are lossless and ignore it",
+  "边长缩到原来的百分之几，默认 50": "Percent of the original side length, 50 by default",
+  "顺时针转多少度，默认 90": "Degrees clockwise, 90 by default"
 }

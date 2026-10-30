@@ -124,4 +124,19 @@ public sealed class ToolCommandLineTests : IDisposable
         ToolCommandLine.Handles(["--list-tools"]).Should().BeTrue();
         ToolCommandLine.Handles(["--data-dir", "x"]).Should().BeFalse();
     }
+
+    [Fact]
+    public void Validate_reports_a_recipe_with_its_kind_and_checks_its_steps_against_the_built_ins()
+    {
+        var folder = Folder("r", """{ "schema": 1, "id": "user.r", "name": "配方", "wheel": "tools", "kind": "recipe", "steps": [ { "op": "tool.a" } ] }""");
+        var output = new StringWriter();
+
+        var code = ToolCommandLine.Run([ToolCommandLine.Validate, folder], _dir, new FakeProcessRunner(), new CommandResolver(File.Exists, [_bin], []), output,
+            builtIns: [new Wheel.FakeOperation("tool.a", Core.Wheel.WheelMode.Tools, null)]);
+
+        code.Should().Be(0);
+        var json = JsonDocument.Parse(output.ToString()).RootElement;
+        json.GetProperty("kind").GetString().Should().Be("recipe");
+        Run(ToolCommandLine.Validate, folder).Code.Should().Be(1, "without built-ins no step can be found");
+    }
 }

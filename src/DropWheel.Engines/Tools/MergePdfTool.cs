@@ -26,6 +26,8 @@ public sealed class MergePdfTool(TimeProvider? time = null) : IWheelOperation
 
     public bool AppliesTo(MediaKind kind) => kind == MediaKind.Pdf;
 
+    public bool WorksOnBatch => true;
+
     public Availability Check(ConversionRequest request) => request.SourcePaths.Count < 2
         ? Availability.Unavailable(L.T("至少选两个 PDF")) with { Cause = UnavailableCause.SelectionShape }
         : CheckPdfs(request.SourcePaths);

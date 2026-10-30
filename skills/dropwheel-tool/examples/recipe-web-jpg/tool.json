@@ -1,0 +1,18 @@
+{
+  "$schema": "https://raw.githubusercontent.com/gavin-k/dropwheel/main/docs/tool-manifest.schema.json",
+  "schema": 1,
+  "id": "user.web-jpg",
+  "name": { "zh": "发网上", "en": "Web JPG" },
+  "hint": { "zh": "缩到一半、转成 JPG、压到 70", "en": "Half size, JPG, quality 70" },
+  "icon": "E774",
+  "wheel": "tools",
+  "appliesTo": ["image"],
+  "kind": "recipe",
+  "steps": [
+    { "op": "tool.half-size" },
+    { "convert": "jpg" },
+    { "op": "tool.compress-image", "options": { "quality": 70 } }
+  ],
+  "placement": { "group": { "zh": "示例", "en": "Examples" } },
+  "undo": "recycle"
+}
