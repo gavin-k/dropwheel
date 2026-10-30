@@ -10,11 +10,18 @@
 
 ```powershell
 winget install Microsoft.winappcli --source winget
-dotnet publish src/DropWheel.App -c Release -r win-x64   -o publish/x64
-dotnet publish src/DropWheel.App -c Release -r win-arm64 -o publish/arm64
-winapp pack ./publish/x64 ./publish/arm64 --manifest src/DropWheel.App/Package.appxmanifest            # Store：不签名
-winapp pack ./publish/x64 ./publish/arm64 --manifest src/DropWheel.App/Package.appxmanifest --cert cert.pfx  # 侧载：签名
+# 每个架构在自己的空目录里打，winapp 自己跑 dotnet publish；和 release.yml 的 msix 任务一样
+mkdir artifacts/x64;   cd artifacts/x64;   winapp pack ../../src/DropWheel.App/DropWheel.App.csproj -c Release --arch x64   --no-sign; cd ../..
+mkdir artifacts/arm64; cd artifacts/arm64; winapp pack ../../src/DropWheel.App/DropWheel.App.csproj -c Release --arch arm64 --no-sign; cd ../..
+# 多架构 bundle：要么让 winapp 一次打两个架构（release.yml 这么做，本机还没验证过），要么拿上面两个 .msix 用 makeappx 合（2026-10-30 本机验证过的路子）
+mkdir artifacts/bundle; cd artifacts/bundle; winapp pack ../../src/DropWheel.App/DropWheel.App.csproj -c Release --arch x64 --arch arm64 --no-sign; cd ../..
+makeappx bundle /o /d <只放这两个 .msix 的文件夹> /p DropWheel.App_<ver>.msixbundle
+# 侧载：去掉 --no-sign 换成 --cert cert.pfx，或者事后 signtool sign /fd SHA256 /f cert.pfx <msix>
 ```
+
+- **包里必须带 .NET 运行时。** `winapp pack` 调 `dotnet publish -r win-x64` 时不传 `Platform`，所以 `Properties/PublishProfiles/win-x64.pubxml` 里的 `SelfContained` 根本没被读到；csproj 里在 `_IsPublishing` 时强制 `SelfContained=true` 补这个洞。看大小就知道对不对：x64 约 145 MB、ARM64 约 120 MB 是对的；90 MB 左右的是框架依赖版，没装 .NET 10 的机器上一启动就死（「You must install .NET to run this application」）。release.yml 的原生文件检查里 `coreclr.dll` / `hostfxr.dll` 就是防这个。
+- **侧载机器要先有 Windows App SDK 运行时。** 清单声明依赖框架包 `Microsoft.WindowsAppRuntime.2`（≥ 2.5.1）。Store 安装会自动带上；侧载（GitHub Release / winget）的用户得先装微软的 Windows App SDK 2.5 运行时安装器，或者 `Add-AppxPackage` 对应架构的 `Microsoft.WindowsAppRuntime.2` 框架包。缺了会在 `Add-AppxPackage` 时被拒（具体报错文字还没抓到，2026-10-30 在测试机上没能把框架包卸干净）。
+- `unvirtualizedResources` 是受限能力（原因见 ADR-0005）：侧载不受影响，上架 Store 时审核可能问用途。
 
 ## MSI（WiX v5）
 
