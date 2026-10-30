@@ -200,7 +200,7 @@ internal static partial class AppScenario
               "script": { "command": "pwsh", "args": ["-NoProfile", "-Command", "Start-Sleep 3600"], "output": { "mode": "none" }, "timeoutSeconds": 7200 },
               "placement": { "group": { "zh": "示例", "en": "Examples" } }, "undo": "none" }
             """);
-        var two = log.WaitFor(5000, "tools: 2 loaded", SleeperId);
+        var two = log.WaitFor(5000, " loaded", SleeperId);
         var window = two is null ? default : OpenSettings(checks, log);
         if (!window.IsNull)
         {

@@ -118,6 +118,8 @@ internal static partial class AppScenario
                 Attempt(checks, "file actions", () => FileActions(checks, log, app.Id, explorer));
                 Attempt(checks, "tools", () => Tools(checks, log, exe, explorer));
                 Attempt(checks, "user tools", () => UserTools(checks, log, exe, profile, explorer));
+                Attempt(checks, "switch wheels", () => SwitchWheels(checks, log, jpg, explorer));
+                Attempt(checks, "recipe", () => Recipe(checks, log, exe, profile, explorer));
                 Attempt(checks, "edge dock", () => EdgeDock(checks, log, dir, explorer));
                 Attempt(checks, "settings", () => ChangeSettings(checks, log, profile, folder, exe, explorer));
                 Attempt(checks, "same name", () => SameName(checks, log, app.Id, folder, explorer));
@@ -130,6 +132,7 @@ internal static partial class AppScenario
             Quit(checks, log, app, exe);
         }
 
+        Attempt(checks, "hard kill", () => HardKill(checks, exe, explorer));
         Attempt(checks, "white wheel", () => WhiteWheel(checks, exe));
         Attempt(checks, "at sign-in", () => AtSignIn(checks, exe));
         Attempt(checks, "first run", () => FirstRun(checks, exe, explorer));
