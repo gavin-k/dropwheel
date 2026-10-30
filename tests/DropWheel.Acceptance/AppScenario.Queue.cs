@@ -82,7 +82,7 @@ internal static partial class AppScenario
     {
         const string Name = "取消 stops a running encode and leaves no output";
         var mp4 = Path.Combine(dir, $"m1c-{DateTime.Now:HHmmss}.mp4");
-        var ffmpeg = Path.Combine(Path.GetDirectoryName(exe)!, "sidecars", "ffmpeg", "ffmpeg.exe");
+        var ffmpeg = Path.Combine(FfmpegDir(exe), "ffmpeg.exe");
 
         // 30 s of 720p: a WebM encode of it takes long enough to be canceled halfway on every test machine.
         using (var make = Process.Start(new ProcessStartInfo(ffmpeg,

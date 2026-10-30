@@ -40,8 +40,47 @@ internal static partial class AppScenario
     private const string QueueTitle = "DropWheel 任务";
     private const int BudgetMs = 150;
 
-    public static int Run(string exe, bool explorer)
+    /// <summary>
+    /// The package's install folder when the app under test is the MSIX through its execution alias: the alias
+    /// sits in the user's WindowsApps folder, the sidecars and the shipped skill in the package.
+    /// </summary>
+    private static string? s_packageRoot;
+
+    private static bool Packaged => s_packageRoot is not null;
+
+    /// <summary>Where sidecars and the shipped skill are: the package when there is one, else next to the exe.</summary>
+    private static string InstallRoot(string exe) => s_packageRoot ?? Path.GetDirectoryName(exe)!;
+
+    /// <summary>
+    /// The bundled ffmpeg folder the scenarios make their test videos with. Nothing outside the package may start
+    /// an exe inside WindowsApps (access denied), so with a package the folder is copied to the temp folder once.
+    /// </summary>
+    private static string FfmpegDir(string exe)
     {
+        var shipped = Path.Combine(InstallRoot(exe), "sidecars", "ffmpeg");
+        if (!Packaged)
+        {
+            return shipped;
+        }
+
+        var copy = Path.Combine(Path.GetTempPath(), "DropWheelAcceptance", "ffmpeg");
+        if (!File.Exists(Path.Combine(copy, "ffmpeg.exe")))
+        {
+            Directory.CreateDirectory(copy);
+            foreach (var file in Directory.GetFiles(shipped))
+            {
+                File.Copy(file, Path.Combine(copy, Path.GetFileName(file)), overwrite: true);
+            }
+
+            Log.Info($"app: copied the packaged ffmpeg to {copy}");
+        }
+
+        return copy;
+    }
+
+    public static int Run(string exe, bool explorer, string? packageRoot = null)
+    {
+        s_packageRoot = packageRoot is null ? null : Path.GetFullPath(packageRoot);
         var checks = new Checks();
         var dir = Path.Combine(Path.GetTempPath(), "DropWheelAcceptance", "m0");
         Directory.CreateDirectory(dir);

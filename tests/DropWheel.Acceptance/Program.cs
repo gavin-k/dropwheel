@@ -11,9 +11,10 @@ internal static class Program
                                                    on the centre, on a disabled sector
           DropWheel.Acceptance hooks [--explorer]  DragMonitor: drag phases, Shift / Ctrl+Alt / Win taps, long hold
           DropWheel.Acceptance fileops             ShellFileOperations: recycle, move with a collision
-          DropWheel.Acceptance app --exe <DropWheel.exe> [--explorer]
+          DropWheel.Acceptance app --exe <DropWheel.exe> [--root <folder>] [--explorer]
                                                    the M0 flow against the real app: JPG to PNG, Undo,
-                                                   then a release off the wheel
+                                                   then a release off the wheel. --root is the package's
+                                                   install folder when --exe is the MSIX execution alias
           DropWheel.Acceptance --dragsource <file> --at X,Y   (internal) WinForms drag source
           DropWheel.Acceptance --locate <file>                (internal) hook-free Explorer item locator
         """;
@@ -51,7 +52,7 @@ internal static class Program
                 return FileOpsScenario.Run();
             case "app" when ArgValue(args, "--exe") is { } exe:
                 Log.Open("app");
-                return AppScenario.Run(Path.GetFullPath(exe), explorer);
+                return AppScenario.Run(Path.GetFullPath(exe), explorer, ArgValue(args, "--root"));
             default:
                 Console.WriteLine(Usage);
                 return 2;

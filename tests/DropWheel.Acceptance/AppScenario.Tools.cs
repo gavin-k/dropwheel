@@ -36,7 +36,7 @@ internal static partial class AppScenario
         Extract(checks, log, Path.Combine(dir, $"unzip-{stamp}.zip"), explorer);
         SplitPdf(checks, log, Path.Combine(dir, $"split-{stamp}.pdf"), explorer);
         ReadText(checks, log, Path.Combine(dir, $"ocr-{stamp}.png"), explorer);
-        CompressVideo(checks, log, Path.Combine(Path.GetDirectoryName(exe)!, "sidecars", "ffmpeg"), Path.Combine(dir, $"video-{stamp}.mp4"), explorer);
+        CompressVideo(checks, log, FfmpegDir(exe), Path.Combine(dir, $"video-{stamp}.mp4"), explorer);
     }
 
     private static void HalfSize(Checks checks, AppLog log, string jpg, bool explorer)

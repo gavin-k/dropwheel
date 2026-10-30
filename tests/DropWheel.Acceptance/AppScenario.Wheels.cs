@@ -82,7 +82,7 @@ internal static partial class AppScenario
     /// </summary>
     private static void Recipe(Checks checks, AppLog log, string exe, string profile, bool explorer)
     {
-        var examples = Path.Combine(Path.GetDirectoryName(exe)!, "skills", "dropwheel-tool", "examples");
+        var examples = Path.Combine(InstallRoot(exe), "skills", "dropwheel-tool", "examples");
         var tools = Path.Combine(profile, "tools");
         var dir = Path.Combine(Path.GetTempPath(), "DropWheelAcceptance", "usertools");
         Directory.CreateDirectory(dir);

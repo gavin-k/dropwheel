@@ -143,6 +143,12 @@ internal static partial class AppScenario
     /// </summary>
     private static void StartAtSignIn(Checks checks, AppLog log, string exe)
     {
+        if (Packaged)
+        {
+            StartupTaskAtSignIn(checks, log);
+            return;
+        }
+
         const string Name = "DropWheel";
         using var run = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
         var before = run.GetValue(Name);
@@ -180,6 +186,39 @@ internal static partial class AppScenario
                 run.DeleteValue(Name, throwOnMissingValue: false);
             }
         }
+    }
+
+    /// <summary>
+    /// With a package the switch drives the manifest's startup task (Enabled="true" in Package.appxmanifest, so
+    /// a fresh install starts with it on): each flip logs the task's new state, and the Run key is left alone.
+    /// Flipped twice, so the task ends as it started.
+    /// </summary>
+    private static void StartupTaskAtSignIn(Checks checks, AppLog log)
+    {
+        const string Name = "DropWheel";
+        using var run = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
+        var before = run?.GetValue(Name) as string;
+
+        string Flip()
+        {
+            log.Mark();
+            var toggle = Pattern<IUIAutomationTogglePattern>("start-at-sign-in", UIA_PATTERN_ID.UIA_TogglePatternId, byId: true);
+            if (toggle is null)
+            {
+                return "no start-at-sign-in switch";
+            }
+
+            var expected = toggle.CurrentToggleState == ToggleState.ToggleState_On ? "Disabled" : "Enabled";
+            toggle.Toggle();
+            return log.WaitFor(5000, $"settings: startup task {expected}") ?? $"no 'settings: startup task {expected}' line";
+        }
+
+        var first = Flip();
+        var second = Flip();
+        var after = run?.GetValue(Name) as string;
+        checks.Check("登录 Windows 时启动 flips the package's startup task off and on again, and leaves the Run key alone",
+            !first.StartsWith("no ", StringComparison.Ordinal) && !second.StartsWith("no ", StringComparison.Ordinal) && string.Equals(before, after, StringComparison.Ordinal),
+            $"{first}; {second}; Run value [{after ?? "none"}], before [{before ?? "none"}]");
     }
 
     private static void Toggle(string name) => Pattern<IUIAutomationTogglePattern>(name, UIA_PATTERN_ID.UIA_TogglePatternId)?.Toggle();
