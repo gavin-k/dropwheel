@@ -84,5 +84,8 @@
 
   <Capabilities>
     <rescap:Capability Name="runFullTrust" />
+    <!-- FileSystemWriteVirtualization above requires this restricted capability (MakeAppx refuses the package without it);
+         Store review may ask why, the answer is the tools folder agents and DropWheel share. -->
+    <rescap:Capability Name="unvirtualizedResources" />
   </Capabilities>
 </Package>

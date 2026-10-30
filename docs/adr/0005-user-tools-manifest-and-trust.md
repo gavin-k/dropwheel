@@ -26,7 +26,7 @@ DropWheel 的差异化方向是「AI 造工具」：用户在自己的 agent（C
 
 ## 后果
 
-- `Package.appxmanifest` 关闭文件系统写虚拟化（`desktop6:FileSystemWriteVirtualization = disabled`），否则打包版把 `.problems.json` 和 `layout.json` 写到 `LocalCache`，agent 看不到；这一点只能在 MSIX 安装上实测。
+- `Package.appxmanifest` 关闭文件系统写虚拟化（`desktop6:FileSystemWriteVirtualization = disabled`），否则打包版把 `.problems.json` 和 `layout.json` 写到 `LocalCache`，agent 看不到。关闭它要同时声明受限能力 `rescap:Capability Name="unvirtualizedResources"`，不然 MakeAppx 拒绝打包；上架 Store 时审核可能要问这个能力的用途。2026-10-30 在 ARM64 VM 的 MSIX 安装上实测：`.problems.json` 写在真实路径，`LocalCache` 下没有副本。
 - 工具的名字和提示是数据，不经本地化目录；清单里 `name` / `hint` 可以给 `{zh, en}`。
 - `--validate-tool` 的问题码（`json schema id name wheel appliesTo kind command args output timeout placement undo steps`）从此稳定，是 agent 和测试依赖的接口。
 - 没做：`output.mode: replace`（原地替换 + 可撤销，需要新的 UndoPlan）、嵌套分组、让 agent 反过来调用 DropWheel 引擎的 MCP / CLI。
