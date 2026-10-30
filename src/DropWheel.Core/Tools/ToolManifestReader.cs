@@ -15,6 +15,8 @@ public static partial class ToolManifestReader
 {
     public const string FileName = "tool.json";
 
+    private static readonly byte[] Utf8Bom = [0xEF, 0xBB, 0xBF];
+
     public static ToolReadResult Read(string folder)
     {
         var path = Path.Combine(folder, FileName);
@@ -28,7 +30,14 @@ public static partial class ToolManifestReader
         JsonDocument document;
         try
         {
-            document = JsonDocument.Parse(File.ReadAllBytes(path), new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
+            // Windows PowerShell 5.1 writes a BOM with -Encoding UTF8, and JsonDocument does not skip one.
+            var bytes = File.ReadAllBytes(path).AsMemory();
+            if (bytes.Span.StartsWith(Utf8Bom))
+            {
+                bytes = bytes[Utf8Bom.Length..];
+            }
+
+            document = JsonDocument.Parse(bytes, new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
         }
         catch (JsonException ex)
         {

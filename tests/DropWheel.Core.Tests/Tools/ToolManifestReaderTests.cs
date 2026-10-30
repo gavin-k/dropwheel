@@ -1,3 +1,4 @@
+using System.Text;
 using DropWheel.Core.Conversion;
 using DropWheel.Core.Localization;
 using DropWheel.Core.Tools;
@@ -93,6 +94,17 @@ public sealed class ToolManifestReaderTests : IDisposable
         m.Script.TimeoutSeconds.Should().Be(30);
         m.Placement.Should().Be(new PlacementHint(new("我的"), 5));
         m.Undo.Should().Be("none");
+    }
+
+    [Fact]
+    public void A_manifest_with_a_utf8_bom_is_read()
+    {
+        File.WriteAllText(Path.Combine(_dir, ToolManifestReader.FileName), Minimal, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+
+        var result = ToolManifestReader.Read(_dir);
+
+        result.Problems.Should().BeEmpty();
+        result.Manifest!.Id.Should().Be("user.copy");
     }
 
     [Fact]
