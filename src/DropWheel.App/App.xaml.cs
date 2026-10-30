@@ -16,13 +16,6 @@ using DropWheel.Core.Privacy;
 using DropWheel.Core.Settings;
 using DropWheel.Core.Tools;
 using DropWheel.Core.Wheel;
-using DropWheel.Engines.Archive;
-using DropWheel.Engines.Document;
-using DropWheel.Engines.Image;
-using DropWheel.Engines.Media;
-using DropWheel.Engines.Pdf;
-using DropWheel.Engines.Sheet;
-using DropWheel.Engines.Subtitle;
 using DropWheel.Engines.Tools;
 using DropWheel.Shell;
 using Microsoft.UI.Dispatching;
@@ -109,16 +102,9 @@ public partial class App : Application
 
             var ui = DispatcherQueue.GetForCurrentThread();
 
-            var graph = new ConversionGraph();
-            graph.Register(new MagickImageConverter());
-            graph.Register(new SubtitleConverter());
-            var archives = new SharpCompressArchiveConverter();
-            graph.Register(archives);
-            var ffmpeg = new FfmpegConverter();
-            graph.Register(ffmpeg);
-            graph.Register(new PdfConverter());
-            graph.Register(new DocumentConverter());
-            graph.Register(new SheetConverter());
+            var converters = new ConverterSet();
+            var graph = converters.Graph;
+            var ffmpeg = converters.Ffmpeg;
             _ = Task.Run(() =>
             {
                 FileLog.Info(ffmpeg.Tools is { } tools ? $"ffmpeg sidecar: {tools.Ffmpeg}" : "ffmpeg sidecar not found; audio and video targets and video tools are greyed out");
@@ -130,8 +116,8 @@ public partial class App : Application
             var files = new ShellFileOperations();
             var desktop = new Desktop(ui);
             _queue = new JobQueue(graph, new UndoLedger(files), prompt: desktop);
-            IReadOnlyList<IWheelOperation> operations = [.. FileActions.Create(files, desktop), .. EngineTools.Create(archives, ffmpeg, recognizer: recognizer)];
-            var catalog = _catalog = new UserToolCatalog(Path.Combine(dataDir, "tools"), new SidecarProcessRunner(), CommandResolver.FromEnvironment());
+            IReadOnlyList<IWheelOperation> operations = [.. FileActions.Create(files, desktop), .. converters.Tools(recognizer)];
+            var catalog = _catalog = new UserToolCatalog(Path.Combine(dataDir, "tools"), new SidecarProcessRunner(), CommandResolver.FromEnvironment(), builtIns: operations, graph: graph);
             var layout = _layout = new LayoutStore(Path.Combine(dataDir, "layout.json"));
             if (layout.LoadProblem is { } layoutProblem)
             {
@@ -289,7 +275,7 @@ public partial class App : Application
 
     /// <summary>
     /// After the tools folder was read: logs what it holds, and once past the first read tells the user about a
-    /// tool that was not there before, which is greyed until they switch it on in Settings.
+    /// tool that was not there before: a script is greyed until they switch it on in Settings, a recipe is live.
     /// </summary>
     private void OnToolsChanged(CatalogSnapshot snapshot, LayoutStore layout, IReadOnlyList<IWheelOperation> builtIns)
     {
@@ -309,9 +295,11 @@ public partial class App : Application
         }
 
         var ids = snapshot.Tools.Select(t => t.Id).ToHashSet();
-        if (_knownTools is { } known && snapshot.Tools.Where(t => !known.Contains(t.Id)).Select(t => t.Label).ToList() is { Count: > 0 } added)
+        if (_knownTools is { } known && snapshot.Tools.Where(t => !known.Contains(t.Id)).ToList() is { Count: > 0 } added)
         {
-            _tray?.Notify(L.T("新工具：{0}", string.Join(L.T("、"), added)), L.T("在 设置 › 我的工具 里启用一次就能用"));
+            // A recipe runs nothing but built-in items, so it is live at once; a script waits for its switch.
+            var body = added.All(t => t.Manifest.IsRecipe) ? L.T("已经放上轮盘，拖文件时就能用") : L.T("在 设置 › 我的工具 里启用一次就能用");
+            _tray?.Notify(L.T("新工具：{0}", string.Join(L.T("、"), added.Select(t => t.Label))), body);
         }
 
         _knownTools = ids;

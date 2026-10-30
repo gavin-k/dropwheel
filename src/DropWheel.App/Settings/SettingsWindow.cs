@@ -24,7 +24,7 @@ namespace DropWheel.App.Settings;
 /// must be, with a note when the wheel is solid because Windows has transparency effects off; which items
 /// the Actions wheel offers, where results go, what they are called and what happens when the name is taken, and whether Windows starts it at sign-in; and what this computer keeps or sends:
 /// the network requests counted since start, and the logs, which name the files converted, to open or
-/// clear; the user's own tools, each with the switch that lets its script run; and the language, which takes effect at the next start. Each change is saved as it is made,
+/// clear; the user's own tools, a script with the switch that lets it run, a recipe with its steps; and the language, which takes effect at the next start. Each change is saved as it is made,
 /// the file name a moment after typing stops. Keys that <see cref="ConflictChecker"/> calls an error are
 /// shown with the reason and not saved, so the Convert wheel is never left without a way to open it.
 /// Closing only hides the window.
@@ -236,7 +236,7 @@ internal sealed class SettingsWindow
         page.Children.Add(Section(L.T("唤出轮盘"), L.T("拖动文件时，把一行里选中的键一起按下再松开，那个轮盘就会在鼠标处弹出。转换轮盘把文件转成别的格式；工具轮盘压缩、缩小、拆分或提取音频；动作轮盘复制路径、重命名、压缩或删除。工具和动作轮盘一个键都不选就不会弹出。"), keys, _keyProblem, _tapWindow, _longPress, _longPressNote, _solidWheel));
         page.Children.Add(Section(L.T("停靠栏"), L.T("拖动文件时把鼠标推到屏幕左边或右边，那里会弹出停靠栏。文件先放进去，可以从几个文件夹陆续收集，回头一起或一个个拖走。放进去和拖出来都不会移动原文件，拖到文件夹里是复制。"), _edgeDock));
         page.Children.Add(Section(L.T("文件动作"), L.T("动作轮盘上哪几项能用。没勾选的仍然显示，只是灰色。删除默认不勾选，免得手一滑把文件扔进回收站。"), actions));
-        page.Children.Add(Section(L.T("我的工具"), L.T("把 SKILL.md 所在的文件夹交给你的 AI 助手（Claude Code、Codex、Cursor 都行），说一句想要什么工具，它会把工具写进下面的文件夹，DropWheel 自动加载。新工具先是灰的，在这里看过脚本、打开开关才会跑。"),
+        page.Children.Add(Section(L.T("我的工具"), L.T("把 SKILL.md 所在的文件夹交给你的 AI 助手（Claude Code、Codex、Cursor 都行），说一句想要什么工具，它会把工具写进下面的文件夹，DropWheel 自动加载。配方型的工具只用内置功能，装上就能用；脚本型的先是灰的，在这里看过脚本、打开开关才会跑。"),
             _toolsFolder,
             toolButtons,
             _tools,
@@ -452,17 +452,23 @@ internal sealed class SettingsWindow
         _unplaced.Text = L.T("没放上轮盘：{0}。轮盘满了，腾个位置或让 AI 助手改 layout.json 来排。", string.Join(L.T("、"), unplaced));
     }
 
-    private StackPanel ToolRow(ScriptTool tool, UserToolSettings trust, IReadOnlyList<string> warnings)
+    /// <summary>A script shows its command line and the switch that lets it run; a recipe shows its steps and needs no switch.</summary>
+    private StackPanel ToolRow(IUserTool tool, UserToolSettings trust, IReadOnlyList<string> warnings)
     {
-        var key = tool.TrustKey ?? "";
-        var trusted = trust.IsTrusted(tool.Id, key);
         var row = new StackPanel { Spacing = 4 };
         row.Children.Add(new TextBlock { Text = L.T("{0}（{1}）", tool.Label, tool.Hint), FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
         row.Children.Add(Small(tool.Folder));
-        row.Children.Add(Small(L.T("命令：{0}", string.Join(" ", [tool.Manifest.Script.Command, .. tool.Manifest.Script.Args]))));
-        if (tool.Command is null)
+        if (tool is ScriptTool script)
         {
-            row.Children.Add(Small(L.T("找不到 {0}，先装上它或者把路径写全。", tool.Manifest.Script.Command)));
+            row.Children.Add(Small(L.T("命令：{0}", string.Join(" ", [script.Script.Command, .. script.Script.Args]))));
+            if (script.Command is null)
+            {
+                row.Children.Add(Small(L.T("找不到 {0}，先装上它或者把路径写全。", script.Script.Command)));
+            }
+        }
+        else
+        {
+            row.Children.Add(Small(L.T("配方：{0}", string.Join(" \u2192 ", tool.Manifest.Steps.Select(StepName)))));
         }
 
         foreach (var warning in warnings)
@@ -470,6 +476,17 @@ internal sealed class SettingsWindow
             row.Children.Add(Small(warning));
         }
 
+        if (tool is not ScriptTool asScript)
+        {
+            row.Children.Add(Small(L.T("只用 DropWheel 内置的功能，不跑外部程序，装上就能用。")));
+            var openRecipe = new HyperlinkButton { Content = L.T("查看清单"), Padding = new Thickness(0, 4, 0, 4) };
+            openRecipe.Click += (_, _) => OpenTool(tool);
+            row.Children.Add(openRecipe);
+            return row;
+        }
+
+        var key = asScript.TrustKey ?? "";
+        var trusted = trust.IsTrusted(tool.Id, key);
         if (!trusted && trust.Trusted.ContainsKey(tool.Id))
         {
             row.Children.Add(Small(L.T("命令改过了，看一眼脚本再打开。")));
@@ -485,6 +502,13 @@ internal sealed class SettingsWindow
         return row;
     }
 
+    /// <summary>"压缩图片 (quality 70)" for an op step, by the built-in's label; "→ jpg" for a convert step.</summary>
+    private string StepName(RecipeStep step)
+    {
+        var name = step.Op is { } op ? _builtIns.FirstOrDefault(o => o.Id == op)?.Label ?? op : step.Describe();
+        return step.Options.Count == 0 ? name : $"{name} ({string.Join(", ", step.Options.Select(o => $"{o.Key} {o.Value}"))})";
+    }
+
     private static TextBlock Small(string text) => new() { Text = text, TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = 0.75, IsTextSelectionEnabled = true };
 
     private void ToolToggled(string id, string key, bool on)
@@ -497,7 +521,7 @@ internal sealed class SettingsWindow
         Save($"tool {id} {(on ? "allowed" : "not allowed")}", s => s with { Tools = on ? s.Tools.Trust(id, key) : s.Tools.Distrust(id) });
     }
 
-    private static void OpenTool(ScriptTool tool)
+    private static void OpenTool(IUserTool tool)
     {
         var manifest = Path.Combine(tool.Folder, ToolManifestReader.FileName);
         var problem = Explorer.Select(File.Exists(manifest) ? manifest : tool.Folder);

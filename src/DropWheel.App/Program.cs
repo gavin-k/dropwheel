@@ -1,6 +1,8 @@
 using System.Runtime.InteropServices;
 using System.Text;
+using DropWheel.Core.Actions;
 using DropWheel.Core.Tools;
+using DropWheel.Core.Wheel;
 using DropWheel.Engines.Tools;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
@@ -51,7 +53,11 @@ internal static class Program
         }
 
         using var output = new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false)) { AutoFlush = true };
-        var code = ToolCommandLine.Run(args, Path.Combine(App.DataDir(args), "tools"), new SidecarProcessRunner(), CommandResolver.FromEnvironment(), output);
+        // The same graph and built-in tools the app runs recipes with, so a recipe that validates here runs there;
+        // of the file actions only 压缩 can be a step, and it needs none of the app's windows.
+        var converters = new ConverterSet();
+        IReadOnlyList<IWheelOperation> builtIns = [.. converters.Tools(new WindowsTextRecognizer()), new CompressZipAction()];
+        var code = ToolCommandLine.Run(args, Path.Combine(App.DataDir(args), "tools"), new SidecarProcessRunner(), CommandResolver.FromEnvironment(), output, builtIns, converters.Graph);
         output.WriteLine();
         return code;
     }

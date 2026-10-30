@@ -33,6 +33,14 @@ internal sealed class WheelWindow
     private const double Margin = 10;
     private const double DiscPadding = 6;
 
+    /// <summary>A sector's label block: icon, label, sub-label, centred on the sector; the band is 88 DIPs deep.</summary>
+    private const double SectorLabelWidth = 84;
+    private const double SectorLabelHeight = 70;
+
+    /// <summary>A ring item's label block; the ring band is 80 DIPs deep.</summary>
+    private const double ChildLabelWidth = 80;
+    private const double ChildLabelHeight = 60;
+
     /// <summary>From the first frame to the screen copy: Rendered fires before DWM presents the frame.</summary>
     private const int FrameCheckDelayMs = 100;
 
@@ -58,12 +66,22 @@ internal sealed class WheelWindow
     private readonly Window _window;
     private readonly AppWindow _appWindow;
     private readonly Path[] _sectors = new Path[WheelModel.SlotCount];
+    private readonly TextBlock[] _glyphs = new TextBlock[WheelModel.SlotCount];
     private readonly TextBlock[] _labels = new TextBlock[WheelModel.SlotCount];
     private readonly TextBlock[] _subLabels = new TextBlock[WheelModel.SlotCount];
     private readonly Path[] _children = new Path[LayoutGroup.Capacity];
-    private readonly StackPanel[] _childPanels = new StackPanel[LayoutGroup.Capacity];
+    private readonly Grid[] _childPanels = new Grid[LayoutGroup.Capacity];
+    private readonly TextBlock[] _childGlyphs = new TextBlock[LayoutGroup.Capacity];
     private readonly TextBlock[] _childLabels = new TextBlock[LayoutGroup.Capacity];
     private readonly TextBlock[] _childSubLabels = new TextBlock[LayoutGroup.Capacity];
+
+    // One brush per thing painted, recoloured in place: a paint allocates nothing, and the hover motion can interpolate it.
+    private readonly SolidColorBrush[] _fills = new SolidColorBrush[WheelModel.SlotCount];
+    private readonly SolidColorBrush[] _inks = new SolidColorBrush[WheelModel.SlotCount];
+    private readonly SolidColorBrush[] _subInks = new SolidColorBrush[WheelModel.SlotCount];
+    private readonly SolidColorBrush[] _childFills = new SolidColorBrush[LayoutGroup.Capacity];
+    private readonly SolidColorBrush[] _childInks = new SolidColorBrush[LayoutGroup.Capacity];
+    private readonly SolidColorBrush[] _childSubInks = new SolidColorBrush[LayoutGroup.Capacity];
     private readonly Canvas _canvas;
     private readonly TextBlock _title;
     private readonly TextBlock _subtitle;
@@ -116,33 +134,37 @@ internal sealed class WheelWindow
             VerticalAlignment = VerticalAlignment.Center,
         };
 
+        var symbols = SymbolFont();
         for (var i = 0; i < WheelModel.SlotCount; i++)
         {
-            _sectors[i] = new Path { Data = Wedge(i), StrokeThickness = 1, Stroke = new SolidColorBrush(SectorStroke) };
+            _fills[i] = new SolidColorBrush(Colors.Transparent);
+            _inks[i] = new SolidColorBrush(Text);
+            _subInks[i] = new SolidColorBrush(Text3);
+            _sectors[i] = new Path { Data = Wedge(i), StrokeThickness = 1, Stroke = new SolidColorBrush(SectorStroke), Fill = _fills[i] };
             AutomationProperties.SetAutomationId(_sectors[i], $"Sector{i}");
             canvas.Children.Add(_sectors[i]);
 
-            _labels[i] = new TextBlock { FontSize = 16, FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center };
-            _subLabels[i] = new TextBlock { FontSize = 11, HorizontalAlignment = HorizontalAlignment.Center };
-            var label = new StackPanel { Width = 84, Height = 44, IsHitTestVisible = false, VerticalAlignment = VerticalAlignment.Center };
-            label.Children.Add(_labels[i]);
-            label.Children.Add(_subLabels[i]);
+            _glyphs[i] = new TextBlock { FontFamily = symbols, FontSize = 20, HorizontalAlignment = HorizontalAlignment.Center, Foreground = _inks[i], Margin = new Thickness(0, 0, 0, 2) };
+            _labels[i] = new TextBlock { FontSize = 16, FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center, Foreground = _inks[i] };
+            _subLabels[i] = new TextBlock { FontSize = 11, HorizontalAlignment = HorizontalAlignment.Center, Foreground = _subInks[i] };
             var (x, y) = WheelGeometry.SectorCenter(i);
-            Place(label, Center + x - 42, Center + y - 20);
-            canvas.Children.Add(label);
+            canvas.Children.Add(LabelPanel(_glyphs[i], _labels[i], _subLabels[i], SectorLabelWidth, SectorLabelHeight, Center + x, Center + y));
         }
 
         for (var i = 0; i < LayoutGroup.Capacity; i++)
         {
-            _children[i] = new Path { StrokeThickness = 1, Stroke = new SolidColorBrush(SectorStroke), Visibility = Visibility.Collapsed };
+            _childFills[i] = new SolidColorBrush(ChildOff);
+            _childInks[i] = new SolidColorBrush(Text);
+            _childSubInks[i] = new SolidColorBrush(Text3);
+            _children[i] = new Path { StrokeThickness = 1, Stroke = new SolidColorBrush(SectorStroke), Fill = _childFills[i], Visibility = Visibility.Collapsed };
             AutomationProperties.SetAutomationId(_children[i], $"Child{i}");
             canvas.Children.Add(_children[i]);
 
-            _childLabels[i] = new TextBlock { FontSize = 14, FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-            _childSubLabels[i] = new TextBlock { FontSize = 10, HorizontalAlignment = HorizontalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-            var panel = _childPanels[i] = new StackPanel { Width = 80, Height = 40, IsHitTestVisible = false, VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed };
-            panel.Children.Add(_childLabels[i]);
-            panel.Children.Add(_childSubLabels[i]);
+            _childGlyphs[i] = new TextBlock { FontFamily = symbols, FontSize = 16, HorizontalAlignment = HorizontalAlignment.Center, Foreground = _childInks[i], Margin = new Thickness(0, 0, 0, 1) };
+            _childLabels[i] = new TextBlock { FontSize = 14, FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, Foreground = _childInks[i] };
+            _childSubLabels[i] = new TextBlock { FontSize = 10, HorizontalAlignment = HorizontalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, Foreground = _childSubInks[i] };
+            var panel = _childPanels[i] = LabelPanel(_childGlyphs[i], _childLabels[i], _childSubLabels[i], ChildLabelWidth, ChildLabelHeight, 0, 0);
+            panel.Visibility = Visibility.Collapsed;
             canvas.Children.Add(panel);
         }
 
@@ -272,6 +294,7 @@ internal sealed class WheelWindow
         for (var i = 0; i < WheelModel.SlotCount; i++)
         {
             var slot = Slot(i);
+            SetGlyph(_glyphs[i], slot?.Glyph);
             _labels[i].Text = slot?.Label ?? "";
             _subLabels[i].Text = slot?.SubLabel ?? "";
             AutomationProperties.SetName(_sectors[i], slot?.AccessibleName ?? L.T("扇区 {0}（空）", i + 1));
@@ -323,11 +346,12 @@ internal sealed class WheelWindow
 
             var child = _ringChildren![i];
             _children[i].Data = RingWedge(_ringParent, count, i);
+            SetGlyph(_childGlyphs[i], child.Glyph);
             _childLabels[i].Text = child.Label;
             _childSubLabels[i].Text = child.SubLabel ?? "";
             AutomationProperties.SetName(_children[i], child.AccessibleName);
             var (x, y) = WheelGeometry.ChildCenter(_ringParent, count, i);
-            Place(_childPanels[i], Center + x - 40, Center + y - 20);
+            Place(_childPanels[i], Center + x - ChildLabelWidth / 2, Center + y - ChildLabelHeight / 2);
             PaintChild(i);
         }
 
@@ -383,10 +407,10 @@ internal sealed class WheelWindow
         var enabled = slot?.Availability.IsAvailable == true;
         var hovered = enabled && _hovered == WheelHit.Sector(i);
         var open = i == _ringParent;
-        _sectors[i].Fill = new SolidColorBrush(hovered ? Accent : open ? SectorOpen : enabled ? SectorFill : Colors.Transparent);
-        _labels[i].Foreground = new SolidColorBrush(hovered ? OnAccent : Text);
-        _subLabels[i].Foreground = new SolidColorBrush(hovered ? OnAccent : Text3);
-        _labels[i].Opacity = _subLabels[i].Opacity = enabled || open ? 1 : 0.45;
+        _fills[i].Color = hovered ? Accent : open ? SectorOpen : enabled ? SectorFill : Colors.Transparent;
+        _inks[i].Color = hovered ? OnAccent : Text;
+        _subInks[i].Color = hovered ? OnAccent : Text3;
+        _glyphs[i].Opacity = _labels[i].Opacity = _subLabels[i].Opacity = enabled || open ? 1 : 0.45;
     }
 
     private void PaintChild(int i)
@@ -394,10 +418,10 @@ internal sealed class WheelWindow
         var child = Child(i);
         var enabled = child?.Availability.IsAvailable == true;
         var hovered = enabled && _hovered == WheelHit.Child(i);
-        _children[i].Fill = new SolidColorBrush(hovered ? Accent : enabled ? ChildFill : ChildOff);
-        _childLabels[i].Foreground = new SolidColorBrush(hovered ? OnAccent : Text);
-        _childSubLabels[i].Foreground = new SolidColorBrush(hovered ? OnAccent : Text3);
-        _childLabels[i].Opacity = _childSubLabels[i].Opacity = enabled ? 1 : 0.45;
+        _childFills[i].Color = hovered ? Accent : enabled ? ChildFill : ChildOff;
+        _childInks[i].Color = hovered ? OnAccent : Text;
+        _childSubInks[i].Color = hovered ? OnAccent : Text3;
+        _childGlyphs[i].Opacity = _childLabels[i].Opacity = _childSubLabels[i].Opacity = enabled ? 1 : 0.45;
     }
 
     private void OnFirstFrame(object? sender, RenderedEventArgs e)
@@ -450,6 +474,46 @@ internal sealed class WheelWindow
 
             return;
         }
+    }
+
+    /// <summary>
+    /// The icon font: Segoe Fluent Icons on Windows 11, Segoe MDL2 Assets on Windows 10, through the theme resource
+    /// that picks one; the code points the wheel uses exist in both.
+    /// </summary>
+    private static FontFamily SymbolFont()
+    {
+        try
+        {
+            if (Application.Current.Resources.TryGetValue("SymbolThemeFontFamily", out var font) && font is FontFamily family)
+            {
+                return family;
+            }
+        }
+        catch (Exception ex)
+        {
+            FileLog.Error("overlay: no SymbolThemeFontFamily resource", ex);
+        }
+
+        return new FontFamily("Segoe Fluent Icons,Segoe MDL2 Assets");
+    }
+
+    /// <summary>A glyph block shows its one character, or takes no room, so a label without one sits centred.</summary>
+    private static void SetGlyph(TextBlock block, string? glyph)
+    {
+        block.Text = glyph ?? "";
+        block.Visibility = glyph is null ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    /// <summary>A fixed-size block whose icon and two lines stay centred on (<paramref name="cx"/>, <paramref name="cy"/>) whatever is collapsed.</summary>
+    private static Grid LabelPanel(TextBlock glyph, TextBlock label, TextBlock subLabel, double width, double height, double cx, double cy)
+    {
+        var stack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        stack.Children.Add(glyph);
+        stack.Children.Add(label);
+        stack.Children.Add(subLabel);
+        var panel = new Grid { Width = width, Height = height, IsHitTestVisible = false, Children = { stack } };
+        Place(panel, cx - width / 2, cy - height / 2);
+        return panel;
     }
 
     private static PathGeometry Wedge(int index) =>
