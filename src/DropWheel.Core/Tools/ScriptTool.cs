@@ -29,6 +29,8 @@ public sealed class ScriptTool(ToolManifest manifest, string folder, IProcessRun
 
     public string? TrustKey => ToolManifestReader.CommandHash(Manifest.Script);
 
+    public JobLane Lane => JobLane.Script;
+
     public bool AppliesTo(MediaKind kind) => Manifest.AppliesToKind(kind);
 
     /// <summary>The command's path, or null when it cannot be found; a few file-exists calls, cheap enough for every wheel open.</summary>

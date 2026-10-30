@@ -5,7 +5,10 @@ using DropWheel.Core.Conversion;
 namespace DropWheel.Core.Jobs;
 
 /// <summary>
-/// Runs conversion jobs one at a time, in the order they were enqueued, on a background worker.
+/// Runs conversion jobs in the order they were enqueued, one at a time per <see cref="JobLane"/>, each lane on its own
+/// background worker: engines and file actions on one, user scripts on another, so a slow script holds up only the
+/// scripts behind it. Two lanes may write into the same folder at once; <see cref="OutputFiles"/> claims each output
+/// name with a move that fails when the name was taken in the meantime, and picks another.
 /// <see cref="JobChanged"/> is raised on whichever thread changed the job; UI code marshals it itself.
 /// </summary>
 [System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1711", Justification = "It is a queue; the name is used throughout the docs.")]
@@ -15,11 +18,11 @@ public sealed class JobQueue : IAsyncDisposable
     private readonly UndoLedger _undo;
     private readonly TimeProvider _time;
     private readonly IConflictPrompt? _prompt;
-    private readonly Channel<Job> _channel = Channel.CreateUnbounded<Job>(new UnboundedChannelOptions { SingleReader = true });
+    private readonly Dictionary<JobLane, Channel<Job>> _lanes = Enum.GetValues<JobLane>().ToDictionary(lane => lane, _ => Channel.CreateUnbounded<Job>(new UnboundedChannelOptions { SingleReader = true }));
     private readonly ConcurrentDictionary<Guid, CancellationTokenSource> _cancels = new();
     private readonly List<Job> _jobs = [];
     private readonly Lock _gate = new();
-    private readonly Task _worker;
+    private readonly Task[] _workers;
     private TaskCompletionSource _idle = new();
     private int _outstanding;
 
@@ -31,7 +34,7 @@ public sealed class JobQueue : IAsyncDisposable
         _time = time ?? TimeProvider.System;
         _prompt = prompt;
         _idle.SetResult();
-        _worker = Task.Run(RunWorkerAsync);
+        _workers = [.. _lanes.Values.Select(lane => Task.Run(() => RunWorkerAsync(lane)))];
     }
 
     public event Action<Job>? JobChanged;
@@ -64,7 +67,7 @@ public sealed class JobQueue : IAsyncDisposable
 
         _cancels[job.Id] = new CancellationTokenSource();
         Raise(job);
-        ObjectDisposedException.ThrowIf(!_channel.Writer.TryWrite(job), this);
+        ObjectDisposedException.ThrowIf(!_lanes[job.Lane].Writer.TryWrite(job), this);
 
         return job;
     }
@@ -120,7 +123,11 @@ public sealed class JobQueue : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        _channel.Writer.TryComplete();
+        foreach (var lane in _lanes.Values)
+        {
+            lane.Writer.TryComplete();
+        }
+
         foreach (var cts in _cancels.Values)
         {
             try
@@ -132,12 +139,12 @@ public sealed class JobQueue : IAsyncDisposable
             }
         }
 
-        await _worker.ConfigureAwait(false);
+        await Task.WhenAll(_workers).ConfigureAwait(false);
     }
 
-    private async Task RunWorkerAsync()
+    private async Task RunWorkerAsync(Channel<Job> lane)
     {
-        await foreach (var job in _channel.Reader.ReadAllAsync().ConfigureAwait(false))
+        await foreach (var job in lane.Reader.ReadAllAsync().ConfigureAwait(false))
         {
             await RunAsync(job).ConfigureAwait(false);
 

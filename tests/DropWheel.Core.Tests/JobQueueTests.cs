@@ -452,6 +452,72 @@ public sealed class JobQueueTests : IDisposable
     }
 
     [Fact]
+    public async Task A_script_job_does_not_hold_up_the_engine_job_behind_it()
+    {
+        var (queue, _) = Create((_, _, _) => Task.FromResult(new ConversionResult(true, [])));
+        await using var _q = queue;
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var script = new TestRunner(async (_, _, ct) =>
+        {
+            await release.Task.WaitAsync(ct);
+            return new ConversionResult(true, []);
+        }, lane: JobLane.Script);
+        var engineDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var slow = queue.Enqueue(Jpg("slow"), "slow", script);
+        var quick = queue.Enqueue(Jpg("quick"), "quick");
+        queue.JobChanged += j =>
+        {
+            if (j.Id == quick.Id && j.State == JobState.Done)
+            {
+                engineDone.TrySetResult();
+            }
+        };
+
+        await engineDone.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        slow.State.Should().Be(JobState.Running);
+        slow.Lane.Should().Be(JobLane.Script);
+        quick.Lane.Should().Be(JobLane.Engine);
+        queue.WhenIdleAsync().IsCompleted.Should().BeFalse();
+
+        release.SetResult();
+        await queue.WhenIdleAsync();
+        slow.State.Should().Be(JobState.Done);
+    }
+
+    [Fact]
+    public async Task Script_jobs_still_run_one_at_a_time_among_themselves()
+    {
+        var (queue, _) = Create((_, _, _) => Task.FromResult(new ConversionResult(true, [])));
+        await using var _q = queue;
+        var active = 0;
+        var maxActive = 0;
+        var order = new List<string>();
+        var script = new TestRunner(async (r, _, _) =>
+        {
+            var now = Interlocked.Increment(ref active);
+            InterlockedMax(ref maxActive, now);
+            lock (order)
+            {
+                order.Add(Path.GetFileNameWithoutExtension(r.SourcePaths[0]));
+            }
+
+            await Task.Delay(20);
+            Interlocked.Decrement(ref active);
+            return new ConversionResult(true, []);
+        }, lane: JobLane.Script);
+
+        foreach (var n in new[] { "a", "b", "c" })
+        {
+            queue.Enqueue(Jpg(n), n, script);
+        }
+
+        await queue.WhenIdleAsync();
+        order.Should().Equal("a", "b", "c");
+        maxActive.Should().Be(1);
+    }
+
+    [Fact]
     public async Task Idle_task_is_already_complete_with_no_jobs()
     {
         var (queue, _) = Create((_, _, _) => Task.FromResult(new ConversionResult(true, [])));
@@ -467,9 +533,11 @@ public sealed class JobQueueTests : IDisposable
         }
     }
 
-    private sealed class TestRunner(Func<ConversionRequest, IProgress<double>, CancellationToken, Task<ConversionResult>> run, Availability? availability = null) : IJobRunner
+    private sealed class TestRunner(Func<ConversionRequest, IProgress<double>, CancellationToken, Task<ConversionResult>> run, Availability? availability = null, JobLane lane = JobLane.Engine) : IJobRunner
     {
         public Availability Check(ConversionRequest request) => availability ?? Availability.Available;
+
+        public JobLane Lane => lane;
 
         public Task<ConversionResult> RunAsync(ConversionRequest request, IProgress<double> progress, CancellationToken cancellationToken) => run(request, progress, cancellationToken);
     }

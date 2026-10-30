@@ -56,11 +56,26 @@ public enum QualityLevel { Low = 1, Medium = 2, High = 3 }
 /// <summary>Shown in the wheel before the user releases the mouse.</summary>
 public sealed record QualityEstimate(QualityLevel Level, IReadOnlyList<string> Reasons);
 
+/// <summary>
+/// Which of the queue's workers runs a job. Each lane runs one job at a time, in order; lanes run beside each other,
+/// so a user's script that takes an hour does not hold up the conversions enqueued after it.
+/// </summary>
+public enum JobLane
+{
+    /// <summary>Built-in engines and file actions.</summary>
+    Engine,
+
+    /// <summary>User tools: a process we do not know the cost of.</summary>
+    Script,
+}
+
 /// <summary>Whatever a job runs: a converter, a tool or a file action.</summary>
 public interface IJobRunner
 {
     /// <summary>Cheap, synchronous. Called for every wheel slot on open.</summary>
     Availability Check(ConversionRequest request);
+
+    JobLane Lane => JobLane.Engine;
 
     Task<ConversionResult> RunAsync(ConversionRequest request, IProgress<double> progress, CancellationToken cancellationToken);
 }

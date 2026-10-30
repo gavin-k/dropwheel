@@ -29,6 +29,9 @@ public sealed class Job
     public IJobRunner? Runner { get; init; }
     public bool CountsTowardQuota { get; init; } = true;
 
+    /// <summary>The worker that runs it; a job without a runner is an engine conversion.</summary>
+    public JobLane Lane => Runner?.Lane ?? JobLane.Engine;
+
     public JobState State { get; internal set; } = JobState.Pending;
     public double Progress { get; internal set; }
     public string? Detail { get; internal set; }
