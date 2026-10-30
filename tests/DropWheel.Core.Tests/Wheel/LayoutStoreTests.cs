@@ -1,3 +1,4 @@
+using System.Text;
 using DropWheel.Core.Conversion;
 using DropWheel.Core.Settings;
 using DropWheel.Core.Tests.Tools;
@@ -145,6 +146,17 @@ public sealed class LayoutStoreTests : IDisposable
         Ids(repaired.SlotsFor(WheelMode.Tools, MediaKind.Pdf)).Should().Equal("tool.split-pdf", null, null, null);
         repaired.Current.Installed.Should().BeEmpty();
         repaired.Current.Wheels.Keys.Should().Equal("tools");
+    }
+
+    [Fact]
+    public void A_file_written_with_a_utf8_bom_is_read_as_an_agent_on_Windows_PowerShell_writes_one()
+    {
+        File.WriteAllText(File_, """{ "version": 1, "wheels": { "tools": { "pdf": [ { "item": "tool.split-pdf" }, { "item": "tool.merge-pdf" } ] } }, "installed": [] }""", new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+
+        var store = new LayoutStore(File_);
+
+        store.LoadProblem.Should().BeNull();
+        Ids(store.SlotsFor(WheelMode.Tools, MediaKind.Pdf)).Should().Equal("tool.split-pdf", "tool.merge-pdf");
     }
 
     [Fact]
