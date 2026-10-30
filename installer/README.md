@@ -19,7 +19,7 @@ makeappx bundle /o /d <只放这两个 .msix 的文件夹> /p DropWheel.App_<ver
 # 侧载：去掉 --no-sign 换成 --cert cert.pfx，或者事后 signtool sign /fd SHA256 /f cert.pfx <msix>
 ```
 
-- **包里必须带 .NET 运行时。** `winapp pack` 调 `dotnet publish -r win-x64` 时不传 `Platform`，所以 `Properties/PublishProfiles/win-x64.pubxml` 里的 `SelfContained` 根本没被读到；csproj 里在 `_IsPublishing` 时强制 `SelfContained=true` 补这个洞。看大小就知道对不对：x64 约 145 MB、ARM64 约 120 MB 是对的；90 MB 左右的是框架依赖版，没装 .NET 10 的机器上一启动就死（「You must install .NET to run this application」）。release.yml 的原生文件检查里 `coreclr.dll` / `hostfxr.dll` 就是防这个。
+- **包里必须带 .NET 运行时。** `winapp pack` 调 `dotnet publish -r win-x64` 时不传 `Platform`，所以 `Properties/PublishProfiles/win-x64.pubxml` 里的 `SelfContained` 根本没被读到；csproj 里在 `_IsPublishing` 时强制 `SelfContained=true` 补这个洞。看大小就知道对不对：x64 约 145 MiB、ARM64 约 120 MiB 是对的；87 MiB 左右的是框架依赖版，没装 .NET 10 的机器上一启动就死（「You must install .NET to run this application」）。release.yml 的原生文件检查里 `coreclr.dll` / `hostfxr.dll` 就是防这个。
 - **侧载机器要先有 Windows App SDK 运行时。** 清单声明依赖框架包 `Microsoft.WindowsAppRuntime.2`（≥ 2.5.1）。Store 安装会自动带上；侧载（GitHub Release / winget）的用户得先装微软的 Windows App SDK 2.5 运行时安装器，或者 `Add-AppxPackage` 对应架构的 `Microsoft.WindowsAppRuntime.2` 框架包。缺了会在 `Add-AppxPackage` 时被拒（具体报错文字还没抓到，2026-10-30 在测试机上没能把框架包卸干净）。
 - `unvirtualizedResources` 是受限能力（原因见 ADR-0005）：侧载不受影响，上架 Store 时审核可能问用途。
 
