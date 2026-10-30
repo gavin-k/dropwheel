@@ -145,6 +145,146 @@ public sealed record WheelLayout(int Version, IReadOnlyDictionary<string, IReadO
         }
     }
 
+    /// <summary>
+    /// Drops an item on a sector, as the layout editor does: the item leaves wherever it was on this wheel; an
+    /// empty sector takes it, a sector holding an item folds the two into a group, a group with room takes it in.
+    /// Returns false, and the layout unchanged, when the sector holds a full group. A wheel laid out for the first
+    /// time starts as its registration order, as <see cref="Install"/> does.
+    /// </summary>
+    public (WheelLayout Layout, bool Placed) Put(WheelMode mode, MediaKind kind, IReadOnlyList<IWheelOperation> operations, string id, int index)
+    {
+        if (index < 0 || index >= WheelModel.SlotCount)
+        {
+            return (this, false);
+        }
+
+        var list = Slots(mode, kind, operations);
+        if (list[index]?.Item == id)
+        {
+            return (this, true);
+        }
+
+        var target = list[index];
+        if (target?.Group is { } full && full.IsFull && !full.Items.Contains(id))
+        {
+            return (this, false);
+        }
+
+        Take(list, id);
+        list[index] = list[index] switch
+        {
+            null => new(Item: id),
+            { Item: { } other } => new(Group: new(LayoutGroup.DefaultName, [other, id])),
+            { Group: { } group } => new(Group: group.Add(id)),
+            _ => new(Item: id),
+        };
+        return (With(mode, kind, list), true);
+    }
+
+    /// <summary>Exchanges two sectors, whatever they hold, including nothing.</summary>
+    public WheelLayout Swap(WheelMode mode, MediaKind kind, IReadOnlyList<IWheelOperation> operations, int a, int b)
+    {
+        if (a == b || a < 0 || b < 0 || a >= WheelModel.SlotCount || b >= WheelModel.SlotCount)
+        {
+            return this;
+        }
+
+        var list = Slots(mode, kind, operations);
+        (list[a], list[b]) = (list[b], list[a]);
+        return With(mode, kind, list);
+    }
+
+    /// <summary>Takes an item off this wheel; it goes to the unplaced list. A group it leaves empty goes too.</summary>
+    public WheelLayout Remove(WheelMode mode, MediaKind kind, IReadOnlyList<IWheelOperation> operations, string id)
+    {
+        var list = Slots(mode, kind, operations);
+        return Take(list, id) ? With(mode, kind, list) : this;
+    }
+
+    /// <summary>
+    /// Opens a group out onto the wheel: its first item stays in the sector, the rest take the empty sectors in
+    /// order. Returns false, and the layout unchanged, when there are not enough empty sectors for all of them.
+    /// </summary>
+    public (WheelLayout Layout, bool Done) Ungroup(WheelMode mode, MediaKind kind, IReadOnlyList<IWheelOperation> operations, int index)
+    {
+        var list = Slots(mode, kind, operations);
+        if (index < 0 || index >= WheelModel.SlotCount || list[index]?.Group is not { } group)
+        {
+            return (this, false);
+        }
+
+        var empties = Enumerable.Range(0, WheelModel.SlotCount).Where(i => list[i] is null).ToList();
+        if (group.Items.Count - 1 > empties.Count)
+        {
+            return (this, false);
+        }
+
+        list[index] = new(Item: group.Items[0]);
+        foreach (var (item, slot) in group.Items.Skip(1).Zip(empties))
+        {
+            list[slot] = new(Item: item);
+        }
+
+        return (With(mode, kind, list), true);
+    }
+
+    /// <summary>Renames the group in a sector; nothing happens when the sector holds no group or the name is empty.</summary>
+    public WheelLayout RenameGroup(WheelMode mode, MediaKind kind, IReadOnlyList<IWheelOperation> operations, int index, LocalizedText name)
+    {
+        var list = Slots(mode, kind, operations);
+        if (index < 0 || index >= WheelModel.SlotCount || list[index]?.Group is not { } group || string.IsNullOrWhiteSpace(name.Zh))
+        {
+            return this;
+        }
+
+        list[index] = new(Group: group with { Name = name });
+        return With(mode, kind, list);
+    }
+
+    /// <summary>Forgets this wheel's layout, so it shows the registration order again.</summary>
+    public WheelLayout Reset(WheelMode mode, MediaKind kind)
+    {
+        if (!Wheels.TryGetValue(WheelKey(mode), out var wheel) || !wheel.ContainsKey(KindKey(mode, kind)))
+        {
+            return this;
+        }
+
+        var wheels = new Dictionary<string, IReadOnlyDictionary<string, IReadOnlyList<LayoutSlot?>>>(Wheels);
+        var kinds = new Dictionary<string, IReadOnlyList<LayoutSlot?>>(wheel);
+        kinds.Remove(KindKey(mode, kind));
+        if (kinds.Count == 0)
+        {
+            wheels.Remove(WheelKey(mode));
+        }
+        else
+        {
+            wheels[WheelKey(mode)] = kinds;
+        }
+
+        return this with { Wheels = wheels };
+    }
+
+    /// <summary>The wheel's six sectors to edit: its layout, or the registration order when it has none yet.</summary>
+    private List<LayoutSlot?> Slots(WheelMode mode, MediaKind kind, IReadOnlyList<IWheelOperation> operations) =>
+        Pad(SlotsFor(mode, kind) ?? Seed(mode, kind, operations));
+
+    /// <summary>Removes the item from whichever sector or group holds it; a group left empty goes too. False when it was not there.</summary>
+    private static bool Take(List<LayoutSlot?> list, string id)
+    {
+        var at = list.FindIndex(s => s?.Holds(id) == true);
+        if (at < 0)
+        {
+            return false;
+        }
+
+        list[at] = list[at] switch
+        {
+            { Group: { } group } when group.Items.Count > 1 => new(Group: group with { Items = [.. group.Items.Where(i => i != id)] }),
+            _ => null,
+        };
+        return true;
+    }
+
     private static List<LayoutSlot?> Pad(IReadOnlyList<LayoutSlot?> slots)
     {
         List<LayoutSlot?> list = [.. slots.Take(WheelModel.SlotCount)];

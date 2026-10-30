@@ -306,16 +306,4 @@ public sealed class LayoutStoreTests : IDisposable
         group.Detail.Should().Be(new SlotDetail("我的 1 项", "里面的项现在都用不了"));
         group.Children![0].Availability.Reason.Should().Be("坏了");
     }
-
-    private sealed class FakeOperation(string id, WheelMode mode, IReadOnlyList<MediaKind>? kinds) : IWheelOperation
-    {
-        public string Id => id;
-        public WheelMode Mode => mode;
-        public string Label => id;
-        public string Hint => "";
-        public Availability Availability { get; init; } = Availability.Available;
-        public bool AppliesTo(MediaKind kind) => kinds is null || kinds.Contains(kind);
-        public Availability Check(ConversionRequest request) => Availability;
-        public Task<ConversionResult> RunAsync(ConversionRequest request, IProgress<double> progress, CancellationToken cancellationToken) => throw new NotSupportedException();
-    }
 }
