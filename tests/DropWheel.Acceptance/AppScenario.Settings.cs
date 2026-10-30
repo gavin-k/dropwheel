@@ -77,6 +77,8 @@ internal static partial class AppScenario
             english is not null && chinese is not null && still,
             $"{how}; {english ?? "no English line"}; {chinese ?? "no Chinese line"}; 唤出轮盘 {(still ? "still there" : "gone")}");
 
+        EditLayout(checks, log, profile);
+
         Privacy(checks, log);
         StartAtSignIn(checks, log, exe);
 
@@ -192,6 +194,53 @@ internal static partial class AppScenario
         finally
         {
             Marshal.FreeBSTR(bstr);
+        }
+    }
+
+    /// <summary>
+    /// 轮盘排布 in the settings window, which opens on the image tools wheel: 下移 on the first sector swaps it with
+    /// the second in layout.json at once, and 下移 on the first sector again puts the wheel back as it was, so
+    /// the scenarios after this one find the 示例 group where they left it.
+    /// </summary>
+    private static void EditLayout(Checks checks, AppLog log, string profile)
+    {
+        var file = Path.Combine(profile, "layout.json");
+        var before = ImageTools(file);
+        log.Mark();
+        var moved = Invoke(SettingsTitle, "下移", out var how);
+        var first = moved ? log.WaitFor(3000, "layout: changed") : null;
+        var swapped = first is null ? null : ImageTools(file);
+        var ok = before is { Count: >= 2 } && swapped is not null && swapped.Count == before.Count
+            && swapped[0] == before[1] && swapped[1] == before[0] && swapped.Skip(2).SequenceEqual(before.Skip(2));
+        checks.Check("下移 on the first sector of 轮盘排布 swaps the first two image tools in layout.json",
+            ok, $"{how}; {first ?? "no 'layout: changed' line"}; before [{Join(before)}]; after [{Join(swapped)}]");
+
+        log.Mark();
+        var back = Invoke(SettingsTitle, "下移", out how) ? log.WaitFor(3000, "layout: changed") : null;
+        var restored = back is null ? null : ImageTools(file);
+        checks.Check("下移 on the first sector again puts the image tools back as they were",
+            restored is not null && before is not null && restored.SequenceEqual(before),
+            $"{how}; {back ?? "no second 'layout: changed' line"}; now [{Join(restored)}]");
+
+        static string Join(List<string>? slots) => slots is null ? "unreadable" : string.Join(", ", slots);
+    }
+
+    /// <summary>The image tools wheel's six slots as they are written in layout.json, item ids or group names, or null when unreadable.</summary>
+    private static List<string>? ImageTools(string file)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(file));
+            var slots = doc.RootElement.GetProperty("wheels").GetProperty("tools").GetProperty("image");
+            return [.. slots.EnumerateArray().Select(slot =>
+                slot.ValueKind == JsonValueKind.Object && slot.TryGetProperty("item", out var item) && item.ValueKind == JsonValueKind.String ? item.GetString()!
+                : slot.ValueKind == JsonValueKind.Object && slot.TryGetProperty("group", out var group) && group.ValueKind == JsonValueKind.Object ? "group:" + group.GetProperty("name").GetProperty("zh").GetString()
+                : "empty")];
+        }
+        catch (Exception ex) when (ex is IOException or JsonException or KeyNotFoundException or InvalidOperationException)
+        {
+            Log.Info($"settings: layout.json not readable: {ex.Message}");
+            return null;
         }
     }
 
