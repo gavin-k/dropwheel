@@ -16,6 +16,13 @@
     <!-- 打包（MSIX）为默认形态：Win11 右键菜单、通知、Store、winget 都需要包标识。 -->
     <WindowsPackageType>MSIX</WindowsPackageType>
     <PublishProfile>win-$(Platform).pubxml</PublishProfile>
+    <!--
+      Ship the .NET runtime in every publish. The publish profile above says SelfContained, but it is only found when
+      Platform is x64 or ARM64, and winapp pack publishes with -r win-x64 and no Platform (AnyCPU, no win-AnyCPU.pubxml),
+      so the MSIX left the runtime out and died on a machine without .NET 10 ("You must install .NET to run this
+      application"). Keyed on _IsPublishing so a plain build is unchanged.
+    -->
+    <SelfContained Condition="'$(_IsPublishing)' == 'true'">true</SelfContained>
     <ApplicationIcon>Assets/DropWheel.ico</ApplicationIcon>
     <GenerateAppInstallerFile>False</GenerateAppInstallerFile>
     <AppxPackageSigningEnabled>False</AppxPackageSigningEnabled>

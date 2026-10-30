@@ -75,7 +75,8 @@ jobs:
         run: |
           Add-Type -AssemblyName System.IO.Compression.FileSystem
           $machines = @{ x64 = 0x8664; arm64 = 0xAA64 }
-          $natives = 'sidecars/ffmpeg/ffmpeg.exe', 'pdfium.dll', 'libSkiaSharp.dll'
+          # coreclr.dll and hostfxr.dll prove the .NET runtime is inside: a framework-dependent MSIX dies on a machine without .NET 10.
+          $natives = 'sidecars/ffmpeg/ffmpeg.exe', 'pdfium.dll', 'libSkiaSharp.dll', 'coreclr.dll', 'hostfxr.dll'
           foreach ($arch in 'x64', 'arm64') {
             foreach ($msix in Get-ChildItem "artifacts/$arch" -Filter *.msix -Recurse) {
               $zip = [IO.Compression.ZipFile]::OpenRead($msix.FullName)
@@ -136,7 +137,7 @@ jobs:
         shell: pwsh
         run: |
           $machines = @{ x64 = 0x8664; ARM64 = 0xAA64 }
-          $natives = 'DropWheel.exe', 'sidecars/ffmpeg/ffmpeg.exe', 'pdfium.dll', 'libSkiaSharp.dll'
+          $natives = 'DropWheel.exe', 'sidecars/ffmpeg/ffmpeg.exe', 'pdfium.dll', 'libSkiaSharp.dll', 'coreclr.dll', 'hostfxr.dll'
           foreach ($plat in 'x64', 'ARM64') {
             $publish = Join-Path $env:RUNNER_TEMP "publish-$plat"
             dotnet publish src/DropWheel.App/DropWheel.App.csproj -c Release -r "win-$($plat.ToLowerInvariant())" "-p:Platform=$plat" -p:WindowsPackageType=None -p:WindowsAppSDKSelfContained=true -p:SelfContained=true -p:PublishProfile= -o $publish
