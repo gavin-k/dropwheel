@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 using Windows.Win32;
+using Windows.Win32.UI.Input.KeyboardAndMouse;
 
 namespace DropWheel.Acceptance;
 
@@ -24,9 +25,25 @@ internal static partial class AppScenario
         {
             var mid = source.PressAndDrag();
             var dock = ReachEdge(checks, log, mid, out var edge);
-            Input.MoveSmooth(edge, source.Grab, 12, 30);
-            Thread.Sleep(250);
-            Input.LeftUp();
+            if (dock is { } under && under.Contains(source.Grab))
+            {
+                // Explorer laid the item out under the dock's footprint (seen at X=1704 with the dock at 1570..1920), so
+                // a release back on it would be a drop on the dock: leave the dock and cancel the drag with Esc instead.
+                Input.MoveSmooth(edge, new Point(under.Left - 80, edge.Y), 12, 30);
+                Thread.Sleep(250);
+                Input.Key(VIRTUAL_KEY.VK_ESCAPE, up: false);
+                Input.Key(VIRTUAL_KEY.VK_ESCAPE, up: true);
+                Thread.Sleep(150);
+                Input.LeftUp();
+                Log.Info($"app: the item sits under the dock at {source.Grab}, ended the drag with Esc");
+            }
+            else
+            {
+                Input.MoveSmooth(edge, source.Grab, 12, 30);
+                Thread.Sleep(250);
+                Input.LeftUp();
+            }
+
             if (dock is null)
             {
                 return;
