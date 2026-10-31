@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-orange.svg)](LICENSE)
 ![Status: pre-alpha](https://img.shields.io/badge/status-pre--alpha-lightgrey)
 
-> **状态：pre-alpha，M1 开发中。** 已能在资源管理器里拖拽转换图片、字幕、压缩包、音视频和 PDF；未签名的 x64 / ARM64 包由 `release.yml` 产出。设置窗口能改唤出键、输出位置、文件名和重名策略（自动编号、跳过、替换或每次询问），能看到网络请求次数，打开或清除日志；第一次启动有入门指南。界面有简体中文和英文，默认跟随 Windows 的显示语言，也能在设置里指定，重启后生效。工具轮盘（Ctrl+Alt）有压缩图片、缩小、合成 / 合并 / 拆分 PDF、识别文字、压缩视频、提取音频、解压等十二项；动作轮盘（Win）有复制路径、移动到、重命名、压缩等六项。转换轮盘上直接打字，可以搜索全部可转格式；指针停在扇区上，圆心会显示预期质量，灰掉的格式会说明原因。触屏或笔拖动时停住不动，也能唤出转换轮盘（只用模拟输入测过）。拖动时把鼠标推到屏幕左右边缘会弹出停靠栏，文件可以先放着，从几个文件夹收齐了再一起拖走。产品名「DropWheel」为工作代号，随时可能更改。
+> **状态：pre-alpha，M1 开发中。** 已能在资源管理器里拖拽转换图片、字幕、压缩包、音视频和 PDF；x64 / ARM64 的 MSIX 和 MSI 由 `release.yml` 产出、用 Azure Trusted Signing 签名，发布在 GitHub Releases。设置窗口能改唤出键、输出位置、文件名和重名策略（自动编号、跳过、替换或每次询问），能看到网络请求次数，打开或清除日志；第一次启动有入门指南。界面有简体中文和英文，默认跟随 Windows 的显示语言，也能在设置里指定，重启后生效。工具轮盘（Ctrl+Alt）有压缩图片、缩小、合成 / 合并 / 拆分 PDF、识别文字、压缩视频、提取音频、解压等十二项；动作轮盘（Win）有复制路径、移动到、重命名、压缩等六项。转换轮盘上直接打字，可以搜索全部可转格式；指针停在扇区上，圆心会显示预期质量，灰掉的格式会说明原因。触屏或笔拖动时停住不动，也能唤出转换轮盘（只用模拟输入测过）。拖动时把鼠标推到屏幕左右边缘会弹出停靠栏，文件可以先放着，从几个文件夹收齐了再一起拖走。产品名「DropWheel」为工作代号，随时可能更改。
 
 ## 它是什么
 
@@ -108,7 +108,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\setup-windows.ps1       # 加
 
 不经过脚本直接 `dotnet build` App 时，先运行一次 `.\scripts\fetch-sidecars.ps1`，否则输出里没有 ffmpeg，音视频目标会灰显。
 
-`build.sh` 在 Windows 的 Git Bash 下会改为构建整个 `DropWheel.slnx`（该分支尚未在 Windows 上实测，Windows 日常请用上面的 PowerShell 脚本）。CI 见 `.github/workflows/build.yml`（每次 push / PR）与 `release.yml`（`v*` 标签或手动触发，产出未签名 x64 + ARM64 `.msixbundle` 和各架构一个 `.msi`，MSI 的做法见 `installer/README.md`）。
+`build.sh` 在 Windows 的 Git Bash 下会改为构建整个 `DropWheel.slnx`（该分支尚未在 Windows 上实测，Windows 日常请用上面的 PowerShell 脚本）。CI 见 `.github/workflows/build.yml`（每次 push / PR）与 `release.yml`（`v*` 标签或手动触发，产出签名的 x64 + ARM64 `.msixbundle`、单架构 `.msix` 和各架构一个 `.msi`，推标签时发成 GitHub Release；签名和 MSI 的做法见 `installer/README.md`）。
 
 ## 路线图
 

@@ -36,8 +36,18 @@ msiexec /i artifacts\msi\DropWheel-0.1.0-x64.msi /qn    # 静默安装；/x 静�
 - 没有包标识，所以没有 StartupTask：设置里的「登录 Windows 时启动」写当前用户 Run 键下的 `DropWheel` 值。完全卸载时删掉执行卸载的那个用户的这个值；别的用户自己打开过的删不到，会留下一个指向已删文件的启动项。
 - 卸载不动 `%LOCALAPPDATA%\DropWheel`，设置、最近使用和日志都留着，重装后接着用。
 - 用 WiX v5 是有意的：从 v6 起 WiX 的二进制受 Open Source Maintenance Fee EULA 约束，年收入超过 1 万美元的组织要付费赞助。升级 WiX 之前先看许可。
-- 不签名。没签名的 MSI 下载后会被 SmartScreen 拦一下。
-- Release 工作流（`release.yml` 的 `msi` 任务）出 x64 和 ARM64 两个 MSI，先检查 publish 里的原生文件是不是本架构的。
+- 本地打的 MSI 不签名，下载后会被 SmartScreen 拦一下；`release.yml` 打的会签，见下一节。
+- Release 工作流（`release.yml` 的 `msi` 任务）出 x64 和 ARM64 两个 MSI，先检查 publish 里的原生文件是不是本架构的，再签 publish 里的 `DropWheel.exe`，编完 MSI 再签 `.msi`（ffmpeg 是第三方二进制，不用我们的证书签）。
+
+## 签名与 GitHub Release（release.yml）
+
+签名走 Azure Trusted Signing，做法和 shhield-ai 一样，仓库里没有任何证书：
+
+- GitHub 环境 `signing`（只允许 `main` 分支和 `v*` 标签部署）里放机密 `AZURE_CLIENT_ID` / `AZURE_TENANT_ID` / `AZURE_SUBSCRIPTION_ID` / `AZURE_SIGNING_ENDPOINT` / `AZURE_SIGNING_ACCOUNT_NAME` / `AZURE_CERTIFICATE_PROFILE_NAME`，和变量 `MSIX_PUBLISHER`（证书主题）。作业用 `id-token: write` 经 OIDC 登录（`azure/login`），Azure 那边的应用注册要有一条联合凭据，subject 是 `repo:gavin-k/dropwheel:environment:signing`（GitHub 现在发的 subject 带 owner / repo 的数字 id，所以 id 形式那条也要有），并在证书配置上有「Artifact Signing Certificate Profile Signer」角色。
+- MSIX 的 `Identity/Publisher` 必须和证书主题逐字相同，signtool 才肯签。源文件里保留 `CN=Gavin Lee` 给本地 devcert 用，`release.yml` 只在签名的构建里把它改成 `MSIX_PUBLISHER`。后果：发布包的包家族名和本地开发包不同，两者可以并存、不会互相升级；`PublisherDisplayName` 不受影响。
+- signtool 签 `.msixbundle` 时会连里面的包一起签，所以单架构 `.msix` 和 bundle 各签一次就够；签完用 `Get-AuthenticodeSignature` 核对 `Status` 是 `Valid`。
+- 手动触发（`gh workflow run release.yml --ref main -f signing=false`）可以拿未签名的包；推送 `v*` 标签时总是签名，并由 `release` 作业把产物改成 `DropWheel-<ver>-x64.msix` / `-arm64.msix` / `.msixbundle` / `-x64.msi` / `-arm64.msi` 加 `SHA256SUMS.txt` 发成 GitHub（预）发布版。标签必须等于 `Directory.Build.props` 的 `VersionPrefix`，并且 `Package.appxmanifest` 的 `Version` 是它加 `.0`，否则 `check` 作业直接失败。
+- 侧载 MSIX 的机器要能验到「Microsoft Identity Verification Root CA 2020」这条链，Windows 通过自动根证书更新拿到它；长期离线的机器可能报 0x800B0109。
 
 ## 稀疏包（MSI 用户获得包标识 → 右键菜单，未做，需要签名证书）
 

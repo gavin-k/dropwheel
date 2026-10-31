@@ -1,9 +1,16 @@
 name: Release
 
-# 手动触发，或推送 v* 标签。产物：未签名的 x64 + ARM64 .msixbundle（以及单架构 .msix），和每个架构一个未签名的 .msi。
-# 签名留给 Store 提交 / 外部签名流程；仓库里不放任何证书。
+# 手动触发，或推送 v* 标签。产物：x64 + ARM64 .msixbundle（以及单架构 .msix），和每个架构一个 .msi。
+# 签名用 Azure Trusted Signing：环境 `signing` 里的 AZURE_* 机密经 OIDC 登录，仓库里不放任何证书；
+# MSIX 的 Identity/Publisher 在打包前改成证书主题（环境变量 MSIX_PUBLISHER），否则 signtool 拒签。
+# 手动触发时可以关掉签名拿未签名包（本地 devcert 流程不受影响）；推送 v* 标签时总是签名，并发成 GitHub Release。
 on:
   workflow_dispatch:
+    inputs:
+      signing:
+        description: 'Sign the MSIX / MSI with Azure Trusted Signing (environment: signing)'
+        type: boolean
+        default: true
   push:
     tags: ['v*']
 
@@ -16,9 +23,38 @@ env:
   WINAPP_CLI_TELEMETRY_OPTOUT: '1'
 
 jobs:
+  # 标签必须和清单 / VersionPrefix 一致，否则 Release 的文件名和包里的版本对不上。
+  check:
+    name: Version check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tag matches Package.appxmanifest and Directory.Build.props
+        if: github.event_name == 'push'
+        shell: pwsh
+        run: |
+          $tag = '${{ github.ref_name }}'.TrimStart('v')
+          [xml]$manifest = Get-Content src/DropWheel.App/Package.appxmanifest
+          $msix = $manifest.GetElementsByTagName('Identity')[0].GetAttribute('Version')
+          [xml]$props = Get-Content Directory.Build.props
+          $prefix = @($props.Project.PropertyGroup.VersionPrefix | Where-Object { $_ })[0]
+          "tag v$tag; Package.appxmanifest $msix; VersionPrefix $prefix"
+          if ($msix -ne "$tag.0") { throw "Package.appxmanifest Version $msix does not match tag v$tag" }
+          if ($prefix -ne $tag) { throw "Directory.Build.props VersionPrefix $prefix does not match tag v$tag" }
+
   package:
-    name: MSIX (x64 + arm64, unsigned)
+    name: MSIX (x64 + arm64)
+    needs: check
     runs-on: windows-latest
+    environment: ${{ (github.event_name == 'push' || inputs.signing) && 'signing' || '' }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      SIGNING: ${{ github.event_name == 'push' || inputs.signing }}
+    outputs:
+      publisher: ${{ steps.verify.outputs.subject }}
     steps:
       - uses: actions/checkout@v4
 
@@ -51,6 +87,23 @@ jobs:
         run: |
           dotnet restore tests/DropWheel.Core.Tests/DropWheel.Core.Tests.csproj
           dotnet test tests/DropWheel.Core.Tests/DropWheel.Core.Tests.csproj -c Release --no-restore
+
+      # 签名的 MSIX 的 Publisher 必须和证书主题逐字相同。源文件里保留 CN=Gavin Lee 给本地 devcert 用，
+      # 只在签名的构建里改；所以发布包的包家族名和本地开发包不同，两者可以并存、不会互相升级。
+      - name: Set the MSIX publisher to the signing certificate subject
+        if: env.SIGNING == 'true'
+        shell: pwsh
+        env:
+          PUBLISHER: ${{ vars.MSIX_PUBLISHER }}
+        run: |
+          if (-not $env:PUBLISHER) { throw 'The signing environment has no MSIX_PUBLISHER variable (the certificate subject the package identity must match).' }
+          $path = (Resolve-Path src/DropWheel.App/Package.appxmanifest).Path
+          $xml = New-Object System.Xml.XmlDocument
+          $xml.PreserveWhitespace = $true
+          $xml.Load($path)
+          $xml.GetElementsByTagName('Identity')[0].SetAttribute('Publisher', $env:PUBLISHER)
+          $xml.Save($path)
+          Select-String -Path $path -Pattern '<Identity ' | ForEach-Object { $_.Line.Trim() }
 
       # 单架构 .msix（各自可单独 sideload / 排错）
       - name: Pack x64
@@ -103,6 +156,40 @@ jobs:
           Pop-Location
           Get-ChildItem -Recurse artifacts -Include *.msix,*.msixbundle | Format-Table Name, @{n='MB';e={[math]::Round($_.Length/1MB,1)}}
 
+      - name: Azure login
+        if: env.SIGNING == 'true'
+        uses: azure/login@f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca # v3.0.1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # signtool 签 bundle 时会连里面的包一起签，所以单架构 .msix 和 .msixbundle 各签一次就够。
+      - name: Sign the MSIX packages and the bundle
+        if: env.SIGNING == 'true'
+        uses: azure/trusted-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        with:
+          endpoint: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ secrets.AZURE_SIGNING_ACCOUNT_NAME }}
+          certificate-profile-name: ${{ secrets.AZURE_CERTIFICATE_PROFILE_NAME }}
+          files-folder: ${{ github.workspace }}\artifacts
+          files-folder-filter: msix,msixbundle
+          files-folder-recurse: true
+
+      - name: Verify signatures
+        if: env.SIGNING == 'true'
+        id: verify
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem artifacts -Recurse -Include *.msix,*.msixbundle)
+          if ($files.Count -lt 3) { throw "expected x64 + arm64 .msix and a .msixbundle, found $($files.Count) files" }
+          foreach ($file in $files) {
+            $signature = Get-AuthenticodeSignature $file.FullName
+            if ($signature.Status -ne 'Valid') { throw "Signature invalid for $($file.Name): $($signature.Status) $($signature.StatusMessage)" }
+            "$($file.Name): $($signature.SignerCertificate.Subject) (expires $($signature.SignerCertificate.NotAfter))"
+          }
+          "subject=$($signature.SignerCertificate.Subject)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
       - uses: actions/upload-artifact@v4
         with:
           name: DropWheel-msix-${{ github.ref_name }}
@@ -112,10 +199,18 @@ jobs:
             artifacts/bundle/*.msixbundle
           if-no-files-found: error
 
-  # MSI（WiX v5）：未打包、自包含的 publish 文件夹，按架构各一个 .msi，未签名。
+  # MSI（WiX v5）：未打包、自包含的 publish 文件夹，按架构各一个 .msi。
+  # 签名顺序和 shhield-ai 一样：先签 publish 里的 DropWheel.exe，再编 MSI，最后签 .msi；ffmpeg 是第三方二进制，不用我们的证书签。
   msi:
-    name: MSI (x64 + arm64, unsigned)
+    name: MSI (x64 + arm64)
+    needs: check
     runs-on: windows-latest
+    environment: ${{ (github.event_name == 'push' || inputs.signing) && 'signing' || '' }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      SIGNING: ${{ github.event_name == 'push' || inputs.signing }}
     steps:
       - uses: actions/checkout@v4
 
@@ -133,7 +228,7 @@ jobs:
         run: ./scripts/fetch-sidecars.ps1
 
       # The publish folder is what the MSI installs, so its native code must be the architecture's own.
-      - name: Publish and build the MSIs
+      - name: Publish x64 + ARM64
         shell: pwsh
         run: |
           $machines = @{ x64 = 0x8664; ARM64 = 0xAA64 }
@@ -149,13 +244,120 @@ jobs:
               $machine = [BitConverter]::ToUInt16($buf, [BitConverter]::ToInt32($buf, 0x3C) + 4)
               if ($machine -ne $machines[$plat]) { throw "publish-$plat/$native is machine 0x$('{0:X}' -f $machine), expected $plat" }
             }
+          }
+
+      - name: Azure login
+        if: env.SIGNING == 'true'
+        uses: azure/login@f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca # v3.0.1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Sign DropWheel.exe (x64 + ARM64)
+        if: env.SIGNING == 'true'
+        uses: azure/trusted-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        with:
+          endpoint: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ secrets.AZURE_SIGNING_ACCOUNT_NAME }}
+          certificate-profile-name: ${{ secrets.AZURE_CERTIFICATE_PROFILE_NAME }}
+          files: |
+            ${{ runner.temp }}\publish-x64\DropWheel.exe
+            ${{ runner.temp }}\publish-ARM64\DropWheel.exe
+
+      - name: Build the MSIs
+        shell: pwsh
+        run: |
+          foreach ($plat in 'x64', 'ARM64') {
+            $publish = Join-Path $env:RUNNER_TEMP "publish-$plat"
             dotnet build installer/msi/DropWheel.Msi.wixproj -c Release "-p:Platform=$plat" "-p:PublishDir=$publish\" -o artifacts/msi
             if ($LASTEXITCODE -ne 0) { throw "MSI $plat failed" }
           }
           Get-ChildItem artifacts/msi -Filter *.msi | Format-Table Name, @{n='MB';e={[math]::Round($_.Length/1MB,1)}}
+
+      - name: Sign the MSIs
+        if: env.SIGNING == 'true'
+        uses: azure/trusted-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        with:
+          endpoint: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ secrets.AZURE_SIGNING_ACCOUNT_NAME }}
+          certificate-profile-name: ${{ secrets.AZURE_CERTIFICATE_PROFILE_NAME }}
+          files-folder: ${{ github.workspace }}\artifacts\msi
+          files-folder-filter: msi
+
+      - name: Verify signatures
+        if: env.SIGNING == 'true'
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem artifacts/msi -Filter *.msi) + @(Get-Item "$env:RUNNER_TEMP/publish-x64/DropWheel.exe", "$env:RUNNER_TEMP/publish-ARM64/DropWheel.exe")
+          if ($files.Count -ne 4) { throw "expected two .msi and two DropWheel.exe, found $($files.Count) files" }
+          foreach ($file in $files) {
+            $signature = Get-AuthenticodeSignature $file.FullName
+            if ($signature.Status -ne 'Valid') { throw "Signature invalid for $($file.Name): $($signature.Status) $($signature.StatusMessage)" }
+            "$($file.Name): $($signature.SignerCertificate.Subject) (expires $($signature.SignerCertificate.NotAfter))"
+          }
 
       - uses: actions/upload-artifact@v4
         with:
           name: DropWheel-msi-${{ github.ref_name }}
           path: artifacts/msi/*.msi
           if-no-files-found: error
+
+  # 推送 v* 标签：把两个 job 的产物改成稳定的文件名，算一份 SHA256SUMS，发成（预）发布版。
+  release:
+    name: GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [check, package, msi]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: downloads
+
+      - name: Name the assets
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          v="${TAG#v}"
+          mkdir -p release
+          find downloads -type f | sort
+          one() { local n; n=$(find downloads -type f -path "$1" | wc -l); [ "$n" -eq 1 ] || { echo "expected exactly one $1, found $n" >&2; exit 1; }; find downloads -type f -path "$1"; }
+          cp "$(one '*/x64/*.msix')"        "release/DropWheel-$v-x64.msix"
+          cp "$(one '*/arm64/*.msix')"      "release/DropWheel-$v-arm64.msix"
+          cp "$(one '*/bundle/*.msixbundle')" "release/DropWheel-$v.msixbundle"
+          cp "$(one '*/DropWheel-*-x64.msi')"   "release/DropWheel-$v-x64.msi"
+          cp "$(one '*/DropWheel-*-ARM64.msi')" "release/DropWheel-$v-arm64.msi"
+          (cd release && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt)
+          ls -l release
+
+      - name: Create or update the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          PUBLISHER: ${{ needs.package.outputs.publisher }}
+        run: |
+          set -euo pipefail
+          v="${TAG#v}"
+          cat > notes.md <<NOTES
+          ## 下载
+
+          | 文件 | 给谁 |
+          |---|---|
+          | \`DropWheel-$v.msixbundle\` | 推荐：x64 和 ARM64 通用，双击安装（Windows 10 19041+，需要 Windows App Runtime 2.5） |
+          | \`DropWheel-$v-x64.msix\` / \`DropWheel-$v-arm64.msix\` | 单架构 MSIX，排错或 sideload 用 |
+          | \`DropWheel-$v-x64.msi\` / \`DropWheel-$v-arm64.msi\` | 传统安装包（Intel/AMD 64 位 / ARM64），不依赖 MSIX |
+          | \`SHA256SUMS.txt\` | 校验和：\`Get-FileHash <文件>\` 对照 |
+
+          MSIX、MSI 和里面的 DropWheel.exe 都用 Azure Trusted Signing 签名（签名者 \`$PUBLISHER\`）。
+          NOTES
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" release/* --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG" release/* --repo "$GITHUB_REPOSITORY" --title "DropWheel $v" --notes-file notes.md --generate-notes --prerelease
+          fi
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url,assets --jq '.url, (.assets[] | "\(.name) \(.size)")'
