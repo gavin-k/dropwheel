@@ -145,7 +145,9 @@ public sealed class JobQueueTests : IDisposable
         File.ReadAllText(output).Should().Be("user content");
     }
 
-    [Fact]
+    // Without a birth time (Linux without statx), the creation time falls back to the earlier of ctime and
+    // mtime, so a recreated file with the original mtime fingerprints the same; only Windows has a file ID.
+    [WindowsFact]
     public async Task Undo_refuses_a_recreated_identical_file_even_with_preserved_windows_timestamps()
     {
         var output = Output("a.png");
@@ -158,10 +160,7 @@ public sealed class JobQueueTests : IDisposable
         File.Move(output, output + ".original");
         File.WriteAllText(output, "generated");
         File.SetLastWriteTimeUtc(output, modified);
-        if (OperatingSystem.IsWindows())
-        {
-            File.SetCreationTimeUtc(output, created);
-        }
+        File.SetCreationTimeUtc(output, created);
 
         await queue.Invoking(q => q.UndoAsync(job.Id)).Should().ThrowAsync<IOException>();
         _files.Recycled.Should().BeEmpty();

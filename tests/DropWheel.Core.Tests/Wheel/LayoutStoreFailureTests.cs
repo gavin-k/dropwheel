@@ -35,17 +35,19 @@ public sealed class LayoutStoreFailureTests : IDisposable
         Action restoreReadAccess;
         if (OperatingSystem.IsWindows())
         {
+            // Re-applying an unmodified FileSecurity persists nothing, so the deny rule has to be removed explicitly.
             var file = new FileInfo(File_);
-            var originalPermissions = file.GetAccessControl();
-            var deniedPermissions = file.GetAccessControl();
+            var permissions = file.GetAccessControl();
             using var identity = WindowsIdentity.GetCurrent();
-            deniedPermissions.AddAccessRule(new FileSystemAccessRule(identity.User!, FileSystemRights.ReadData, AccessControlType.Deny));
-            file.SetAccessControl(deniedPermissions);
+            var deny = new FileSystemAccessRule(identity.User!, FileSystemRights.ReadData, AccessControlType.Deny);
+            permissions.AddAccessRule(deny);
+            file.SetAccessControl(permissions);
             restoreReadAccess = () =>
             {
                 if (OperatingSystem.IsWindows())
                 {
-                    file.SetAccessControl(originalPermissions);
+                    permissions.RemoveAccessRule(deny);
+                    file.SetAccessControl(permissions);
                 }
             };
         }
