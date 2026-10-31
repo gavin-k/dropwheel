@@ -156,7 +156,7 @@ internal static partial class AppScenario
                 return;
             }
 
-            var before = Process.GetProcessesByName("pwsh").Select(p => p.Id).ToHashSet();
+            var before = ShellProcesses().Select(p => p.Id).ToHashSet();
             var children = new List<int>();
             using (var ring = OpenRing(checks, log, jpg, explorer, "for the hard-kill check"))
             {
@@ -178,9 +178,9 @@ internal static partial class AppScenario
                 Thread.Sleep(250);
                 Input.LeftUp();
                 var enqueued = log.WaitFor(3000, "wheel: enqueued ", "慢工具");
-                var started = Checks.Wait(() => Process.GetProcessesByName("pwsh").Any(p => !before.Contains(p.Id)), 15000);
-                children.AddRange(Process.GetProcessesByName("pwsh").Select(p => p.Id).Where(id => !before.Contains(id)));
-                if (!checks.Check("the sleeper's pwsh is running before the app is killed", enqueued is not null && started, $"{enqueued ?? "nothing enqueued"}; new pwsh pids [{string.Join(", ", children)}]"))
+                var started = Checks.Wait(() => ShellProcesses().Any(p => !before.Contains(p.Id)), 15000);
+                children.AddRange(ShellProcesses().Select(p => p.Id).Where(id => !before.Contains(id)));
+                if (!checks.Check("the sleeper's pwsh is running before the app is killed", enqueued is not null && started, $"{enqueued ?? "nothing enqueued"}; new shell pids [{string.Join(", ", children)}]"))
                 {
                     return;
                 }

@@ -16,6 +16,9 @@ internal static partial class AppScenario
     /// <summary>pwsh processes a user tool started and left running; <see cref="Quit"/> checks they went with the app.</summary>
     private static readonly List<int> ToolChildren = [];
 
+    /// <summary>The shells a script tool may run in: pwsh, or Windows PowerShell where pwsh is not installed.</summary>
+    private static IEnumerable<Process> ShellProcesses() => Process.GetProcessesByName("pwsh").Concat(Process.GetProcessesByName("powershell"));
+
     /// <summary>
     /// User tools, the M1.5 ① flow: the shipped hello-pwsh example validates from the command line and a manifest
     /// without an id does not; copied into the profile's tools folder while the app runs it is loaded, placed in
@@ -211,7 +214,7 @@ internal static partial class AppScenario
             Checks.Wait(() => !PInvoke.IsWindowVisible(window), 3000);
         }
 
-        var before = Process.GetProcessesByName("pwsh").Select(p => p.Id).ToHashSet();
+        var before = ShellProcesses().Select(p => p.Id).ToHashSet();
         using (var r5 = two is null ? null : OpenRing(checks, log, jpg, explorer, "with the slow tool"))
         {
             var slow = r5 is null ? -1 : ChildIndex(r5, SleeperId);
@@ -222,9 +225,9 @@ internal static partial class AppScenario
                 Thread.Sleep(250);
                 Input.LeftUp();
                 var enqueued = log.WaitFor(3000, "wheel: enqueued ", "慢工具");
-                var started = Checks.Wait(() => Process.GetProcessesByName("pwsh").Any(p => !before.Contains(p.Id)), 15000);
-                ToolChildren.AddRange(Process.GetProcessesByName("pwsh").Select(p => p.Id).Where(id => !before.Contains(id)));
-                checks.Check("a slow tool's pwsh is running once it is dropped on", enqueued is not null && started, $"{enqueued ?? "nothing enqueued"}; new pwsh pids [{string.Join(", ", ToolChildren)}]");
+                var started = Checks.Wait(() => ShellProcesses().Any(p => !before.Contains(p.Id)), 15000);
+                ToolChildren.AddRange(ShellProcesses().Select(p => p.Id).Where(id => !before.Contains(id)));
+                checks.Check("a slow tool's pwsh is running once it is dropped on", enqueued is not null && started, $"{enqueued ?? "nothing enqueued"}; new shell pids [{string.Join(", ", ToolChildren)}]");
             }
             else
             {
