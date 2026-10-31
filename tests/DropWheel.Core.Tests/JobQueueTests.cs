@@ -462,18 +462,25 @@ public sealed class JobQueueTests : IDisposable
             return new ConversionResult(true, []);
         }, lane: JobLane.Script);
         var engineDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var scriptRunning = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         queue.JobChanged += j =>
         {
             if (j.Label == "quick" && j.State == JobState.Done)
             {
                 engineDone.TrySetResult();
             }
+
+            if (j.Label == "slow" && j.State == JobState.Running)
+            {
+                scriptRunning.TrySetResult();
+            }
         };
 
         var slow = queue.Enqueue(Jpg("slow"), "slow", script);
         var quick = queue.Enqueue(Jpg("quick"), "quick");
 
-        await engineDone.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        // The lanes are independent, so the engine job may finish before the script lane has even picked its job up.
+        await Task.WhenAll(engineDone.Task, scriptRunning.Task).WaitAsync(TimeSpan.FromSeconds(5));
         slow.State.Should().Be(JobState.Running);
         slow.Lane.Should().Be(JobLane.Script);
         quick.Lane.Should().Be(JobLane.Engine);
