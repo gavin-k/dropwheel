@@ -13,7 +13,7 @@ winget install Microsoft.winappcli --source winget
 # 每个架构在自己的空目录里打，winapp 自己跑 dotnet publish；和 release.yml 的 msix 任务一样
 mkdir artifacts/x64;   cd artifacts/x64;   winapp pack ../../src/DropWheel.App/DropWheel.App.csproj -c Release --arch x64   --no-sign; cd ../..
 mkdir artifacts/arm64; cd artifacts/arm64; winapp pack ../../src/DropWheel.App/DropWheel.App.csproj -c Release --arch arm64 --no-sign; cd ../..
-# 多架构 bundle：要么让 winapp 一次打两个架构（release.yml 这么做，本机还没验证过），要么拿上面两个 .msix 用 makeappx 合（2026-10-30 本机验证过的路子）
+# 多架构 bundle：要么让 winapp 一次打两个架构（release.yml 这么做，2026-10-31 在 GitHub 上跑通），要么拿上面两个 .msix 用 makeappx 合（2026-10-30 本机验证过的路子）
 mkdir artifacts/bundle; cd artifacts/bundle; winapp pack ../../src/DropWheel.App/DropWheel.App.csproj -c Release --arch x64 --arch arm64 --no-sign; cd ../..
 makeappx bundle /o /d <只放这两个 .msix 的文件夹> /p DropWheel.App_<ver>.msixbundle
 # 侧载：去掉 --no-sign 换成 --cert cert.pfx，或者事后 signtool sign /fd SHA256 /f cert.pfx <msix>
